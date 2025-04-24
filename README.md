@@ -11,5 +11,4 @@
 - **Cross-Platform** — Works on Linux, macOS, and Windows (with WSL)
 
 **Screenshot**
-
-![image](https://github.com/user-attachments/assets/93b859fc-8241-4f88-9173-0ecd4939b313)
+![image](https://github.com/user-attachments/assets/e805fa7f-0faf-4e84-a823-ec1f867aafc8)
