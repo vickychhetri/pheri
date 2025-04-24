@@ -104,7 +104,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						SetText("Failed to execute query: " + err.Error()).
 						AddButtons([]string{"OK"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							app.SetRoot(mainFlex, true)
+							layout := CreateLayoutWithFooter(mainFlex)
+							app.SetRoot(layout, true)
 						})
 					app.SetRoot(modal, true)
 					return
@@ -142,7 +143,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetFocus(runButton)
 				return nil
 			case tcell.KeyEscape:
-				app.SetRoot(mainFlex, true)
+				layout := CreateLayoutWithFooter(mainFlex)
+				app.SetRoot(layout, true)
 				app.SetFocus(tableList)
 				return nil
 
@@ -185,7 +187,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 								SetText("Query saved to " + fileName).
 								AddButtons([]string{"OK"}).
 								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-									app.SetRoot(mainFlex, true)
+									layout := CreateLayoutWithFooter(mainFlex)
+									app.SetRoot(layout, true)
 								})
 							app.SetRoot(modal, true)
 						}
@@ -285,45 +288,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				if err != nil {
 					startDir = "."
 				}
-
-				fileBrowser(button2, startDir, app, queryBox, mainFlex)
-
-				// files, err := listFilesWithExtensions("/home/vicky/Desktop/pheri/pheri", []string{".sql", ".go"})
-				// if err != nil {
-				// 	log.Printf("Failed to read directory: %v", err)
-				// 	return nil
-				// }
-
-				// if len(files) == 0 {
-				// 	log.Println("No matching files found")
-				// 	return nil
-				// }
-
-				// fileList := tview.NewList().
-				// 	ShowSecondaryText(false)
-
-				// for _, file := range files {
-				// 	f := file // capture range variable
-				// 	fileList.AddItem(file, "", 0, func() {
-				// 		data, err := os.ReadFile(f)
-				// 		if err != nil {
-				// 			log.Printf("Could not read %s: %v", f, err)
-				// 		} else {
-				// 			queryBox.SetText(string(data), true)
-				// 			app.SetFocus(queryBox)
-				// 		}
-				// 		app.SetRoot(mainFlex, true) // go back to main layout
-				// 	})
-				// }
-
-				// fileList.SetDoneFunc(func() {
-				// 	app.SetRoot(mainFlex, true)
-				// 	app.SetFocus(button2)
-				// })
-
-				// filePicker := tview.NewFlex().AddItem(fileList, 0, 1, true)
-				// app.SetRoot(filePicker, true).SetFocus(fileList)
-				// return nil
+				layout := CreateLayoutWithFooter(mainFlex)
+				fileBrowser(button2, startDir, app, queryBox, layout)
 			}
 
 			return event
@@ -382,7 +348,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			}
 			if event.Key() == tcell.KeyEscape {
 				app.SetFocus(tableList)
-				app.SetRoot(mainFlex, true)
+				layout := CreateLayoutWithFooter(mainFlex)
+				app.SetRoot(layout, true)
 				return nil
 			}
 
@@ -461,8 +428,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		// 	AddItem(middle, 0, 4, false)     // Right section
 
 		// Set the root view with tableList, middle area, and queryBox in focus
-
-		app.SetRoot(mainFlex, true)
+		layout := CreateLayoutWithFooter(mainFlex)
+		app.SetRoot(layout, true)
 	}
 }
 
@@ -582,8 +549,9 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		app.SetFocus(button2)
 	})
 
-	app.SetRoot(tview.NewFlex().AddItem(list, 0, 1, true), true)
-	app.SetFocus(list)
+	layout := CreateLayoutWithFooter(list)
+	app.SetRoot(tview.NewFlex().AddItem(layout, 0, 1, true), true)
+	app.SetFocus(layout)
 }
 
 // func ExecuteQuery(app *tview.Application, db *sql.DB, query string, output *tview.TextView) {

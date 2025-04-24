@@ -43,7 +43,9 @@ func ShowConnectionForm(app *tview.Application) {
 		})
 
 	form.SetBorder(true).SetTitle("MySQL Connection").SetTitleAlign(tview.AlignCenter)
-	app.SetRoot(form, true)
+	layout := CreateLayoutWithFooter(form)
+	app.SetRoot(layout, true).SetFocus(form)
+
 }
 
 func ShowDatabaseList(app *tview.Application, db *sql.DB) {
@@ -70,5 +72,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		ShowConnectionForm(app)
 	})
 
-	app.SetRoot(list, true)
+	layout := CreateLayoutWithFooter(list)
+	app.SetRoot(layout, true)
 }
