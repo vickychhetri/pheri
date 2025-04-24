@@ -1,0 +1,22 @@
+name: pheri
+base: core20
+version: '0.1.0'
+summary: Terminal-based MySQL client
+description: |
+  Pheri is a TUI for MySQL to interact with databases via terminal.
+
+grade: stable
+confinement: strict
+
+apps:
+  pheri:
+    command: bin/pheri
+
+parts:
+  pheri:
+    plugin: go
+    source: .
+    build-snaps:
+      - go
+    override-build: |
+      go build -o $SNAPCRAFT_PART_INSTALL/bin/pheri
