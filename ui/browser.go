@@ -9,7 +9,6 @@ import (
 	"mysql-tui/dbs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -282,19 +281,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			}
 			if event.Key() == tcell.KeyEnter {
 				// Show a suggestion list of files
-				startDir := "." // Default start directory
-
-				switch runtime.GOOS {
-				case "windows":
-					startDir = "c:\\"
-				case "linux", "darwin": // darwin is macOS
-					home, err := os.UserHomeDir()
-					if err != nil {
-						startDir = "/"
-					} else {
-						startDir = home
-					}
-				default:
+				startDir, err := os.Getwd()
+				if err != nil {
 					startDir = "."
 				}
 
