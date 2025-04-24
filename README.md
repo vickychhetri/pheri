@@ -12,3 +12,9 @@
 
 **Screenshot**
 ![image](https://github.com/user-attachments/assets/78efe369-7033-4e3b-b1d6-d10a067e69ce)
+
+**Direct Command:**
+.\pheri -u root -p 12345678 -host 127.0.0.1 -port 3306
+
+**Optional**
+-host 127.0.0.1 -port 3306
