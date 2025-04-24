@@ -4,6 +4,12 @@ package ui
 import (
 	"database/sql"
 	"fmt"
+	"io/fs"
+	"log"
+	"mysql-tui/dbs"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -12,12 +18,14 @@ import (
 
 var dataTable *tview.Table
 var allTables []string
+var mainFlex *tview.Flex
+var fileNameInput *tview.InputField
 
 func filterTableList(
 	search string,
 	allTables []string,
 	list *tview.List,
-	queryBox *tview.InputField,
+	queryBox *tview.TextArea,
 	dataTable *tview.Table,
 	app *tview.Application,
 	db *sql.DB,
@@ -30,7 +38,7 @@ func filterTableList(
 			name := tableName
 			list.AddItem(name, "", 0, func() {
 				query := "SELECT * FROM " + name + " LIMIT 100"
-				queryBox.SetText(query)
+				queryBox.SetText(query, true)
 				ExecuteQuery(app, db, query, dataTable)
 				app.SetFocus(dataTable)
 			})
@@ -39,6 +47,11 @@ func filterTableList(
 }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
+	runIcon := "\n➢ Run\n"
+	saveIcon := "\n〄 Save\n"
+	loadIcon := "\n⌘ Load\n"
+	exitIcon := "\n ✘ Exit\n"
+
 	// Use selected DB
 	_, err := db.Exec("USE " + dbName)
 	if err != nil {
@@ -63,7 +76,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		defer rows.Close()
 		var tableName string
 		// Define queryBox and dataText outside the callback functions so they are in the scope
-		var queryBox *tview.InputField
+		var queryBox *tview.TextArea
 		var dataTable *tview.Table
 
 		for rows.Next() {
@@ -74,7 +87,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				// Handle table selection logic here
 				if queryBox != nil {
 					query := "SELECT * FROM " + currentTable + " LIMIT 100"
-					queryBox.SetText(query)
+					queryBox.SetText(query, true)
 					ExecuteQuery(app, db, query, dataTable)
 					app.SetFocus(dataTable)
 				}
@@ -83,33 +96,287 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		// Initialize queryBox and dataText outside of the callback scope
 
-		runButton := tview.NewButton("Run").
+		runButton := tview.NewButton(runIcon).
 			SetSelectedFunc(func() {
 				query := queryBox.GetText()
-				ExecuteQuery(app, db, query, dataTable)
+				err := ExecuteQuery(app, db, query, dataTable)
+				if err != nil {
+					modal := tview.NewModal().
+						SetText("Failed to execute query: " + err.Error()).
+						AddButtons([]string{"OK"}).
+						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+							app.SetRoot(mainFlex, true)
+						})
+					app.SetRoot(modal, true)
+					return
+				}
 				app.SetFocus(dataTable) // 🔥 Move focus to table
 			})
 
-		queryBox = tview.NewInputField().
-			SetLabel("SQL> ").
-			SetFieldWidth(100).
-			SetDoneFunc(func(key tcell.Key) {
-				if key == tcell.KeyTab || key == tcell.KeyEnter {
-					app.SetFocus(runButton)
-				}
+		buttonBox := tview.NewFlex().
+			SetDirection(tview.FlexColumn).
+			AddItem(nil, 2, 0, false).      // Left padding
+			AddItem(runButton, 0, 1, true). // Button
+			AddItem(nil, 2, 0, false)       // Right padding
+
+		// queryBox = tview.NewInputField().
+		// 	SetLabel("SQL> ").
+		// 	SetFieldWidth(100).
+		// 	SetDoneFunc(func(key tcell.Key) {
+		// 		if key == tcell.KeyTab || key == tcell.KeyEnter {
+		// 			app.SetFocus(runButton)
+		// 		}
+		// 	})
+
+		queryBox = tview.NewTextArea()
+		queryBox.
+			SetBorder(true).
+			SetTitle("SQL Editor")
+		queryBox.SetTitleAlign(tview.AlignLeft).
+			SetBorderColor(tcell.ColorWhite)
+
+		// queryBox.SetSize(5, 0)
+
+		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			switch event.Key() {
+			case tcell.KeyTab:
+				app.SetFocus(runButton)
+				return nil
+			case tcell.KeyEscape:
+				app.SetRoot(mainFlex, true)
+				app.SetFocus(tableList)
+				return nil
+
+			case tcell.KeyF11:
+				app.SetRoot(queryBox, true)
+			}
+
+			return event
+		})
+
+		button1 := tview.NewButton(saveIcon)
+		button1.
+			SetSelectedFunc(func() {
+				fileNameInput = tview.NewInputField().
+					SetLabel("File Name: ").
+					SetFieldWidth(20).
+					SetFieldBackgroundColor(tcell.ColorBlack).
+					SetFieldTextColor(tcell.ColorWhite).
+					SetPlaceholder("query.sql").
+					SetDoneFunc(func(key tcell.Key) {
+						if key == tcell.KeyEnter {
+							fileName := fileNameInput.GetText()
+							query := queryBox.GetText()
+
+							if fileName == "" {
+								fileName = "query.sql"
+							}
+							err := os.WriteFile(fileName, []byte(query), 0644)
+							if err != nil {
+								modal := tview.NewModal().
+									SetText("Failed to save file: " + err.Error()).
+									AddButtons([]string{"OK"}).
+									SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+										app.SetRoot(queryBox, true)
+									})
+								app.SetRoot(modal, true)
+								return
+							}
+							modal := tview.NewModal().
+								SetText("Query saved to " + fileName).
+								AddButtons([]string{"OK"}).
+								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+									app.SetRoot(mainFlex, true)
+								})
+							app.SetRoot(modal, true)
+						}
+					})
+
+				flexSaveFilenName := tview.NewFlex().
+					AddItem(fileNameInput, 0, 1, true)
+				flexSaveFilenName.SetDirection(tview.FlexRow).
+					SetTitle("Save Query").
+					SetTitleAlign(tview.AlignLeft).
+					SetBorder(true).
+					SetBorderColor(tcell.ColorWhite)
+				flexSaveFilenName.SetBorderPadding(0, 0, 1, 1)
+
+				flexSaveFilenName.SetBorder(true).
+					SetTitle("Save Query").
+					SetTitleAlign(tview.AlignCenter).
+					SetBorderColor(tcell.ColorWhite)
+
+				app.SetRoot(flexSaveFilenName, true).SetFocus(fileNameInput)
 			})
+
+		saveButtonBox := tview.NewFlex().
+			SetDirection(tview.FlexColumn).
+			AddItem(nil, 2, 0, false).    // Left padding
+			AddItem(button1, 0, 1, true). // Button
+			AddItem(nil, 2, 0, false)     // Right padding
+
+		button1.SetBorderPadding(0, 0, 1, 1)
+
+		button2 := tview.NewButton(loadIcon).SetSelectedFunc(func() {
+		})
+
+		button2.SetBorderPadding(0, 0, 1, 1)
+
+		loadButtonBox := tview.NewFlex().
+			SetDirection(tview.FlexColumn).
+			AddItem(nil, 2, 0, false).    // Left padding
+			AddItem(button2, 0, 1, true). // Button
+			AddItem(nil, 2, 0, false)     // Right padding
+
+		exitButton := tview.NewButton(exitIcon).SetSelectedFunc(func() {
+			app.Stop()
+		})
+
+		exitButton.SetBorderPadding(0, 0, 5, 5)
+
+		exitButtonBox := tview.NewFlex().
+			SetDirection(tview.FlexColumn).
+			AddItem(nil, 1, 0, false).       // Left padding
+			AddItem(exitButton, 0, 1, true). // Button
+			AddItem(nil, 1, 0, false)        // Right padding
+
+		// Create a dropdown.
+		// dropdown := tview.NewDropDown().
+		// 	SetLabel("Select Option: ").
+		// 	SetOptions([]string{"Export", "About", "Help"}, func(option string, index int) {
+		// 		_ = index // Ignore the index for now
+		// 		//fmt.Printf("Dropdown selected: %s\n", option)
+		// 	})
 
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
 				app.SetFocus(queryBox)
 				return nil
 			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(button1)
+				return nil
+			}
 			return event
 		})
 
+		button1.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(queryBox)
+				return nil
+			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(button2)
+				return nil
+			}
+			return event
+		})
+		button2.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(queryBox)
+				return nil
+			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(exitButton)
+				return nil
+			}
+			if event.Key() == tcell.KeyEnter {
+				// Show a suggestion list of files
+				startDir := "." // Default start directory
+
+				switch runtime.GOOS {
+				case "windows":
+					startDir = "c:\\"
+				case "linux", "darwin": // darwin is macOS
+					home, err := os.UserHomeDir()
+					if err != nil {
+						startDir = "/"
+					} else {
+						startDir = home
+					}
+				default:
+					startDir = "."
+				}
+
+				fileBrowser(button2, startDir, app, queryBox, mainFlex)
+
+				// files, err := listFilesWithExtensions("/home/vicky/Desktop/pheri/pheri", []string{".sql", ".go"})
+				// if err != nil {
+				// 	log.Printf("Failed to read directory: %v", err)
+				// 	return nil
+				// }
+
+				// if len(files) == 0 {
+				// 	log.Println("No matching files found")
+				// 	return nil
+				// }
+
+				// fileList := tview.NewList().
+				// 	ShowSecondaryText(false)
+
+				// for _, file := range files {
+				// 	f := file // capture range variable
+				// 	fileList.AddItem(file, "", 0, func() {
+				// 		data, err := os.ReadFile(f)
+				// 		if err != nil {
+				// 			log.Printf("Could not read %s: %v", f, err)
+				// 		} else {
+				// 			queryBox.SetText(string(data), true)
+				// 			app.SetFocus(queryBox)
+				// 		}
+				// 		app.SetRoot(mainFlex, true) // go back to main layout
+				// 	})
+				// }
+
+				// fileList.SetDoneFunc(func() {
+				// 	app.SetRoot(mainFlex, true)
+				// 	app.SetFocus(button2)
+				// })
+
+				// filePicker := tview.NewFlex().AddItem(fileList, 0, 1, true)
+				// app.SetRoot(filePicker, true).SetFocus(fileList)
+				// return nil
+			}
+
+			return event
+		})
+
+		exitButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(queryBox)
+				return nil
+			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(dataTable)
+				return nil
+			}
+			return event
+		})
+
+		// dropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		// 	if event.Key() == tcell.KeyEscape {
+		// 		app.SetFocus(queryBox)
+		// 		return nil
+
+		// 	}
+		// 	if event.Key() == tcell.KeyTab {
+		// 		app.SetFocus(runButton)
+		// 		return nil
+		// 	}
+		// 	return event
+		// })
+
 		queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(queryBox, 3, 1, true).
-			AddItem(runButton, 1, 0, false)
+			AddItem(queryBox, 4, 1, true).
+			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+				AddItem(buttonBox, 0, 1, false).
+				AddItem(saveButtonBox, 0, 1, false).
+				AddItem(loadButtonBox, 0, 1, false).
+				AddItem(exitButtonBox, 0, 1, false), 1, 0, false)
+
+		// queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
+		// 	AddItem(queryBox, 6, 1, true).
+		// 	AddItem(runButton, 1, 0, false)
 
 		// BOTTOM: Query Result (dataText)
 		dataTable = tview.NewTable()
@@ -122,14 +389,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(queryBox)
-				return nil
-			}
-
-			if event.Key() == tcell.KeyEscape {
 				app.SetFocus(tableList)
 				return nil
 			}
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(tableList)
+				app.SetRoot(mainFlex, true)
+				return nil
+			}
+
+			if event.Key() == tcell.KeyF11 {
+				app.SetRoot(dataTable, true)
+			}
+
 			return event
 		})
 
@@ -148,7 +420,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(tableList)
+				conn, err := dbs.Connect(user, pass, host, port)
+				if err != nil {
+					modal := tview.NewModal().
+						SetText("Connection failed: " + err.Error()).
+						AddButtons([]string{"OK"}).
+						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+							app.SetRoot(queryBox, true)
+						})
+					app.SetRoot(modal, true)
+					return nil
+				}
+
+				ShowDatabaseList(app, conn)
 				return nil
 			}
 			return event
@@ -175,11 +459,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		// Center panel: Query + Data Table
 		centerPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(queryPanel, 4, 1, true).
+			AddItem(queryPanel, 6, 1, true).
 			AddItem(dataTable, 0, 3, false)
 
 		// Main layout
-		mainFlex := tview.NewFlex().
+		mainFlex = tview.NewFlex().
 			AddItem(leftPanel, 0, 1, true).   // use leftPanel instead of just tableList
 			AddItem(centerPanel, 0, 5, false) // center content
 
@@ -194,12 +478,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 }
 
-func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) {
+func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
 	rows, err := db.Query(query)
 	if err != nil {
 		table.Clear()
 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-		return
+		return err
 	}
 	defer rows.Close()
 
@@ -207,7 +491,7 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	if err != nil {
 		table.Clear()
 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-		return
+		return err
 	}
 
 	table.Clear()
@@ -235,6 +519,83 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 		}
 		rowIndex++
 	}
+	return nil
+}
+
+func listFilesWithExtensions(dir string, exts []string) ([]string, error) {
+	var matched []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			for _, ext := range exts {
+				if strings.HasSuffix(d.Name(), ext) {
+					matched = append(matched, path)
+				}
+			}
+		}
+		return nil
+	})
+	return matched, err
+}
+
+// Browse files in a directory
+// This function will be called when the user clicks the "Load" button
+// It will show a list of files with .sql and .go extensions
+// When a file is selected, its content will be loaded into the queryBox
+// and the user will be returned to the main screen
+// The function will also handle the case when the user clicks "Cancel" or "Back"
+// It will return to the main screen without loading any file
+func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Application, queryBox *tview.TextArea, returnTo tview.Primitive) {
+	list := tview.NewList().
+		ShowSecondaryText(false)
+
+	// ".." to go up a directory
+	if currentDir != "/" {
+		parent := filepath.Dir(currentDir)
+		list.AddItem("..", "Go up", 0, func() {
+			fileBrowser(button2, parent, app, queryBox, returnTo)
+		})
+	}
+
+	// Read directory
+	entries, err := os.ReadDir(currentDir)
+	if err != nil {
+		log.Printf("Failed to read directory: %v", err)
+		app.SetRoot(returnTo, true)
+		return
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		fullPath := filepath.Join(currentDir, name)
+
+		if entry.IsDir() {
+			list.AddItem("[::b][DIR] "+name, "", 0, func() {
+				fileBrowser(button2, fullPath, app, queryBox, returnTo)
+			})
+		} else if strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".go") {
+			list.AddItem(name, "", 0, func() {
+				content, err := os.ReadFile(fullPath)
+				if err != nil {
+					log.Printf("Failed to read file: %v", err)
+				} else {
+					queryBox.SetText(string(content), true)
+					app.SetFocus(queryBox)
+				}
+				app.SetRoot(returnTo, true)
+			})
+		}
+	}
+
+	list.SetDoneFunc(func() {
+		app.SetRoot(returnTo, true)
+		app.SetFocus(button2)
+	})
+
+	app.SetRoot(tview.NewFlex().AddItem(list, 0, 1, true), true)
+	app.SetFocus(list)
 }
 
 // func ExecuteQuery(app *tview.Application, db *sql.DB, query string, output *tview.TextView) {

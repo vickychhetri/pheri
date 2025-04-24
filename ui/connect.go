@@ -3,10 +3,12 @@ package ui
 
 import (
 	"database/sql"
-	"mysql-tui/db"
+	"mysql-tui/dbs"
 
 	"github.com/rivo/tview"
 )
+
+var user, pass, host, port string
 
 func ShowConnectionForm(app *tview.Application) {
 	var form *tview.Form
@@ -17,12 +19,12 @@ func ShowConnectionForm(app *tview.Application) {
 		AddInputField("User", "root", 20, nil, nil).
 		AddPasswordField("Password", "", 20, '*', nil).
 		AddButton("Connect", func() {
-			host := form.GetFormItemByLabel("Host").(*tview.InputField).GetText()
-			port := form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
-			user := form.GetFormItemByLabel("User").(*tview.InputField).GetText()
-			pass := form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+			host = form.GetFormItemByLabel("Host").(*tview.InputField).GetText()
+			port = form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
+			user = form.GetFormItemByLabel("User").(*tview.InputField).GetText()
+			pass = form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
 
-			conn, err := db.Connect(user, pass, host, port)
+			conn, err := dbs.Connect(user, pass, host, port)
 			if err != nil {
 				modal := tview.NewModal().
 					SetText("Connection failed: " + err.Error()).
