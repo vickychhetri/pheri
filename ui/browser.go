@@ -109,7 +109,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					app.SetRoot(modal, true)
 					return
 				}
-				app.SetFocus(dataTable) // 🔥 Move focus to table
+				app.SetFocus(dataTable)
 			})
 
 		buttonBox := tview.NewFlex().
