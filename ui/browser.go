@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"mysql-tui/dbs"
 	"mysql-tui/util"
 	"os"
 	"path/filepath"
@@ -31,7 +30,7 @@ var fileNameInput *tview.InputField
 
 func filterTableList(
 	search string,
-	allTables []DBObject,
+	allTable []DBObject,
 	list *tview.List,
 	queryBox *tview.TextArea,
 	dataTable *tview.Table,
@@ -50,7 +49,7 @@ func filterTableList(
 		search = strings.TrimSpace(parts[1])
 	}
 
-	for _, obj := range allTables {
+	for _, obj := range allTable {
 		// Match type filter if present
 		if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
 			continue
@@ -277,8 +276,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						UNION ALL
 						SELECT routine_name AS name, 'FUNCTION' AS type 
 						FROM information_schema.routines 
-						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION';
-`
+						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION';`
 	rows, err := db.Query(queryAllStructure)
 	if err != nil {
 		tableList.AddItem("Error: "+err.Error(), "", 0, nil)
@@ -296,21 +294,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			// displayName := fmt.Sprintf("[%s] %s", objectType, name)
 			dispalyName := objectType + " " + name
 			allTables = append(allTables, DBObject{Name: name, Type: objectType})
-
 			//rows.Scan(&tableName)
-			// currentTable := name
-
+			currentName := name
 			tableList.AddItem(dispalyName, "", 0, func() {
 				switch objectType {
 				case "TABLE", "VIEW":
-					query := "SELECT * FROM " + name + " LIMIT 100"
+					query := "SELECT * FROM " + currentName + " LIMIT 100"
 					queryBox.SetText(query, true)
 					ExecuteQuery(app, db, query, dataTable)
 					app.SetFocus(dataTable)
 				case "PROCEDURE":
 					query := `SELECT ROUTINE_DEFINITION
 					FROM INFORMATION_SCHEMA.ROUTINES
-					WHERE ROUTINE_NAME = '` + name + `'
+					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
 
 					queryBox.SetText(query, true)
@@ -318,10 +314,10 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				case "FUNCTION":
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
-					WHERE ROUTINE_NAME = '` + name + `'
+					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
 
-					routineDefinition, err := ExeQueryToData(db, name, query, dbName, "FUNCTION")
+					routineDefinition, err := ExeQueryToData(db, currentName, query, dbName, "FUNCTION")
 					if err != nil {
 						modal := tview.NewModal().
 							SetText("Failed to execute query: " + err.Error()).
@@ -623,19 +619,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
-				conn, err := dbs.Connect(user, pass, host, port)
-				if err != nil {
-					modal := tview.NewModal().
-						SetText("Connection failed: " + err.Error()).
-						AddButtons([]string{"OK"}).
-						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							app.SetRoot(queryBox, true)
-						})
-					app.SetRoot(modal, true)
-					return nil
-				}
-
-				ShowDatabaseList(app, conn)
+				ShowDatabaseList(app, db)
 				return nil
 			}
 			return event
