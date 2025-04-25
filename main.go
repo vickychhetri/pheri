@@ -13,8 +13,9 @@ func main() {
 	user := flag.String("u", "", "Username")
 	pass := flag.String("p", "", "Password")
 	host := flag.String("host", "localhost", "Hostname")
-	port := flag.String("port", "3306", "Port number") // Example default for PostgreSQL
+	port := flag.String("port", "3306", "Port number")
 
+	// Parse command line flags
 	flag.Parse()
 
 	var password string
