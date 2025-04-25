@@ -88,7 +88,7 @@ func filterTableList(
 							SetText("Failed to execute query: " + err.Error()).
 							AddButtons([]string{"OK"}).
 							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(mainFlex)
+								layout := CreateLayoutWithFooter(app, mainFlex)
 								app.SetRoot(layout, true)
 							})
 						app.SetRoot(modal, true)
@@ -288,7 +288,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		var dataTable *tview.Table
 
 		var name, objectType string
-
+		allTables = []DBObject{}
 		for rows.Next() {
 			rows.Scan(&name, &objectType)
 			// displayName := fmt.Sprintf("[%s] %s", objectType, name)
@@ -298,11 +298,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			currentName := name
 			tableList.AddItem(dispalyName, "", 0, func() {
 				switch objectType {
-				case "TABLE", "VIEW":
-					query := "SELECT * FROM " + currentName + " LIMIT 100"
-					queryBox.SetText(query, true)
-					ExecuteQuery(app, db, query, dataTable)
-					app.SetFocus(dataTable)
 				case "PROCEDURE":
 					query := `SELECT ROUTINE_DEFINITION
 					FROM INFORMATION_SCHEMA.ROUTINES
@@ -323,7 +318,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 							SetText("Failed to execute query: " + err.Error()).
 							AddButtons([]string{"OK"}).
 							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(mainFlex)
+								layout := CreateLayoutWithFooter(app, mainFlex)
 								app.SetRoot(layout, true)
 							})
 						app.SetRoot(modal, true)
@@ -331,6 +326,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					}
 					queryBox.SetText(routineDefinition, true)
 					app.SetFocus(queryBox)
+				case "TABLE", "VIEW":
+					query := "SELECT * FROM " + currentName + " LIMIT 100"
+					queryBox.SetText(query, true)
+					ExecuteQuery(app, db, query, dataTable)
+					app.SetFocus(dataTable)
 				}
 			})
 
@@ -357,7 +357,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						SetText("Failed to execute query: " + err.Error()).
 						AddButtons([]string{"OK"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							layout := CreateLayoutWithFooter(mainFlex)
+							layout := CreateLayoutWithFooter(app, mainFlex)
 							app.SetRoot(layout, true)
 						})
 					app.SetRoot(modal, true)
@@ -387,7 +387,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetFocus(runButton)
 				return nil
 			case tcell.KeyEscape:
-				layout := CreateLayoutWithFooter(mainFlex)
+				layout := CreateLayoutWithFooter(app, mainFlex)
 				app.SetRoot(layout, true)
 				app.SetFocus(tableList)
 				return nil
@@ -431,7 +431,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 								SetText("Query saved to " + fileName).
 								AddButtons([]string{"OK"}).
 								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-									layout := CreateLayoutWithFooter(mainFlex)
+									layout := CreateLayoutWithFooter(app, mainFlex)
 									app.SetRoot(layout, true)
 								})
 							app.SetRoot(modal, true)
@@ -532,7 +532,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				if err != nil {
 					startDir = "."
 				}
-				layout := CreateLayoutWithFooter(mainFlex)
+				layout := CreateLayoutWithFooter(app, mainFlex)
 				fileBrowser(button2, startDir, app, queryBox, layout)
 			}
 
@@ -574,7 +574,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			}
 			if event.Key() == tcell.KeyEscape {
 				app.SetFocus(tableList)
-				layout := CreateLayoutWithFooter(mainFlex)
+				layout := CreateLayoutWithFooter(app, mainFlex)
 				app.SetRoot(layout, true)
 				return nil
 			}
@@ -633,7 +633,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		mainFlex = tview.NewFlex().
 			AddItem(leftPanel, 0, 1, true).   // use leftPanel instead of just tableList
 			AddItem(centerPanel, 0, 5, false) // center content
-		layout := CreateLayoutWithFooter(mainFlex)
+		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
 	}
 }
@@ -748,7 +748,7 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		app.SetFocus(button2)
 	})
 
-	layout := CreateLayoutWithFooter(list)
+	layout := CreateLayoutWithFooter(app, list)
 	app.SetRoot(tview.NewFlex().AddItem(layout, 0, 1, true), true)
 	app.SetFocus(layout)
 }
