@@ -551,19 +551,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
-		// dropdown.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		// 	if event.Key() == tcell.KeyEscape {
-		// 		app.SetFocus(queryBox)
-		// 		return nil
-
-		// 	}
-		// 	if event.Key() == tcell.KeyTab {
-		// 		app.SetFocus(runButton)
-		// 		return nil
-		// 	}
-		// 	return event
-		// })
-
 		queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(queryBox, 4, 1, true).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -572,11 +559,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				AddItem(loadButtonBox, 0, 1, false).
 				AddItem(exitButtonBox, 0, 1, false), 1, 0, false)
 
-		// queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-		// 	AddItem(queryBox, 6, 1, true).
-		// 	AddItem(runButton, 1, 0, false)
-
-		// BOTTOM: Query Result (dataText)
 		dataTable = tview.NewTable()
 		dataTable.SetBorders(true).
 			SetSelectable(true, false). // Allow vertical navigation only
@@ -615,7 +597,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(queryBox)
+				app.SetFocus(tableList)
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
@@ -638,8 +620,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
-		// Combine middle part (query + result)
-		// Left panel: Search + Table List
 		leftPanel := tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(searchInput, 1, 0, false). // small fixed height for search input
 			AddItem(tableList, 0, 1, true)     // fills remaining space
@@ -653,13 +633,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		mainFlex = tview.NewFlex().
 			AddItem(leftPanel, 0, 1, true).   // use leftPanel instead of just tableList
 			AddItem(centerPanel, 0, 5, false) // center content
-
-		// // Final layout
-		// mainFlex := tview.NewFlex().
-		// 	AddItem(tableList, 30, 1, true). // Left column
-		// 	AddItem(middle, 0, 4, false)     // Right section
-
-		// Set the root view with tableList, middle area, and queryBox in focus
 		layout := CreateLayoutWithFooter(mainFlex)
 		app.SetRoot(layout, true)
 	}
@@ -728,12 +701,6 @@ func listFilesWithExtensions(dir string, exts []string) ([]string, error) {
 }
 
 // Browse files in a directory
-// This function will be called when the user clicks the "Load" button
-// It will show a list of files with .sql and .go extensions
-// When a file is selected, its content will be loaded into the queryBox
-// and the user will be returned to the main screen
-// The function will also handle the case when the user clicks "Cancel" or "Back"
-// It will return to the main screen without loading any file
 func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Application, queryBox *tview.TextArea, returnTo tview.Primitive) {
 	list := tview.NewList().
 		ShowSecondaryText(false)
@@ -785,36 +752,3 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 	app.SetRoot(tview.NewFlex().AddItem(layout, 0, 1, true), true)
 	app.SetFocus(layout)
 }
-
-// func ExecuteQuery(app *tview.Application, db *sql.DB, query string, output *tview.TextView) {
-// 	rows, err := db.Query(query)
-// 	if err != nil {
-// 		output.SetText("[red]Error: " + err.Error())
-// 		return
-// 	}
-// 	defer rows.Close()
-
-// 	columns, _ := rows.Columns()
-// 	values := make([]sql.RawBytes, len(columns))
-// 	scanArgs := make([]interface{}, len(values))
-// 	for i := range values {
-// 		scanArgs[i] = &values[i]
-// 	}
-
-// 	var result strings.Builder
-// 	result.WriteString("[yellow]" + strings.Join(columns, " | ") + "\n")
-
-// 	for rows.Next() {
-// 		err = rows.Scan(scanArgs...)
-// 		if err != nil {
-// 			output.SetText("[red]Scan error: " + err.Error())
-// 			return
-// 		}
-// 		for _, val := range values {
-// 			result.WriteString(string(val) + " | ")
-// 		}
-// 		result.WriteString("\n")
-// 	}
-
-// 	output.SetText(result.String())
-// }
