@@ -1,1 +1,0 @@
-SELECT * FROM client_testimonials LIMIT 100

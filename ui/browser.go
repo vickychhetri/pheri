@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"mysql-tui/dbs"
+	"mysql-tui/util"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,34 +17,227 @@ import (
 )
 
 var dataTable *tview.Table
-var allTables []string
+
+// var allTables []string
+type DBObject struct {
+	Name string
+	Type string
+}
+
+var allTables []DBObject
+
 var mainFlex *tview.Flex
 var fileNameInput *tview.InputField
 
 func filterTableList(
 	search string,
-	allTables []string,
+	allTables []DBObject,
 	list *tview.List,
 	queryBox *tview.TextArea,
 	dataTable *tview.Table,
 	app *tview.Application,
 	db *sql.DB,
+	dbName string,
 ) {
 	list.Clear()
 	search = strings.ToLower(search)
-	for _, tableName := range allTables {
-		if strings.Contains(strings.ToLower(tableName), search) {
-			// Closure-safe name
-			name := tableName
-			list.AddItem(name, "", 0, func() {
-				query := "SELECT * FROM " + name + " LIMIT 100"
-				queryBox.SetText(query, true)
-				ExecuteQuery(app, db, query, dataTable)
-				app.SetFocus(dataTable)
+
+	// Optional: detect type filter prefix like "table:", "view:"
+	var typeFilter string
+	if strings.Contains(search, ":") {
+		parts := strings.SplitN(search, ":", 2)
+		typeFilter = strings.TrimSpace(parts[0])
+		search = strings.TrimSpace(parts[1])
+	}
+
+	for _, obj := range allTables {
+		// Match type filter if present
+		if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
+			continue
+		}
+
+		// Match name
+		if strings.Contains(strings.ToLower(obj.Name), search) {
+			//displayName := fmt.Sprintf("[%s] %s", obj.Type, obj.Name)
+			displayName := obj.Type + " " + obj.Name
+			objName := obj.Name
+			objType := obj.Type
+
+			list.AddItem(displayName, "", 0, func() {
+				switch objType {
+				case "TABLE", "VIEW":
+					query := "SELECT * FROM " + objName + " LIMIT 100"
+					queryBox.SetText(query, true)
+					ExecuteQuery(app, db, query, dataTable)
+					app.SetFocus(dataTable)
+				case "PROCEDURE":
+					query := `SELECT ROUTINE_DEFINITION
+					FROM INFORMATION_SCHEMA.ROUTINES
+					WHERE ROUTINE_NAME = '` + objName + `'
+					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
+					queryBox.SetText(query, true)
+					app.SetFocus(queryBox)
+				case "FUNCTION":
+					query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+					FROM INFORMATION_SCHEMA.ROUTINES
+					WHERE ROUTINE_NAME = '` + objName + `'
+					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
+
+					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "FUNCTION")
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Failed to execute query: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+						return
+					}
+
+					queryBox.SetText(routineDefinition, true)
+					app.SetFocus(queryBox)
+				}
 			})
 		}
 	}
 }
+
+type RoutineMetadata struct {
+	Definer           string
+	RoutineName       string
+	ReturnType        string
+	RoutineDefinition string
+	IsDeterministic   string
+	SecurityType      string
+}
+
+type Parameter struct {
+	Name     string
+	DataType string
+}
+
+func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, routineType string) (string, error) {
+	// Execute the query to fetch routine metadata
+	rows, err := db.Query(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var metadata RoutineMetadata
+	var params []Parameter
+
+	// Fetch routine metadata from information_schema.routines
+	if rows.Next() {
+		err := rows.Scan(
+			&metadata.RoutineName,
+			&metadata.ReturnType,
+			&metadata.IsDeterministic,
+			&metadata.SecurityType,
+			&metadata.Definer,
+			&metadata.RoutineDefinition,
+		)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		return "", fmt.Errorf("no routine found")
+	}
+
+	// Fetch parameters from information_schema.parameters
+	paramsQuery := `
+		SELECT parameter_name, data_type
+		FROM information_schema.parameters
+		WHERE specific_name = ? AND specific_schema = ?
+		AND routine_type = ?	
+		ORDER BY ordinal_position;`
+
+	paramRows, err := db.Query(paramsQuery, objName, dbName, routineType)
+	if err != nil {
+		return "", err
+	}
+	defer paramRows.Close()
+
+	// Scan all parameters
+	for paramRows.Next() {
+		var param Parameter
+		var paramName sql.NullString // This allows NULL handling for parameter_name
+		err := paramRows.Scan(&paramName, &param.DataType)
+		if err != nil {
+			return "", err
+		}
+		// If parameter_name is NULL, skip it or handle as needed
+		if paramName.Valid {
+			param.Name = paramName.String
+			params = append(params, param)
+		}
+
+	}
+
+	// Construct the CREATE FUNCTION SQL statement
+	return buildCreateFunctionSQL(metadata, params, db, dbName), nil
+}
+
+func buildCreateFunctionSQL(metadata RoutineMetadata, params []Parameter, db *sql.DB, dbName string) string {
+	// Split the Definer into user and host
+	definerParts := strings.SplitN(metadata.Definer, "@", 2)
+	user := definerParts[0]
+	host := ""
+	if len(definerParts) > 1 {
+		host = definerParts[1]
+	}
+	sqlStmt := fmt.Sprintf("CREATE DEFINER=`%s`@`%s` FUNCTION `%s` (\n", user, host, metadata.RoutineName)
+
+	// Add parameters
+	for _, param := range params {
+		sqlStmt += fmt.Sprintf("    `%s` %s,\n", param.Name, param.DataType)
+	}
+	// Remove the last comma and newline
+	if len(params) > 0 {
+		sqlStmt = sqlStmt[:len(sqlStmt)-2] + "\n"
+	}
+	return_type, err := util.GetFullReturnType(db, metadata.RoutineName, dbName)
+	if err != nil {
+		return fmt.Sprintf("Error fetching return type: %v", err)
+	}
+
+	// Add return type, language, deterministic, security, and comment
+	sqlStmt += fmt.Sprintf(") RETURNS %s\n", return_type) +
+		"LANGUAGE SQL\n" +
+		"DETERMINISTIC\n" +
+		"CONTAINS SQL\n" +
+		fmt.Sprintf("SQL SECURITY %s\n", metadata.SecurityType) +
+		"COMMENT ''\n" +
+		metadata.RoutineDefinition + "\n"
+	return sqlStmt
+}
+
+// func filterTableList(
+// 	search string,
+// 	allTables []string,
+// 	list *tview.List,
+// 	queryBox *tview.TextArea,
+// 	dataTable *tview.Table,
+// 	app *tview.Application,
+// 	db *sql.DB,
+// ) {
+// 	list.Clear()
+// 	search = strings.ToLower(search)
+// 	for _, tableName := range allTables {
+// 		if strings.Contains(strings.ToLower(tableName), search) {
+// 			// Closure-safe name
+// 			name := tableName
+// 			list.AddItem(name, "", 0, func() {
+// 				query := "SELECT * FROM " + name + " LIMIT 100"
+// 				queryBox.SetText(query, true)
+// 				ExecuteQuery(app, db, query, dataTable)
+// 				app.SetFocus(dataTable)
+// 			})
+// 		}
+// 	}
+// }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "\n➢ Run\n"
@@ -68,29 +262,92 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	tableList := tview.NewList()
 	tableList.SetBorder(true).SetTitle("Tables").SetTitleAlign(tview.AlignLeft).
 		SetBorderColor(tcell.ColorWhite)
-	rows, err := db.Query("SHOW TABLES")
+
+	queryAllStructure := `SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = '` + dbName + `' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = '` + dbName + `' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = '` + dbName + `' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION';
+`
+	rows, err := db.Query(queryAllStructure)
 	if err != nil {
 		tableList.AddItem("Error: "+err.Error(), "", 0, nil)
 	} else {
 		defer rows.Close()
-		var tableName string
+		// var tableName string
 		// Define queryBox and dataText outside the callback functions so they are in the scope
 		var queryBox *tview.TextArea
 		var dataTable *tview.Table
 
+		var name, objectType string
+
 		for rows.Next() {
-			rows.Scan(&tableName)
-			currentTable := tableName
-			allTables = append(allTables, tableName)
-			tableList.AddItem(currentTable, "", 0, func() {
-				// Handle table selection logic here
-				if queryBox != nil {
-					query := "SELECT * FROM " + currentTable + " LIMIT 100"
+			rows.Scan(&name, &objectType)
+			// displayName := fmt.Sprintf("[%s] %s", objectType, name)
+			dispalyName := objectType + " " + name
+			allTables = append(allTables, DBObject{Name: name, Type: objectType})
+
+			//rows.Scan(&tableName)
+			// currentTable := name
+
+			tableList.AddItem(dispalyName, "", 0, func() {
+				switch objectType {
+				case "TABLE", "VIEW":
+					query := "SELECT * FROM " + name + " LIMIT 100"
 					queryBox.SetText(query, true)
 					ExecuteQuery(app, db, query, dataTable)
 					app.SetFocus(dataTable)
+				case "PROCEDURE":
+					query := `SELECT ROUTINE_DEFINITION
+					FROM INFORMATION_SCHEMA.ROUTINES
+					WHERE ROUTINE_NAME = '` + name + `'
+					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
+
+					queryBox.SetText(query, true)
+					app.SetFocus(queryBox)
+				case "FUNCTION":
+					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+					FROM INFORMATION_SCHEMA.ROUTINES
+					WHERE ROUTINE_NAME = '` + name + `'
+					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
+
+					routineDefinition, err := ExeQueryToData(db, name, query, dbName, "FUNCTION")
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Failed to execute query: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+						return
+					}
+					queryBox.SetText(routineDefinition, true)
+					app.SetFocus(queryBox)
 				}
 			})
+
+			// allTables = append(allTables, tableName)
+			// tableList.AddItem(currentTable, "", 0, func() {
+			// 	// Handle table selection logic here
+			// 	if queryBox != nil {
+			// 		query := "SELECT * FROM " + currentTable + " LIMIT 100"
+			// 		queryBox.SetText(query, true)
+			// 		ExecuteQuery(app, db, query, dataTable)
+			// 		app.SetFocus(dataTable)
+			// 	}
+			// })
 		}
 
 		// Initialize queryBox and dataText outside of the callback scope
@@ -118,15 +375,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			AddItem(nil, 2, 0, false).      // Left padding
 			AddItem(runButton, 0, 1, true). // Button
 			AddItem(nil, 2, 0, false)       // Right padding
-
-		// queryBox = tview.NewInputField().
-		// 	SetLabel("SQL> ").
-		// 	SetFieldWidth(100).
-		// 	SetDoneFunc(func(key tcell.Key) {
-		// 		if key == tcell.KeyTab || key == tcell.KeyEnter {
-		// 			app.SetFocus(runButton)
-		// 		}
-		// 	})
 
 		queryBox = tview.NewTextArea()
 		queryBox.
@@ -366,7 +614,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetFieldWidth(30)
 		searchInput.
 			SetChangedFunc(func(text string) {
-				filterTableList(text, allTables, tableList, queryBox, dataTable, app, db)
+				filterTableList(text, allTables, tableList, queryBox, dataTable, app, db, dbName)
 			})
 
 		searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
