@@ -36,9 +36,6 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 				a.SetFocus(mainContent)
 			}
 		})
-
-	// Layout: Left Panel with Command Box + Right Panel with Content
-
 	// Create footer text view
 	footer := tview.NewTextView().
 		SetTextAlign(tview.AlignRight).
@@ -55,24 +52,5 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 		SetDirection(tview.FlexRow).
 		AddItem(mainContent, 0, 1, true).   // main content expands
 		AddItem(footerLayoput, 1, 0, false) // fixed height footer
-
-	// a.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-	// 	switch {
-	// 	case event.Key() == tcell.KeyCtrlC:
-	// 		a.SetFocus(commandInput)
-	// 		commandInput.SetText("")
-	// 		commandInput.SetFieldBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
-	// 		return nil
-	// 	case event.Key() == tcell.KeyEsc:
-	// 		commandInput.SetText("")
-	// 		a.SetFocus(mainContent)
-	// 		return nil
-	// 	case event.Key() == tcell.KeyCtrlZ:
-	// 		a.Stop()
-	// 		os.Exit(0)
-	// 	}
-	// 	return event
-	// })
-
 	return layout
 }

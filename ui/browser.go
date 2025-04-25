@@ -213,31 +213,6 @@ func buildCreateFunctionSQL(metadata RoutineMetadata, params []Parameter, db *sq
 	return sqlStmt
 }
 
-// func filterTableList(
-// 	search string,
-// 	allTables []string,
-// 	list *tview.List,
-// 	queryBox *tview.TextArea,
-// 	dataTable *tview.Table,
-// 	app *tview.Application,
-// 	db *sql.DB,
-// ) {
-// 	list.Clear()
-// 	search = strings.ToLower(search)
-// 	for _, tableName := range allTables {
-// 		if strings.Contains(strings.ToLower(tableName), search) {
-// 			// Closure-safe name
-// 			name := tableName
-// 			list.AddItem(name, "", 0, func() {
-// 				query := "SELECT * FROM " + name + " LIMIT 100"
-// 				queryBox.SetText(query, true)
-// 				ExecuteQuery(app, db, query, dataTable)
-// 				app.SetFocus(dataTable)
-// 			})
-// 		}
-// 	}
-// }
-
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "\n➢ Run\n"
 	saveIcon := "\n〄 Save\n"
