@@ -18,6 +18,7 @@ func main() {
 	// Parse command line flags
 	flag.Parse()
 
+	// Check if password is provided
 	var password string
 	if *pass != "" {
 		password = *pass
