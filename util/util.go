@@ -3,6 +3,8 @@ package util
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
 )
 
 func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error) {
@@ -68,4 +70,16 @@ func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error
 	}
 
 	return fullType, nil
+}
+
+func SaveLog(message string) {
+	f, err := os.OpenFile("query.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if err != nil {
+		log.Println("Error opening log file:", err)
+		return
+	}
+	defer f.Close()
+
+	logger := log.New(f, "", log.LstdFlags)
+	logger.Println(message)
 }

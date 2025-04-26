@@ -252,6 +252,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						SELECT routine_name AS name, 'FUNCTION' AS type 
 						FROM information_schema.routines 
 						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION';`
+	util.SaveLog("queryAllStructure: " + queryAllStructure)
 	rows, err := db.Query(queryAllStructure)
 	if err != nil {
 		tableList.AddItem("Error: "+err.Error(), "", 0, nil)
@@ -271,14 +272,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			allTables = append(allTables, DBObject{Name: name, Type: objectType})
 			//rows.Scan(&tableName)
 			currentName := name
+			currentobjectType := objectType
 			tableList.AddItem(dispalyName, "", 0, func() {
-				switch objectType {
+				switch currentobjectType {
 				case "PROCEDURE":
 					query := `SELECT ROUTINE_DEFINITION
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-
+					util.SaveLog("PROCEDURE: " + query)
 					queryBox.SetText(query, true)
 					app.SetFocus(queryBox)
 				case "FUNCTION":
@@ -286,7 +288,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
-
+					util.SaveLog("FUNCTION: " + query)
 					routineDefinition, err := ExeQueryToData(db, currentName, query, dbName, "FUNCTION")
 					if err != nil {
 						modal := tview.NewModal().
@@ -304,6 +306,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				case "TABLE", "VIEW":
 					query := "SELECT * FROM " + currentName + " LIMIT 100"
 					queryBox.SetText(query, true)
+					util.SaveLog("TABLE,VIEW: " + query)
 					ExecuteQuery(app, db, query, dataTable)
 					app.SetFocus(dataTable)
 				}
