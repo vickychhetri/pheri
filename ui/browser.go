@@ -67,14 +67,60 @@ func filterTableList(
 				case "TABLE", "VIEW":
 					query := "SELECT * FROM " + objName + " LIMIT 100"
 					queryBox.SetText(query, true)
-					ExecuteQuery(app, db, query, dataTable)
+					err := ExecuteQuery(app, db, query, dataTable)
+
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Executing Fail: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(app, mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+					}
+
+					if objType == "TABLE" {
+						err := EnableCellEditing(app, dataTable, db, dbName, objName)
+						if err != nil {
+							modal := tview.NewModal().
+								SetText("Failed to enable cell editing: " + err.Error()).
+								AddButtons([]string{"OK"}).
+								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+									layout := CreateLayoutWithFooter(app, mainFlex)
+									app.SetRoot(layout, true)
+								})
+
+							app.SetRoot(modal, true)
+						}
+					}
 					app.SetFocus(dataTable)
 				case "PROCEDURE":
-					query := `SELECT ROUTINE_DEFINITION
+					// query := `SELECT ROUTINE_DEFINITION
+					// FROM INFORMATION_SCHEMA.ROUTINES
+					// WHERE ROUTINE_NAME = '` + objName + `'
+					// AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
+					// queryBox.SetText(query, true)
+					// app.SetFocus(queryBox)
+					query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + objName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-					queryBox.SetText(query, true)
+
+					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "PROCEDURE")
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Failed to execute query: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(app, mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+						return
+					}
+
+					queryBox.SetText(routineDefinition, true)
 					app.SetFocus(queryBox)
 				case "FUNCTION":
 					query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
@@ -82,8 +128,12 @@ func filterTableList(
 					WHERE ROUTINE_NAME = '` + objName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
 
+					util.SaveLog("FUNCTION: " + query)
 					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "FUNCTION")
+					util.SaveLog("FUNCTION1: " + routineDefinition)
+
 					if err != nil {
+						util.SaveLog("FUNCTION1: " + err.Error())
 						modal := tview.NewModal().
 							SetText("Failed to execute query: " + err.Error()).
 							AddButtons([]string{"OK"}).
@@ -115,12 +165,14 @@ type RoutineMetadata struct {
 type Parameter struct {
 	Name     string
 	DataType string
+	Mode     string // <-- NEW field (optional: IN, OUT, INOUT)
 }
 
 func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, routineType string) (string, error) {
 	// Execute the query to fetch routine metadata
 	rows, err := db.Query(query)
 	if err != nil {
+		util.SaveLog("1.) Error executing query: " + err.Error())
 		return "", err
 	}
 	defer rows.Close()
@@ -139,22 +191,44 @@ func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, rou
 			&metadata.RoutineDefinition,
 		)
 		if err != nil {
+			util.SaveLog("2.) Error executing query: " + err.Error())
 			return "", err
 		}
 	} else {
+		util.SaveLog("3.) No routine found")
 		return "", fmt.Errorf("no routine found")
 	}
 
 	// Fetch parameters from information_schema.parameters
 	paramsQuery := `
-		SELECT parameter_name, data_type
-		FROM information_schema.parameters
-		WHERE specific_name = ? AND specific_schema = ?
-		AND routine_type = ?	
-		ORDER BY ordinal_position;`
+			SELECT 
+				parameter_name, 
+				CONCAT(
+					data_type,
+					CASE 
+						WHEN data_type IN ('char', 'varchar', 'binary', 'varbinary') 
+							THEN CONCAT('(', character_maximum_length, ')')
+						WHEN data_type IN ('decimal', 'numeric', 'float', 'double') 
+							THEN CONCAT('(', numeric_precision, ',', numeric_scale, ')')
+						ELSE ''
+					END
+				) AS data_type,
+				parameter_mode
+			FROM 
+				information_schema.parameters
+			WHERE 	
+				specific_name = ? 
+				AND specific_schema = ? 
+				AND routine_type = ?
+			ORDER BY 
+				ordinal_position;
+		`
 
 	paramRows, err := db.Query(paramsQuery, objName, dbName, routineType)
+
 	if err != nil {
+		util.SaveLog(paramsQuery)
+		util.SaveLog("3.) Error executing query: " + err.Error())
 		return "", err
 	}
 	defer paramRows.Close()
@@ -162,25 +236,42 @@ func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, rou
 	// Scan all parameters
 	for paramRows.Next() {
 		var param Parameter
-		var paramName sql.NullString // This allows NULL handling for parameter_name
-		err := paramRows.Scan(&paramName, &param.DataType)
+		var paramName sql.NullString
+		var paramMode sql.NullString // NEW
+		err := paramRows.Scan(&paramName, &param.DataType, &paramMode)
+		util.SaveLog("paramName: " + paramName.String)
+		util.SaveLog("paramMode: " + paramMode.String)
+
 		if err != nil {
 			return "", err
 		}
-		// If parameter_name is NULL, skip it or handle as needed
 		if paramName.Valid {
 			param.Name = paramName.String
-			params = append(params, param)
 		}
-
+		if paramMode.Valid {
+			param.Mode = paramMode.String
+		}
+		params = append(params, param)
 	}
 
+	util.SaveLog("Routine Name: " + metadata.RoutineName)
 	// Construct the CREATE FUNCTION SQL statement
-	return buildCreateFunctionSQL(metadata, params, db, dbName), nil
+	if routineType == "FUNCTION" {
+		util.SaveLog("Function Routine Name: " + metadata.RoutineName)
+		return buildCreateFunctionSQL(metadata, params, db, dbName), nil
+	} else if routineType == "PROCEDURE" {
+		util.SaveLog("Procedure Routine Name: " + metadata.RoutineName)
+		return buildCreateProcedureSQL(metadata, params, db), nil
+	} else {
+		util.SaveLog("4.) Unsupported routine type: " + routineType)
+		return "", fmt.Errorf("unsupported routine type: %s", routineType)
+	}
+
 }
 
 func buildCreateFunctionSQL(metadata RoutineMetadata, params []Parameter, db *sql.DB, dbName string) string {
 	// Split the Definer into user and host
+
 	definerParts := strings.SplitN(metadata.Definer, "@", 2)
 	user := definerParts[0]
 	host := ""
@@ -191,13 +282,16 @@ func buildCreateFunctionSQL(metadata RoutineMetadata, params []Parameter, db *sq
 
 	// Add parameters
 	for _, param := range params {
-		sqlStmt += fmt.Sprintf("    `%s` %s,\n", param.Name, param.DataType)
+		if param.Mode != "" {
+			sqlStmt += fmt.Sprintf("    `%s` %s,\n", param.Name, param.DataType)
+		}
 	}
 	// Remove the last comma and newline
 	if len(params) > 0 {
 		sqlStmt = sqlStmt[:len(sqlStmt)-2] + "\n"
 	}
 	return_type, err := util.GetFullReturnType(db, metadata.RoutineName, dbName)
+
 	if err != nil {
 		return fmt.Sprintf("Error fetching return type: %v", err)
 	}
@@ -210,6 +304,44 @@ func buildCreateFunctionSQL(metadata RoutineMetadata, params []Parameter, db *sq
 		fmt.Sprintf("SQL SECURITY %s\n", metadata.SecurityType) +
 		"COMMENT ''\n" +
 		metadata.RoutineDefinition + "\n"
+	return sqlStmt
+}
+
+func buildCreateProcedureSQL(metadata RoutineMetadata, params []Parameter, db *sql.DB) string {
+	// Split the Definer into user and host
+	definerParts := strings.SplitN(metadata.Definer, "@", 2)
+	user := definerParts[0]
+	host := ""
+	if len(definerParts) > 1 {
+		host = definerParts[1]
+	}
+
+	sqlStmt := fmt.Sprintf("CREATE DEFINER=`%s`@`%s` PROCEDURE `%s` (\n", user, host, metadata.RoutineName)
+
+	// Add parameters
+	for _, param := range params {
+		// In procedures, parameters usually have a mode: IN, OUT, or INOUT
+		// Assuming param.Mode is available. If not, default to IN.
+		mode := param.Mode
+		if mode == "" {
+			mode = "IN"
+		}
+		sqlStmt += fmt.Sprintf("    %s `%s` %s,\n", mode, param.Name, param.DataType)
+	}
+
+	// Remove the last comma and newline
+	if len(params) > 0 {
+		sqlStmt = sqlStmt[:len(sqlStmt)-2] + "\n"
+	}
+
+	// Add characteristics and body
+	sqlStmt += fmt.Sprintf(")\nLANGUAGE SQL\n") +
+		"DETERMINISTIC\n" +
+		"CONTAINS SQL\n" +
+		fmt.Sprintf("SQL SECURITY %s\n", metadata.SecurityType) +
+		"COMMENT ''\n" +
+		metadata.RoutineDefinition + "\n"
+
 	return sqlStmt
 }
 
@@ -276,12 +408,31 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			tableList.AddItem(dispalyName, "", 0, func() {
 				switch currentobjectType {
 				case "PROCEDURE":
-					query := `SELECT ROUTINE_DEFINITION
+					// query := `SELECT ROUTINE_DEFINITION
+					// FROM INFORMATION_SCHEMA.ROUTINES
+					// WHERE ROUTINE_NAME = '` + currentName + `'
+					// AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
+					// util.SaveLog("PROCEDURE: " + query)
+					// queryBox.SetText(query, true)
+					// app.SetFocus(queryBox)
+					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-					util.SaveLog("PROCEDURE: " + query)
-					queryBox.SetText(query, true)
+					util.SaveLog("FUNCTION: " + query)
+					routineDefinition, err := ExeQueryToData(db, currentName, query, dbName, "PROCEDURE")
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Failed to execute query: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(app, mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+						return
+					}
+					queryBox.SetText(routineDefinition, true)
 					app.SetFocus(queryBox)
 				case "FUNCTION":
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
@@ -307,25 +458,38 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					query := "SELECT * FROM " + currentName + " LIMIT 100"
 					queryBox.SetText(query, true)
 					util.SaveLog("TABLE,VIEW: " + query)
-					ExecuteQuery(app, db, query, dataTable)
+					err = ExecuteQuery(app, db, query, dataTable)
+					if err != nil {
+						modal := tview.NewModal().
+							SetText("Executing Fail: " + err.Error()).
+							AddButtons([]string{"OK"}).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								layout := CreateLayoutWithFooter(app, mainFlex)
+								app.SetRoot(layout, true)
+							})
+						app.SetRoot(modal, true)
+					}
+
+					if currentobjectType == "TABLE" {
+						err = EnableCellEditing(app, dataTable, db, dbName, currentName)
+						if err != nil {
+							modal := tview.NewModal().
+								SetText("Failed to enable cell editing: " + err.Error()).
+								AddButtons([]string{"OK"}).
+								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+									layout := CreateLayoutWithFooter(app, mainFlex)
+									app.SetRoot(layout, true)
+								})
+
+							app.SetRoot(modal, true)
+						}
+					}
 					app.SetFocus(dataTable)
 				}
 			})
-
-			// allTables = append(allTables, tableName)
-			// tableList.AddItem(currentTable, "", 0, func() {
-			// 	// Handle table selection logic here
-			// 	if queryBox != nil {
-			// 		query := "SELECT * FROM " + currentTable + " LIMIT 100"
-			// 		queryBox.SetText(query, true)
-			// 		ExecuteQuery(app, db, query, dataTable)
-			// 		app.SetFocus(dataTable)
-			// 	}
-			// })
 		}
 
 		// Initialize queryBox and dataText outside of the callback scope
-
 		runButton := tview.NewButton(runIcon).
 			SetSelectedFunc(func() {
 				query := queryBox.GetText()
@@ -356,9 +520,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetTitle("SQL Editor")
 		queryBox.SetTitleAlign(tview.AlignLeft).
 			SetBorderColor(tcell.ColorWhite)
-
-		// queryBox.SetSize(5, 0)
-
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
 			case tcell.KeyTab:
@@ -463,14 +624,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			AddItem(nil, 1, 0, false).       // Left padding
 			AddItem(exitButton, 0, 1, true). // Button
 			AddItem(nil, 1, 0, false)        // Right padding
-
-		// Create a dropdown.
-		// dropdown := tview.NewDropDown().
-		// 	SetLabel("Select Option: ").
-		// 	SetOptions([]string{"Export", "About", "Help"}, func(option string, index int) {
-		// 		_ = index // Ignore the index for now
-		// 		//fmt.Printf("Dropdown selected: %s\n", option)
-		// 	})
 
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
@@ -616,6 +769,33 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 }
 
+// Get primary key column name dynamically
+func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
+	query := `
+	SELECT COLUMN_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS
+	WHERE TABLE_SCHEMA = ?
+	  AND TABLE_NAME = ?
+	  AND COLUMN_KEY = 'PRI'
+	LIMIT 1
+	`
+	var primaryKey string
+	err := db.QueryRow(query, dbName, tableName).Scan(&primaryKey)
+
+	if err != nil {
+		util.SaveLog(" KEYS error Error getting primary key column: " + err.Error())
+		util.SaveLog("dbName: " + dbName)
+		util.SaveLog("tableName: " + tableName)
+		util.SaveLog("Query: " + query)
+		util.SaveLog("PrimaryKey: " + primaryKey)
+		util.SaveLog("Error: " + err.Error())
+		return "", err
+
+	}
+	return primaryKey, nil
+}
+
+// Fetch data and show in table
 func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
 	rows, err := db.Query(query)
 	if err != nil {
@@ -634,7 +814,7 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 
 	table.Clear()
 
-	// Show column headers
+	// Set headers
 	for i, col := range columns {
 		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
 	}
@@ -651,7 +831,6 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 		if err != nil {
 			continue
 		}
-
 		for i, col := range values {
 			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
 		}
@@ -659,6 +838,191 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	}
 	return nil
 }
+
+// Enable editing and database update
+func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, dbName, tableName string) error {
+	primaryKeyColumn, err := GetPrimaryKeyColumn(db, dbName, tableName)
+	if err != nil {
+		util.SaveLog("tableName: " + tableName)
+		util.SaveLog("dbName: " + dbName)
+		util.SaveLog("Error getting primary key column: " + err.Error())
+		return err
+	}
+
+	table.SetSelectable(true, true)
+
+	table.SetSelectedFunc(func(row int, column int) {
+		if row == 0 {
+			return // Skip header row
+		}
+
+		cell := table.GetCell(row, column)
+		currentValue := cell.Text
+
+		// Get column name from header
+		headerCell := table.GetCell(0, column)
+		columnName := stripFormatting(headerCell.Text)
+
+		// Now don't assume primary key is always 0 column
+		var primaryKeyValue string
+		for col := 0; col < table.GetColumnCount(); col++ {
+			colHeader := stripFormatting(table.GetCell(0, col).Text)
+			if colHeader == primaryKeyColumn {
+				primaryKeyValue = table.GetCell(row, col).Text
+				break
+			}
+		}
+
+		// Use TextArea now
+		textArea := tview.NewTextArea()
+		textArea.
+			SetBorder(true).
+			SetTitle(fmt.Sprintf("Edit %s (Enter=Save, Esc=Cancel)", columnName))
+
+		textArea.SetText(string(currentValue), true)
+		// textArea.SetChangedFunc(func() {
+		// 	app.Draw()
+		// })
+
+		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			switch event.Key() {
+			case tcell.KeyEnter:
+				newValue := textArea.GetText()
+
+				// Update cell visually
+				cell.SetText(newValue)
+
+				// Update database
+				query := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", tableName, columnName, primaryKeyColumn)
+				_, err := db.Exec(query, newValue, primaryKeyValue)
+				if err != nil {
+					fmt.Println("Update error:", err)
+				}
+
+				app.SetRoot(mainFlex, true)
+				util.SetFocusWithBorder(app, table)
+				return nil
+
+			case tcell.KeyEscape:
+				app.SetRoot(mainFlex, true)
+				util.SetFocusWithBorder(app, table)
+				return nil
+			}
+			return event
+		})
+
+		modal := tview.NewFlex().
+			SetDirection(tview.FlexRow).
+			AddItem(textArea, 0, 1, true)
+
+		app.SetRoot(modal, true).SetFocus(textArea)
+	})
+
+	return nil
+}
+
+// Remove formatting codes like [::b]
+func stripFormatting(s string) string {
+	s = strings.ReplaceAll(s, "[::b]", "")
+	s = strings.ReplaceAll(s, "[::u]", "")
+	return s
+}
+
+// func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, tableName string, primaryKeyColumn string) {
+// 	table.SetSelectable(true, true)
+
+// 	table.SetSelectedFunc(func(row int, column int) {
+// 		// Do not allow editing of header row
+// 		if row == 0 {
+// 			return
+// 		}
+
+// 		cell := table.GetCell(row, column)
+// 		currentValue := cell.Text
+
+// 		// Get the column name from header
+// 		columnName := table.GetCell(0, column).Text
+// 		columnName = tview.Escape(columnName) // Remove formatting like [::b]
+
+// 		// Assume primary key value is in column 0
+// 		primaryKeyValue := table.GetCell(row, 0).Text
+
+// 		input := tview.NewInputField()
+// 		input.SetFieldBackgroundColor(tcell.ColorBlack).
+// 			SetLabel(fmt.Sprintf("Edit %s: ", columnName)).
+// 			SetText(currentValue).
+// 			SetDoneFunc(func(key tcell.Key) {
+// 				if key == tcell.KeyEnter {
+// 					newValue := input.GetText()
+
+// 					// Update the table cell visually
+// 					cell.SetText(newValue)
+
+// 					// UPDATE the database
+// 					query := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", tableName, columnName, primaryKeyColumn)
+// 					_, err := db.Exec(query, newValue, primaryKeyValue)
+// 					if err != nil {
+// 						// Handle error if needed
+// 						fmt.Println("Update failed:", err)
+// 					}
+
+// 					app.SetRoot(table, true)
+// 				} else if key == tcell.KeyEscape {
+// 					app.SetRoot(table, true)
+// 				}
+// 			})
+
+// 		modal := tview.NewFlex().
+// 			SetDirection(tview.FlexRow).
+// 			AddItem(input, 3, 1, true)
+
+// 		app.SetRoot(modal, true).SetFocus(input)
+// 	})
+// }
+
+// func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
+// 	rows, err := db.Query(query)
+// 	if err != nil {
+// 		table.Clear()
+// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+// 		return err
+// 	}
+// 	defer rows.Close()
+
+// 	columns, err := rows.Columns()
+// 	if err != nil {
+// 		table.Clear()
+// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+// 		return err
+// 	}
+
+// 	table.Clear()
+
+// 	// Show column headers
+// 	for i, col := range columns {
+// 		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
+// 	}
+
+// 	values := make([]sql.RawBytes, len(columns))
+// 	scanArgs := make([]interface{}, len(values))
+// 	for i := range values {
+// 		scanArgs[i] = &values[i]
+// 	}
+
+// 	rowIndex := 1
+// 	for rows.Next() {
+// 		err := rows.Scan(scanArgs...)
+// 		if err != nil {
+// 			continue
+// 		}
+
+// 		for i, col := range values {
+// 			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
+// 		}
+// 		rowIndex++
+// 	}
+// 	return nil
+// }
 
 func listFilesWithExtensions(dir string, exts []string) ([]string, error) {
 	var matched []string
