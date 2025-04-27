@@ -463,7 +463,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						app.SetRoot(modal, true)
 					}
 
-					phhistory.SaveQuery(query)
+					phhistory.SaveQuery(query, dbName)
 
 					if currentobjectType == "TABLE" {
 						isEditingEnabled = true
@@ -490,7 +490,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetSelectedFunc(func() {
 				query := queryBox.GetText()
 				err := ExecuteQuery(app, db, query, dataTable)
-				phhistory.SaveQuery(query)
+				phhistory.SaveQuery(query, dbName)
 				isEditingEnabled = false
 				if err != nil {
 					modal := tview.NewModal().
@@ -908,7 +908,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 					fmt.Println("Update error:", err)
 				}
 				fullQuery := phhistory.ReplacePlaceholders(query, newValue, primaryKeyValue)
-				phhistory.SaveQuery(fullQuery)
+				phhistory.SaveQuery(fullQuery, dbName)
 				app.SetRoot(mainFlex, true)
 				util.SetFocusWithBorder(app, table)
 				return nil

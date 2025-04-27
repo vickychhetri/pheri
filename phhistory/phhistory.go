@@ -11,20 +11,41 @@ import (
 
 var db *sql.DB
 
+var user, host, port string
+
+func SetUser(u string) {
+	user = u
+}
+
+func SetHost(h string) {
+	host = h
+}
+
+func SetPort(p string) {
+	port = p
+}
+
 // InitPhHistory initializes the database for query logging
-func InitPhHistory(dbPath string) error {
+func InitPhHistory(dbPath string, userLocal, hostLocal, portLocal string) error {
 	var err error
 	db, err = sql.Open("sqlite", dbPath)
 	if err != nil {
 		return fmt.Errorf("failed to open history database: %w", err)
 	}
+	user = userLocal
+	host = hostLocal
+	port = portLocal
 
 	// Create table if it does not exist
 	_, err = db.Exec(`
         CREATE TABLE IF NOT EXISTS pheri_phhistory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             query_text TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            host_ip VARCHAR(15) NOT NULL,    
+            db_name VARCHAR(100) NOT NULL,     
+			user VARCHAR(100) NOT NULL,  
+			port VARCHAR(10) NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     `)
 	if err != nil {
@@ -35,12 +56,28 @@ func InitPhHistory(dbPath string) error {
 }
 
 // SaveQuery saves a new executed query into the history table
-func SaveQuery(query string) error {
+// func SaveQuery(query string) error {
+// 	if db == nil {
+// 		return fmt.Errorf("database not initialized. Call InitPhHistory first.")
+// 	}
+
+// 	_, err := db.Exec(`INSERT INTO pheri_phhistory (query_text) VALUES (?)`, query)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to save query: %w", err)
+// 	}
+// 	return nil
+// }
+
+// SaveQuery saves a query along with host IP and database name
+func SaveQuery(query, dbName string) error {
 	if db == nil {
-		return fmt.Errorf("database not initialized. Call InitPhHistory first.")
+		return fmt.Errorf("database not initialized, call InitPhHistory first")
 	}
 
-	_, err := db.Exec(`INSERT INTO pheri_phhistory (query_text) VALUES (?)`, query)
+	_, err := db.Exec(`
+		INSERT INTO pheri_phhistory (query_text, host_ip, db_name, user, port)
+		VALUES (?, ?, ?, ?, ?)
+	`, query, host, dbName, user, port)
 	if err != nil {
 		return fmt.Errorf("failed to save query: %w", err)
 	}
