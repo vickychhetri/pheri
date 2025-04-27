@@ -3,6 +3,7 @@ package main
 
 import (
 	"flag"
+	"mysql-tui/phhistory"
 	"mysql-tui/ui"
 
 	"github.com/rivo/tview"
@@ -26,6 +27,11 @@ func main() {
 		password = ""
 	}
 
+	err := phhistory.InitPhHistory("phhistory.db")
+	if err != nil {
+		panic(err)
+	}
+	defer phhistory.Close()
 	app := tview.NewApplication()
 	ui.ShowConnectionForm(app, *user, password, *host, *port)
 	if err := app.Run(); err != nil {
