@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"log"
 	"mysql-tui/dbs"
+	"mysql-tui/phhistory"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -34,6 +36,9 @@ func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 				user = form.GetFormItemByLabel("User").(*tview.InputField).GetText()
 				pass = form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
 
+				phhistory.SetUser(user)
+				phhistory.SetHost(host)
+				phhistory.SetPort(port)
 				conn, err := dbs.Connect(user, pass, host, port)
 				if err != nil {
 					modal := tview.NewModal().
@@ -48,11 +53,20 @@ func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 
 				ShowDatabaseList(app, conn)
 			}).
+			AddButton("Clear", func() {
+				form.GetFormItemByLabel("Host").(*tview.InputField).SetText("")
+				form.GetFormItemByLabel("Port").(*tview.InputField).SetText("")
+				form.GetFormItemByLabel("User").(*tview.InputField).SetText("")
+				form.GetFormItemByLabel("Password").(*tview.InputField).SetText("")
+
+			}).
 			AddButton("Quit", func() {
 				app.Stop()
 			})
+		form.SetFieldBackgroundColor(tcell.ColorLightGray)
+		form.SetBorder(true).SetTitle("MySQL Connection")
+		form.SetBorderPadding(1, 1, 2, 2) // Top, bottom, left, right padding
 
-		form.SetBorder(true).SetTitle("MySQL Connection").SetTitleAlign(tview.AlignCenter)
 		layout := CreateLayoutWithFooter(app, form)
 		app.SetRoot(layout, true).SetFocus(form)
 	}

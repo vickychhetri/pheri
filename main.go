@@ -27,7 +27,7 @@ func main() {
 		password = ""
 	}
 
-	err := phhistory.InitPhHistory("phhistory.db")
+	err := phhistory.InitPhHistory("phhistory.db", *user, *host, *port)
 	if err != nil {
 		panic(err)
 	}
