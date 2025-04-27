@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"mysql-tui/phhistory"
 	"mysql-tui/util"
 	"os"
 	"path/filepath"
@@ -27,6 +28,8 @@ var allTables []DBObject
 
 var mainFlex *tview.Flex
 var fileNameInput *tview.InputField
+
+var isEditingEnabled bool = false
 
 func filterTableList(
 	search string,
@@ -81,6 +84,7 @@ func filterTableList(
 					}
 
 					if objType == "TABLE" {
+						isEditingEnabled = true
 						err := EnableCellEditing(app, dataTable, db, dbName, objName)
 						if err != nil {
 							modal := tview.NewModal().
@@ -128,11 +132,7 @@ func filterTableList(
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + objName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
-
-					util.SaveLog("FUNCTION: " + query)
 					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "FUNCTION")
-					util.SaveLog("FUNCTION1: " + routineDefinition)
-
 					if err != nil {
 						util.SaveLog("FUNCTION1: " + err.Error())
 						modal := tview.NewModal().
@@ -226,7 +226,6 @@ func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, rou
 		`
 
 	paramRows, err := db.Query(paramsQuery, objName, dbName, routineType)
-
 	if err != nil {
 		util.SaveLog(paramsQuery)
 		util.SaveLog("3.) Error executing query: " + err.Error())
@@ -409,13 +408,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			tableList.AddItem(dispalyName, "", 0, func() {
 				switch currentobjectType {
 				case "PROCEDURE":
-					// query := `SELECT ROUTINE_DEFINITION
-					// FROM INFORMATION_SCHEMA.ROUTINES
-					// WHERE ROUTINE_NAME = '` + currentName + `'
-					// AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-					// util.SaveLog("PROCEDURE: " + query)
-					// queryBox.SetText(query, true)
-					// app.SetFocus(queryBox)
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
@@ -471,7 +463,10 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						app.SetRoot(modal, true)
 					}
 
+					phhistory.SaveQuery(query)
+
 					if currentobjectType == "TABLE" {
+						isEditingEnabled = true
 						err = EnableCellEditing(app, dataTable, db, dbName, currentName)
 						if err != nil {
 							modal := tview.NewModal().
@@ -495,6 +490,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetSelectedFunc(func() {
 				query := queryBox.GetText()
 				err := ExecuteQuery(app, db, query, dataTable)
+				phhistory.SaveQuery(query)
+				isEditingEnabled = false
 				if err != nil {
 					modal := tview.NewModal().
 						SetText("Failed to execute query: " + err.Error()).
@@ -697,6 +694,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetFixed(1, 0).             // Fix the first row (header)
 			SetTitle("Result").
 			SetBorder(true)
+
 		dataTable.SetBorders(true).SetBorderColor(tcell.ColorWhite)
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -881,13 +879,23 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 			SetTitle(fmt.Sprintf("Edit %s (Enter=Save, Esc=Cancel)", columnName))
 
 		textArea.SetText(string(currentValue), true)
-		// textArea.SetChangedFunc(func() {
-		// 	app.Draw()
-		// })
 
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
 			case tcell.KeyEnter:
+
+				if !isEditingEnabled {
+					modal := tview.NewModal().
+						SetText("Not allowed to update in Run Query mode").
+						AddButtons([]string{"OK"}).
+						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+							app.SetRoot(mainFlex, true)
+							util.SetFocusWithBorder(app, table)
+						})
+					app.SetRoot(modal, false)
+					return nil
+				}
+
 				newValue := textArea.GetText()
 
 				// Update cell visually
@@ -899,7 +907,8 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				if err != nil {
 					fmt.Println("Update error:", err)
 				}
-
+				fullQuery := phhistory.ReplacePlaceholders(query, newValue, primaryKeyValue)
+				phhistory.SaveQuery(fullQuery)
 				app.SetRoot(mainFlex, true)
 				util.SetFocusWithBorder(app, table)
 				return nil
@@ -928,102 +937,6 @@ func stripFormatting(s string) string {
 	s = strings.ReplaceAll(s, "[::u]", "")
 	return s
 }
-
-// func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, tableName string, primaryKeyColumn string) {
-// 	table.SetSelectable(true, true)
-
-// 	table.SetSelectedFunc(func(row int, column int) {
-// 		// Do not allow editing of header row
-// 		if row == 0 {
-// 			return
-// 		}
-
-// 		cell := table.GetCell(row, column)
-// 		currentValue := cell.Text
-
-// 		// Get the column name from header
-// 		columnName := table.GetCell(0, column).Text
-// 		columnName = tview.Escape(columnName) // Remove formatting like [::b]
-
-// 		// Assume primary key value is in column 0
-// 		primaryKeyValue := table.GetCell(row, 0).Text
-
-// 		input := tview.NewInputField()
-// 		input.SetFieldBackgroundColor(tcell.ColorBlack).
-// 			SetLabel(fmt.Sprintf("Edit %s: ", columnName)).
-// 			SetText(currentValue).
-// 			SetDoneFunc(func(key tcell.Key) {
-// 				if key == tcell.KeyEnter {
-// 					newValue := input.GetText()
-
-// 					// Update the table cell visually
-// 					cell.SetText(newValue)
-
-// 					// UPDATE the database
-// 					query := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", tableName, columnName, primaryKeyColumn)
-// 					_, err := db.Exec(query, newValue, primaryKeyValue)
-// 					if err != nil {
-// 						// Handle error if needed
-// 						fmt.Println("Update failed:", err)
-// 					}
-
-// 					app.SetRoot(table, true)
-// 				} else if key == tcell.KeyEscape {
-// 					app.SetRoot(table, true)
-// 				}
-// 			})
-
-// 		modal := tview.NewFlex().
-// 			SetDirection(tview.FlexRow).
-// 			AddItem(input, 3, 1, true)
-
-// 		app.SetRoot(modal, true).SetFocus(input)
-// 	})
-// }
-
-// func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
-// 	rows, err := db.Query(query)
-// 	if err != nil {
-// 		table.Clear()
-// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-// 		return err
-// 	}
-// 	defer rows.Close()
-
-// 	columns, err := rows.Columns()
-// 	if err != nil {
-// 		table.Clear()
-// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-// 		return err
-// 	}
-
-// 	table.Clear()
-
-// 	// Show column headers
-// 	for i, col := range columns {
-// 		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
-// 	}
-
-// 	values := make([]sql.RawBytes, len(columns))
-// 	scanArgs := make([]interface{}, len(values))
-// 	for i := range values {
-// 		scanArgs[i] = &values[i]
-// 	}
-
-// 	rowIndex := 1
-// 	for rows.Next() {
-// 		err := rows.Scan(scanArgs...)
-// 		if err != nil {
-// 			continue
-// 		}
-
-// 		for i, col := range values {
-// 			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
-// 		}
-// 		rowIndex++
-// 	}
-// 	return nil
-// }
 
 func listFilesWithExtensions(dir string, exts []string) ([]string, error) {
 	var matched []string
