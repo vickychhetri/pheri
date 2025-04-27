@@ -92,6 +92,7 @@ func filterTableList(
 								})
 
 							app.SetRoot(modal, true)
+							return
 						}
 					}
 					app.SetFocus(dataTable)
@@ -480,8 +481,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 									layout := CreateLayoutWithFooter(app, mainFlex)
 									app.SetRoot(layout, true)
 								})
-
 							app.SetRoot(modal, true)
+							return
 						}
 					}
 					app.SetFocus(dataTable)
