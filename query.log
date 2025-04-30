@@ -1,0 +1,19 @@
+2025/04/30 07:33:45 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tens_tensormoney' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tens_tensormoney' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tens_tensormoney' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tens_tensormoney' AND routine_type = 'FUNCTION';
+2025/04/30 07:33:50 TABLE,VIEW: SELECT * FROM fund_schemes LIMIT 100
+2025/04/30 07:33:56 TABLE,VIEW: SELECT * FROM users LIMIT 100
+2025/04/30 07:34:31 TABLE,VIEW: SELECT * FROM equity_sectoral_benchmarks LIMIT 100
+2025/04/30 07:34:37 TABLE,VIEW: SELECT * FROM users LIMIT 100
