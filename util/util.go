@@ -55,10 +55,6 @@ func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error
 		return "", fmt.Errorf("unsupported routine type: %s", routineType)
 	}
 
-	SaveLog(query)
-	SaveLog(objName)
-	SaveLog(dbName)
-
 	rows, err := db.Query(query, objName, dbName)
 	if err != nil {
 		return "", err

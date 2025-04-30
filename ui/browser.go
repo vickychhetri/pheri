@@ -815,7 +815,7 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 
 	// Set headers
 	for i, col := range columns {
-		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
+		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter).SetMaxWidth(20))
 	}
 
 	values := make([]sql.RawBytes, len(columns))
@@ -849,7 +849,10 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 	}
 
 	table.SetSelectable(true, true)
-
+	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightYellow).Foreground(tcell.ColorBlack))
+	table.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.ColorBlack).
+		Foreground(tcell.ColorDarkRed))
 	table.SetSelectedFunc(func(row int, column int) {
 		if row == 0 {
 			return // Skip header row
