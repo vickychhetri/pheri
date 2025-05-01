@@ -1,6 +1,6 @@
 name: pheri
 base: core20
-version: '0.1.0'
+version: '1.0.0'
 summary: Terminal-based MySQL client
 description: |
   Pheri is a TUI for MySQL to interact with databases via terminal.

@@ -345,6 +345,124 @@ func buildCreateProcedureSQL(metadata RoutineMetadata, params []Parameter, db *s
 	return sqlStmt
 }
 
+var sqlTemplates = []string{
+	// CREATE Commands
+	"CREATE TABLE table_name (column1 datatype, column2 datatype, ...)",
+	"CREATE DATABASE database_name",
+	"CREATE INDEX index_name ON table_name (column_name)",
+	"CREATE UNIQUE INDEX index_name ON table_name (column_name)",
+	"CREATE VIEW view_name AS SELECT column1, column2 FROM table_name WHERE condition",
+
+	// INSERT Commands
+	"INSERT INTO table_name (column1, column2) VALUES (value1, value2)",
+	"INSERT INTO table_name VALUES (value1, value2, ...)",
+	"INSERT INTO table_name (col1, col2) SELECT col1, col2 FROM other_table",
+
+	// ALTER Commands
+	"ALTER TABLE table_name ADD column_name datatype",
+	"ALTER TABLE table_name DROP COLUMN column_name",
+	"ALTER TABLE table_name RENAME TO new_table_name",
+	"ALTER TABLE table_name MODIFY column_name datatype",
+	"ALTER TABLE table_name ADD CONSTRAINT constraint_name FOREIGN KEY (column_name) REFERENCES other_table(column_name)",
+
+	// DROP/DELETE/TRUNCATE
+	"DROP TABLE table_name",
+	"DROP DATABASE database_name",
+	"DROP INDEX index_name ON table_name",
+	"TRUNCATE TABLE table_name",
+	"DELETE FROM table_name WHERE condition",
+
+	// UPDATE
+	"UPDATE table_name SET column1 = value1, column2 = value2 WHERE condition",
+
+	// SELECT Queries
+	"SELECT * FROM table_name",
+	"SELECT column1, column2 FROM table_name WHERE condition",
+	"SELECT column1, COUNT(*) FROM table_name GROUP BY column1",
+	"SELECT column1 FROM table_name ORDER BY column1 DESC",
+	"SELECT DISTINCT column1 FROM table_name",
+	"SELECT column1 FROM table_name LIMIT 10 OFFSET 5",
+
+	// Conditions and Clauses
+	"WHERE column_name = value",
+	"WHERE column_name BETWEEN value1 AND value2",
+	"WHERE column_name LIKE '%value%'",
+	"ORDER BY column_name ASC",
+	"GROUP BY column_name",
+	"HAVING COUNT(column_name) > value",
+	"LIMIT number",
+	"OFFSET number",
+
+	// Aggregate Functions
+	"SELECT COUNT(*) FROM table_name",
+	"SELECT SUM(column_name) FROM table_name",
+	"SELECT AVG(column_name) FROM table_name",
+	"SELECT MIN(column_name) FROM table_name",
+	"SELECT MAX(column_name) FROM table_name",
+}
+
+var sqlKeywords = []string{
+	// DML (Data Manipulation Language)
+	"SELECT", "INSERT", "UPDATE", "DELETE", "MERGE", "CALL", "EXPLAIN", "LOCK",
+
+	// DDL (Data Definition Language)
+	"CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME", "COMMENT",
+
+	// DCL (Data Control Language)
+	"GRANT", "REVOKE",
+
+	// TCL (Transaction Control Language)
+	"COMMIT", "ROLLBACK", "SAVEPOINT", "SET TRANSACTION",
+
+	// Clauses and Operators
+	"FROM", "WHERE", "HAVING", "GROUP BY", "ORDER BY", "LIMIT", "OFFSET",
+	"VALUES", "INTO", "DISTINCT", "UNION", "UNION ALL", "INTERSECT", "EXCEPT",
+
+	// Joins
+	"JOIN", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "CROSS JOIN", "NATURAL JOIN", "ON", "USING",
+
+	// Conditions
+	"AND", "OR", "NOT", "IN", "LIKE", "IS NULL", "IS NOT NULL", "BETWEEN", "EXISTS",
+
+	// Data Types (for completeness)
+	"INT", "INTEGER", "VARCHAR", "CHAR", "TEXT", "DATE", "DATETIME", "BOOLEAN", "DECIMAL", "FLOAT",
+
+	// Miscellaneous
+	"AS", "DESC", "ASC", "CASE", "WHEN", "THEN", "ELSE", "END", "DEFAULT", "PRIMARY KEY", "FOREIGN KEY",
+	"AUTO_INCREMENT", "INDEX", "CONSTRAINT", "REFERENCES", "CHECK", "IF", "ALL", "ANY", "SOME",
+
+	// Functions (optional)
+	"COUNT", "SUM", "AVG", "MIN", "MAX", "NOW", "COALESCE", "NULLIF", "ROUND", "LENGTH",
+}
+
+func getSQLSuggestions(prefix string) []string {
+
+	util.SaveLog("prefix: " + prefix)
+	prefix = strings.ToUpper(prefix)
+	var suggestions []string
+	for _, word := range sqlKeywords {
+		if strings.HasPrefix(word, prefix) {
+			suggestions = append(suggestions, word)
+		}
+	}
+	return suggestions
+}
+
+func showSuggestionBox(app *tview.Application, mainFlex *tview.Flex, editor *tview.TextArea, suggestions []string, onSelect func(string)) {
+	list := tview.NewList()
+	for _, s := range suggestions {
+		sugg := s // capture loop variable
+		list.AddItem(s, "", 0, func() {
+			onSelect(sugg)
+			app.SetRoot(mainFlex, true)
+			app.SetFocus(editor)
+		})
+	}
+
+	modal := tview.NewFlex().AddItem(list, 30, 1, true)
+	app.SetRoot(modal, true).SetFocus(list)
+}
+
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "\n➢ Run\n"
 	saveIcon := "\n〄 Save\n"
@@ -515,7 +633,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		queryBox = tview.NewTextArea()
 		queryBox.
 			SetBorder(true).
-			SetTitle("SQL Editor")
+			SetTitle("Query- ctrl+R: Run, ctrl+F11: FullScreen, ctrl+T: Table, ctrl+S: SQL Keywords, ctrl+_: SQL Templates.").
+			SetTitleAlign(tview.AlignCenter).Blur()
 		queryBox.SetTitleAlign(tview.AlignLeft).
 			SetBorderColor(tcell.ColorWhite)
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -531,8 +650,216 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 			case tcell.KeyF11:
 				app.SetRoot(queryBox, true)
-			}
+			case tcell.KeyCtrlR:
+				query := queryBox.GetText()
+				err := ExecuteQuery(app, db, query, dataTable)
+				phhistory.SaveQuery(query, dbName)
+				isEditingEnabled = false
+				if err != nil {
+					modal := tview.NewModal().
+						SetText("Failed to execute query: " + err.Error()).
+						AddButtons([]string{"OK"}).
+						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+							layout := CreateLayoutWithFooter(app, mainFlex)
+							app.SetRoot(layout, true)
+						})
+					app.SetRoot(modal, true)
+					return nil
+				}
+				app.SetRoot(mainFlex, true)
+				app.SetFocus(dataTable)
+				return nil
 
+			case tcell.KeyCtrlUnderscore:
+				// Get current word at cursor
+				row, col, _, _ := queryBox.GetCursor()
+				text := queryBox.GetText()
+				lines := strings.Split(text, "\n")
+
+				if row >= len(lines) {
+					return nil
+				}
+				currentLine := lines[row]
+
+				prefix := currentLine[:col]
+				words := strings.Fields(prefix)
+				if len(words) == 0 {
+					return nil
+				}
+				currentWord := words[len(words)-1]
+
+				// Find suggestions
+				matches := []string{}
+				for _, kw := range sqlTemplates {
+					if strings.HasPrefix(strings.ToUpper(kw), strings.ToUpper(currentWord)) {
+						matches = append(matches, kw)
+					}
+				}
+				if len(matches) == 0 {
+					return nil
+				}
+
+				util.SaveLog("matches: " + fmt.Sprint(matches))
+				// Show suggestions
+				suggestionList := tview.NewList()
+				suggestionList.ShowSecondaryText(false).
+					SetBorder(true).SetTitle("Suggestions")
+				for _, match := range matches {
+					kw := match
+					suggestionList.AddItem(kw, "", 0, func() {
+						// Replace current word with selection
+						before := currentLine[:col]
+						after := currentLine[col:]
+
+						// Replace last word in 'before' with selected keyword
+						idx := strings.LastIndex(before, currentWord)
+						newLine := before[:idx] + kw + after
+						lines[row] = newLine
+						linesText := strings.Join(lines, "\n")
+
+						queryBox.SetText(linesText, true)
+
+						app.SetRoot(queryBox, true).SetFocus(queryBox)
+					})
+				}
+				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+				return nil
+
+			case tcell.KeyCtrlT:
+				// Get current word at cursor
+				row, col, _, _ := queryBox.GetCursor()
+				text := queryBox.GetText()
+				lines := strings.Split(text, "\n")
+
+				if row >= len(lines) {
+					return nil
+				}
+				currentLine := lines[row]
+
+				prefix := currentLine[:col]
+				words := strings.Fields(prefix)
+				if len(words) == 0 {
+					return nil
+				}
+				currentWord := words[len(words)-1]
+
+				// Find suggestions
+				matches := []string{}
+
+				for _, table := range allTables {
+					if strings.HasPrefix(strings.ToUpper(table.Name), strings.ToUpper(currentWord)) {
+						matches = append(matches, table.Name)
+					}
+				}
+				if len(matches) == 0 {
+					return nil
+				}
+
+				util.SaveLog("matches: " + fmt.Sprint(matches))
+				// Show suggestions
+				suggestionList := tview.NewList()
+				suggestionList.ShowSecondaryText(false).
+					SetBorder(true).SetTitle("Suggestions")
+				for _, match := range matches {
+					kw := match
+					suggestionList.AddItem(kw, "", 0, func() {
+						// Replace current word with selection
+						before := currentLine[:col]
+						after := currentLine[col:]
+
+						// Replace last word in 'before' with selected keyword
+						idx := strings.LastIndex(before, currentWord)
+						newLine := before[:idx] + kw + after
+						lines[row] = newLine
+						linesText := strings.Join(lines, "\n")
+
+						queryBox.SetText(linesText, true)
+
+						app.SetRoot(queryBox, true).SetFocus(queryBox)
+					})
+				}
+				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+				return nil
+
+			case tcell.KeyCtrlS:
+				// Get current word at cursor
+				row, col, _, _ := queryBox.GetCursor()
+				text := queryBox.GetText()
+				lines := strings.Split(text, "\n")
+
+				if row >= len(lines) {
+					return nil
+				}
+				currentLine := lines[row]
+
+				prefix := currentLine[:col]
+				words := strings.Fields(prefix)
+				if len(words) == 0 {
+					return nil
+				}
+				currentWord := words[len(words)-1]
+
+				// Find suggestions
+				matches := []string{}
+				for _, kw := range sqlKeywords {
+					if strings.HasPrefix(strings.ToUpper(kw), strings.ToUpper(currentWord)) {
+						matches = append(matches, kw)
+					}
+				}
+				if len(matches) == 0 {
+					return nil
+				}
+
+				util.SaveLog("matches: " + fmt.Sprint(matches))
+				// Show suggestions
+				suggestionList := tview.NewList()
+				suggestionList.ShowSecondaryText(false).
+					SetBorder(true).SetTitle("Suggestions")
+				for _, match := range matches {
+					kw := match
+					suggestionList.AddItem(kw, "", 0, func() {
+						// Replace current word with selection
+						before := currentLine[:col]
+						after := currentLine[col:]
+
+						// Replace last word in 'before' with selected keyword
+						idx := strings.LastIndex(before, currentWord)
+						newLine := before[:idx] + kw + after
+						lines[row] = newLine
+						linesText := strings.Join(lines, "\n")
+
+						queryBox.SetText(linesText, true)
+
+						app.SetRoot(queryBox, true).SetFocus(queryBox)
+					})
+				}
+				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+				return nil
+			}
+			// case tcell.KeyEnter, tcell.KeyRune:
+			// 	_, y, _, _ := queryBox.GetCursor()
+			// 	lines := queryBox.GetText()
+			// 	util.SaveLog("lines: " + lines)
+			// 	if y < len(lines) {
+			// 		util.SaveLog("y: " + fmt.Sprint(y))
+			// 		modifiable := append([]string{}, lines)
+			// 		line := modifiable[y]
+			// 		words := strings.Fields(string(line))
+			// 		if len(words) > 0 {
+			// 			lastWord := words[len(words)-1]
+			// 			suggestions := getSQLSuggestions(lastWord)
+			// 			if len(suggestions) > 0 {
+			// 				os.Exit(0)
+			// 				showSuggestionBox(app, queryBox, suggestions, func(s string) {
+			// 					// Insert suggestion at cursor or replace last word
+			// 					updatedText := strings.Join(modifiable, "\n")
+			// 					modifiable[y] = strings.TrimSuffix(string(line), lastWord) + s
+			// 					queryBox.SetText(updatedText, false)
+			// 				})
+			// 			}
+			// 		}
+			// 	}
+			// }
 			return event
 		})
 
@@ -815,7 +1142,7 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 
 	// Set headers
 	for i, col := range columns {
-		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter).SetMaxWidth(20))
+		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
 	}
 
 	values := make([]sql.RawBytes, len(columns))

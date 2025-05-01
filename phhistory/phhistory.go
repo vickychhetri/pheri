@@ -3,6 +3,8 @@ package phhistory
 import (
 	"database/sql"
 	"fmt"
+	"os"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -124,4 +126,66 @@ func ReplacePlaceholders(query string, args ...interface{}) string {
 	}
 
 	return replacedQuery
+}
+
+func FetchHistory(days, months, years int, file string) error {
+
+	if db == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	var condition string
+	var args []interface{}
+
+	now := time.Now()
+	switch {
+	case days > 0:
+		from := now.AddDate(0, 0, -days)
+		condition = "created_at >= ?"
+		args = append(args, from.Format("2006-01-02"))
+	case months > 0:
+		from := now.AddDate(0, -months, 0)
+		condition = "created_at >= ?"
+		args = append(args, from.Format("2006-01-02"))
+	case years > 0:
+		from := now.AddDate(-years, 0, 0)
+		condition = "created_at >= ?"
+		args = append(args, from.Format("2006-01-02"))
+	default:
+		return fmt.Errorf("please provide -days, -month, or -year")
+	}
+
+	query := fmt.Sprintf(`
+		SELECT id, query_text, host_ip, db_name, user, port, created_at
+		FROM pheri_phhistory
+		WHERE %s
+		ORDER BY created_at DESC
+	`, condition)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		fmt.Println("Error executing query:", err)
+		return fmt.Errorf("query error: %w", err)
+	}
+	defer rows.Close()
+
+	output := ""
+	for rows.Next() {
+		var id int
+		var queryText, hostIP, dbName, user, port string
+		var createdAt time.Time
+
+		if err := rows.Scan(&id, &queryText, &hostIP, &dbName, &user, &port, &createdAt); err != nil {
+			return err
+		}
+		output += fmt.Sprintf("ID: %d\nQuery: %s\nHost: %s\nDB: %s\nUser: %s\nPort: %s\nDate: %s\n\n",
+			id, queryText, hostIP, dbName, user, port, createdAt.Format(time.RFC3339))
+	}
+
+	if file != "" {
+		return os.WriteFile(file, []byte(output), 0644)
+	} else {
+		fmt.Println(output)
+	}
+	return nil
 }
