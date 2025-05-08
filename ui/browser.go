@@ -515,7 +515,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		var name, objectType string
 		allTables = []DBObject{}
 		for rows.Next() {
-			rows.Scan(&name, &objectType)
+			// rows.Scan(&name, &objectType)
+			if err := rows.Scan(&name, &objectType); err != nil {
+				log.Println("Scan error:", err)
+				continue
+			}
+
 			// displayName := fmt.Sprintf("[%s] %s", objectType, name)
 			dispalyName := objectType + " " + name
 			allTables = append(allTables, DBObject{Name: name, Type: objectType})
