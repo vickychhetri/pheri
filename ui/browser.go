@@ -44,7 +44,6 @@ func filterTableList(
 	list.Clear()
 	search = strings.ToLower(search)
 
-	// Optional: detect type filter prefix like "table:", "view:"
 	var typeFilter string
 	if strings.Contains(search, ":") {
 		parts := strings.SplitN(search, ":", 2)
