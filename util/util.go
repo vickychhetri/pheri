@@ -11,6 +11,12 @@ import (
 	"github.com/rivo/tview"
 )
 
+var stripRegex = regexp.MustCompile(`\[[^\]]*\]`)
+
+func StripFormatting(text string) string {
+	return stripRegex.ReplaceAllString(text, "")
+}
+
 func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error) {
 	// First, find out whether it's a FUNCTION or PROCEDURE
 	var routineType string

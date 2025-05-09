@@ -30,6 +30,8 @@ var mainFlex *tview.Flex
 var fileNameInput *tview.InputField
 
 var isEditingEnabled bool = false
+var searchFiltertext string
+var IsSearchStateEnabled = false
 
 func filterTableList(
 	search string,
@@ -64,7 +66,7 @@ func filterTableList(
 			objName := obj.Name
 			objType := obj.Type
 
-			list.AddItem(displayName, "", 0, func() {
+			list.AddItem("🧮 "+displayName, "Press Enter to use", 0, func() {
 				switch objType {
 				case "TABLE", "VIEW":
 					query := "SELECT * FROM " + objName + " LIMIT 100"
@@ -165,7 +167,7 @@ type RoutineMetadata struct {
 type Parameter struct {
 	Name     string
 	DataType string
-	Mode     string // <-- NEW field (optional: IN, OUT, INOUT)
+	Mode     string
 }
 
 func ExeQueryToData(db *sql.DB, objName string, query string, dbName string, routineType string) (string, error) {
@@ -463,10 +465,10 @@ func showSuggestionBox(app *tview.Application, mainFlex *tview.Flex, editor *tvi
 }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
-	runIcon := "\n➢ Run\n"
-	saveIcon := "\n〄 Save\n"
-	loadIcon := "\n⌘ Load\n"
-	exitIcon := "\n ✘ Exit\n"
+	runIcon := "\n▶ Execute Query\n"
+	saveIcon := "\n💾 Save Query\n"
+	loadIcon := "\n📂 Load Query\n"
+	exitIcon := "\n❌ Exit Application\n"
 
 	// Use selected DB
 	_, err := db.Exec("USE " + dbName)
@@ -481,10 +483,49 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		return
 	}
 
+	dataBaseList := tview.NewList()
+	dataBaseList.
+		ShowSecondaryText(false).
+		SetHighlightFullLine(true)
+
+	dataBaseList.SetBorder(true).
+		SetTitle(" 🗂️  Databases ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorGreen)
+
+	queryAllDB := `SHOW DATABASES;`
+
+	dbRows, err := db.Query(queryAllDB)
+	if err != nil {
+		dataBaseList.AddItem("❌ "+"Error: "+err.Error(), "", 0, nil)
+	} else {
+		defer dbRows.Close()
+		var dbNameli string
+		for dbRows.Next() {
+			if err := dbRows.Scan(&dbNameli); err != nil {
+				log.Println("DB Fetch Error!")
+				continue
+			}
+			currentDBName := dbNameli
+			dataBaseList.AddItem("📁 "+currentDBName, "Press Enter to use", 0, func() {
+				IsSearchStateEnabled = true
+				UseDatabase(app, db, currentDBName)
+			})
+		}
+
+	}
+
 	// LEFT: Table list (using tview.List)
 	tableList := tview.NewList()
-	tableList.SetBorder(true).SetTitle("Tables").SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorWhite)
+	tableList.
+		ShowSecondaryText(false).
+		SetHighlightFullLine(true)
+
+	tableList.
+		SetBorder(true).
+		SetTitle(" 🧮 Tables ").
+		SetTitleAlign(tview.AlignLeft).
+		SetBorderColor(tcell.ColorYellow)
 
 	queryAllStructure := `SELECT table_name AS name, 'TABLE' AS type 
 						FROM information_schema.tables 
@@ -527,7 +568,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			//rows.Scan(&tableName)
 			currentName := name
 			currentobjectType := objectType
-			tableList.AddItem(dispalyName, "", 0, func() {
+			tableList.AddItem("🧮 "+dispalyName, "Press Enter to use", 0, func() {
 				switch currentobjectType {
 				case "PROCEDURE":
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
@@ -634,13 +675,23 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			AddItem(runButton, 0, 1, true). // Button
 			AddItem(nil, 2, 0, false)       // Right padding
 
+		// queryBox = tview.NewTextArea()
+		// queryBox.
+		// 	SetBorder(true).
+		// 	SetTitle("Query- ctrl+R: Run, ctrl+F11: FullScreen, ctrl+T: Table, ctrl+S: SQL Keywords, ctrl+_: SQL Templates.").
+		// 	SetTitleAlign(tview.AlignCenter).Blur()
+		// queryBox.SetTitleAlign(tview.AlignLeft).
+		// 	SetBorderColor(tcell.ColorWhite)
+
 		queryBox = tview.NewTextArea()
 		queryBox.
 			SetBorder(true).
-			SetTitle("Query- ctrl+R: Run, ctrl+F11: FullScreen, ctrl+T: Table, ctrl+S: SQL Keywords, ctrl+_: SQL Templates.").
-			SetTitleAlign(tview.AlignCenter).Blur()
-		queryBox.SetTitleAlign(tview.AlignLeft).
-			SetBorderColor(tcell.ColorWhite)
+			SetTitle(" [::b]Query Editor[::-] - [green]Ctrl+R:[-]Run  [green]Ctrl+F11:[-]FullScreen  [green]Ctrl+T:[-]Table  [green]Ctrl+S:[-]Keywords  [green]Ctrl+_:[-]Templates").
+			SetTitleAlign(tview.AlignCenter).
+			SetBorderColor(tcell.ColorLightCyan).
+			SetTitleColor(tcell.ColorAqua).
+			Blur()
+
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
 			case tcell.KeyTab:
@@ -1053,9 +1104,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetFieldWidth(30)
 		searchInput.
 			SetChangedFunc(func(text string) {
+				searchFiltertext = text
 				filterTableList(text, allTables, tableList, queryBox, dataTable, app, db, dbName)
 			})
 
+		if searchFiltertext != "" && IsSearchStateEnabled {
+			searchInput.SetText(searchFiltertext)
+			filterTableList(searchFiltertext, allTables, tableList, queryBox, dataTable, app, db, dbName)
+			IsSearchStateEnabled = false
+		}
 		searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
 				app.SetFocus(tableList)
@@ -1070,7 +1127,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		tableList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(queryBox)
+				app.SetFocus(dataBaseList)
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
@@ -1080,10 +1137,18 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 			return event
 		})
+		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(queryBox)
+				return nil
+			}
+			return event
+		})
 
 		leftPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(searchInput, 1, 0, false). // small fixed height for search input
-			AddItem(tableList, 0, 1, true)     // fills remaining space
+			AddItem(searchInput, 1, 0, false).
+			AddItem(tableList, 0, 1, true).
+			AddItem(dataBaseList, 0, 1, true)
 
 		// Center panel: Query + Data Table
 		centerPanel := tview.NewFlex().SetDirection(tview.FlexRow).
@@ -1130,7 +1195,7 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	rows, err := db.Query(query)
 	if err != nil {
 		table.Clear()
-		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+err.Error()))
 		return err
 	}
 	defer rows.Close()
@@ -1138,15 +1203,21 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	columns, err := rows.Columns()
 	if err != nil {
 		table.Clear()
-		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+err.Error()))
 		return err
 	}
 
 	table.Clear()
+	table.SetBorders(false)
 
-	// Set headers
+	// Set header with styling
 	for i, col := range columns {
-		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
+		header := fmt.Sprintf("[::b][white::]%s", col)
+		table.SetCell(0, i,
+			tview.NewTableCell(header).
+				SetTextColor(tcell.ColorWhite).
+				SetAlign(tview.AlignCenter).
+				SetSelectable(false))
 	}
 
 	values := make([]sql.RawBytes, len(columns))
@@ -1161,13 +1232,75 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 		if err != nil {
 			continue
 		}
+
 		for i, col := range values {
-			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
+			text := string(col)
+			if text == "" {
+				text = "[gray]NULL"
+			}
+
+			color := tcell.ColorWhite
+			if rowIndex%2 == 0 {
+				color = tcell.ColorLightGray
+			}
+
+			cell := tview.NewTableCell(text).
+				SetTextColor(color).
+				SetAlign(tview.AlignLeft)
+
+			table.SetCell(rowIndex, i, cell)
 		}
 		rowIndex++
 	}
+
+	// Add a title row (optional)
+	table.SetTitle(" [::b]Query Result ").SetTitleAlign(tview.AlignLeft).SetBorder(true)
+
 	return nil
 }
+
+// func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
+// 	rows, err := db.Query(query)
+// 	if err != nil {
+// 		table.Clear()
+// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+// 		return err
+// 	}
+// 	defer rows.Close()
+
+// 	columns, err := rows.Columns()
+// 	if err != nil {
+// 		table.Clear()
+// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
+// 		return err
+// 	}
+
+// 	table.Clear()
+
+// 	// Set headers
+// 	for i, col := range columns {
+// 		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
+// 	}
+
+// 	values := make([]sql.RawBytes, len(columns))
+// 	scanArgs := make([]interface{}, len(values))
+// 	for i := range values {
+// 		scanArgs[i] = &values[i]
+// 	}
+
+// 	rowIndex := 1
+// 	for rows.Next() {
+// 		err := rows.Scan(scanArgs...)
+// 		if err != nil {
+// 			continue
+// 		}
+// 		for i, col := range values {
+// 			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
+// 		}
+// 		rowIndex++
+// 	}
+// 	return nil
+// }
 
 // Enable editing and database update
 func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, dbName, tableName string) error {
@@ -1194,12 +1327,12 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 
 		// Get column name from header
 		headerCell := table.GetCell(0, column)
-		columnName := stripFormatting(headerCell.Text)
-
+		columnName := util.StripFormatting(headerCell.Text)
+		// columnName = util.StripFormatting(columnName)
 		// Now don't assume primary key is always 0 column
 		var primaryKeyValue string
 		for col := 0; col < table.GetColumnCount(); col++ {
-			colHeader := stripFormatting(table.GetCell(0, col).Text)
+			colHeader := util.StripFormatting(table.GetCell(0, col).Text)
 			if colHeader == primaryKeyColumn {
 				primaryKeyValue = table.GetCell(row, col).Text
 				break
@@ -1217,7 +1350,6 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
 			case tcell.KeyEnter:
-
 				if !isEditingEnabled {
 					modal := tview.NewModal().
 						SetText("Not allowed to update in Run Query mode").
@@ -1235,6 +1367,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				// Update cell visually
 				cell.SetText(newValue)
 
+				columnName = util.StripFormatting(columnName)
 				// Update database
 				query := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", tableName, columnName, primaryKeyColumn)
 				_, err := db.Exec(query, newValue, primaryKeyValue)
@@ -1243,6 +1376,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				}
 				fullQuery := phhistory.ReplacePlaceholders(query, newValue, primaryKeyValue)
 				phhistory.SaveQuery(fullQuery, dbName)
+				util.SaveLog(fullQuery)
 				app.SetRoot(mainFlex, true)
 				util.SetFocusWithBorder(app, table)
 				return nil
