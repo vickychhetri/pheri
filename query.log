@@ -63,3 +63,662 @@
 						FROM information_schema.routines 
 						WHERE routine_schema = 'gologin' AND routine_type = 'FUNCTION';
 2025/05/01 20:52:11 TABLE,VIEW: SELECT * FROM users LIMIT 100
+2025/05/01 21:33:43 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/01 21:41:41 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/01 21:42:11 matches: [SELECT * FROM table_name SELECT column1, column2 FROM table_name WHERE condition SELECT column1, COUNT(*) FROM table_name GROUP BY column1 SELECT column1 FROM table_name ORDER BY column1 DESC SELECT DISTINCT column1 FROM table_name SELECT column1 FROM table_name LIMIT 10 OFFSET 5 SELECT COUNT(*) FROM table_name SELECT SUM(column_name) FROM table_name SELECT AVG(column_name) FROM table_name SELECT MIN(column_name) FROM table_name SELECT MAX(column_name) FROM table_name]
+2025/05/01 21:42:40 matches: [CALL CREATE COMMENT COMMIT CROSS JOIN CHAR CASE CONSTRAINT CHECK COUNT COALESCE]
+2025/05/01 21:42:53 matches: [FROM]
+2025/05/01 21:43:00 matches: [empl_bank_info empl_ctcc_info empl_deta empl_mast empl_mast_bank empl_mast_bank_temp empl_mast_comm empl_mast_comm_temp empl_mast_educ empl_mast_fami empl_mast_iden empl_mast_iden_temp empl_mast_lang empl_mast_offi empl_mast_offi_temp empl_mast_oter_iden empl_mast_pers empl_mast_pers_temp empl_mast_prev_empl empl_nomi_info empl_payy_info employee employee_access_facilities employee_attendance_rule_v1 employee_availed_holidays employee_availed_holidays_log employee_bank_info employee_birthday_audit employee_category employee_category_bkup employee_communication employee_compensation employee_cost_center employee_cost_center_log employee_ctc_breakup employee_ctc_breakup_gross employee_ctc_details employee_designation_change employee_details employee_details_temp employee_employment employee_employment_additional_info employee_employment_global_info employee_event_audit employee_family employee_grade employee_grade_approval employee_grade_approval_all employee_holiday employee_holiday_calendar employee_holiday_calendar_log employee_holiday_calendar_temp employee_holiday_calendar_temp_log employee_holiday_migration_temp employee_identification employee_identification_bkup employee_language employee_manager_mapping employee_master employee_master_temp employee_menu_update employee_nominee employee_personal_info employee_previous_employment employee_probation_detail employee_profile_display_status employee_profile_display_status_items employee_profile_img employee_profile_template_configuration employee_profile_template_configuration_bank employee_profile_template_configuration_communication employee_profile_template_configuration_copy employee_profile_template_configuration_employment employee_profile_template_configuration_family employee_profile_template_configuration_identification employee_profile_template_configuration_log employee_profile_template_configuration_personal employee_profile_template_master_tables employee_profile_template_primary_table employee_profile_template_primary_table_copy employee_profile_template_primary_table_log employee_profile_template_validation_list employee_profile_templates employee_qualification employee_role employee_role_epsf_removed employee_selected_language employee_separation employee_skill employee_tour employee_visa_details employee_visa_labour_details employee_visa_passport_details employee_visa_types employee_bank_info_view employee_communication_view employee_compensation_view employee_cost_center_view employee_ctc_details_view employee_details_pf_transfer employee_details_view employee_document_view employee_employment_global_info_view employee_employment_view employee_family_view employee_identification_view employee_language_view employee_personal_info_view employee_personal_information_view employee_previous_employment_report employee_previous_employment_view employee_profile_display_status_view employee_qualification_view employee_separation_view employee_view employee_view1 employee_data_migration______freezed#25616]
+2025/05/08 23:13:22 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'vikedise_obstri' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'vikedise_obstri' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'vikedise_obstri' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'vikedise_obstri' AND routine_type = 'FUNCTION';
+2025/05/08 23:14:14 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'vikedise_obstri' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'vikedise_obstri' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'vikedise_obstri' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'vikedise_obstri' AND routine_type = 'FUNCTION';
+2025/05/08 23:15:04 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_main1' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_main1' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_main1' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_main1' AND routine_type = 'FUNCTION';
+2025/05/08 23:16:07 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:16:15 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'FUNCTION';
+2025/05/08 23:25:34 TABLE,VIEW: SELECT * FROM currencies LIMIT 100
+2025/05/08 23:27:00 TABLE,VIEW: SELECT * FROM currencies LIMIT 100
+2025/05/08 23:27:24 TABLE,VIEW: SELECT * FROM dealer_subscriptions LIMIT 100
+2025/05/08 23:27:41 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:28:20 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:29:36 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'FUNCTION';
+2025/05/08 23:30:06 TABLE,VIEW: SELECT * FROM admin_logins LIMIT 100
+2025/05/08 23:30:10 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'FUNCTION';
+2025/05/08 23:30:11 TABLE,VIEW: SELECT * FROM blog_ctegories LIMIT 100
+2025/05/08 23:31:07 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:43:33 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:44:31 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'live_pho' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'live_pho' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'live_pho' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'live_pho' AND routine_type = 'FUNCTION';
+2025/05/08 23:44:32 TABLE,VIEW: SELECT * FROM banners LIMIT 100
+2025/05/08 23:44:40 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:44:41 TABLE,VIEW: SELECT * FROM activity_dashboard_configuration LIMIT 100
+2025/05/08 23:45:02 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/08 23:45:03 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/08 23:47:31 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:47:36 TABLE,VIEW: SELECT * FROM attendance_rules_log LIMIT 100
+2025/05/08 23:47:54 TABLE,VIEW: SELECT * FROM backup_payroll_man_temp_emp_leave_encashment_days LIMIT 100
+2025/05/08 23:47:54  KEYS error Error getting primary key column: sql: no rows in result set
+2025/05/08 23:47:54 dbName: stohrm_cocacola
+2025/05/08 23:47:54 tableName: backup_payroll_man_temp_emp_leave_encashment_days
+2025/05/08 23:47:54 Query: 
+	SELECT COLUMN_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS
+	WHERE TABLE_SCHEMA = ?
+	  AND TABLE_NAME = ?
+	  AND COLUMN_KEY = 'PRI'
+	LIMIT 1
+	
+2025/05/08 23:47:54 PrimaryKey: 
+2025/05/08 23:47:54 Error: sql: no rows in result set
+2025/05/08 23:47:54 tableName: backup_payroll_man_temp_emp_leave_encashment_days
+2025/05/08 23:47:54 dbName: stohrm_cocacola
+2025/05/08 23:47:54 Error getting primary key column: sql: no rows in result set
+2025/05/08 23:48:05 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:48:06 TABLE,VIEW: SELECT * FROM activity_dashboard_configuration LIMIT 100
+2025/05/08 23:49:53 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'starcarz2' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'starcarz2' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'starcarz2' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'starcarz2' AND routine_type = 'FUNCTION';
+2025/05/08 23:49:54 TABLE,VIEW: SELECT * FROM carrequests LIMIT 100
+2025/05/08 23:55:16 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'FUNCTION';
+2025/05/08 23:55:24 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/08 23:55:26 TABLE,VIEW: SELECT * FROM account_info_data LIMIT 100
+2025/05/09 00:06:07 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'laravel' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'laravel' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'laravel' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'laravel' AND routine_type = 'FUNCTION';
+2025/05/09 00:06:08 TABLE,VIEW: SELECT * FROM amenities LIMIT 100
+2025/05/09 00:06:10 TABLE,VIEW: SELECT * FROM booking_infos LIMIT 100
+2025/05/09 00:06:16 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/09 00:06:18 TABLE,VIEW: SELECT * FROM backup_payroll_man_temp_emp_loan_details LIMIT 100
+2025/05/09 00:06:18  KEYS error Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:18 dbName: stohrm_cocacola
+2025/05/09 00:06:18 tableName: backup_payroll_man_temp_emp_loan_details
+2025/05/09 00:06:18 Query: 
+	SELECT COLUMN_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS
+	WHERE TABLE_SCHEMA = ?
+	  AND TABLE_NAME = ?
+	  AND COLUMN_KEY = 'PRI'
+	LIMIT 1
+	
+2025/05/09 00:06:18 PrimaryKey: 
+2025/05/09 00:06:18 Error: sql: no rows in result set
+2025/05/09 00:06:18 tableName: backup_payroll_man_temp_emp_loan_details
+2025/05/09 00:06:18 dbName: stohrm_cocacola
+2025/05/09 00:06:18 Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:20 TABLE,VIEW: SELECT * FROM backup_payroll_man_temp_emp_loss_of_pay_days LIMIT 100
+2025/05/09 00:06:20  KEYS error Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:20 dbName: stohrm_cocacola
+2025/05/09 00:06:20 tableName: backup_payroll_man_temp_emp_loss_of_pay_days
+2025/05/09 00:06:20 Query: 
+	SELECT COLUMN_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS
+	WHERE TABLE_SCHEMA = ?
+	  AND TABLE_NAME = ?
+	  AND COLUMN_KEY = 'PRI'
+	LIMIT 1
+	
+2025/05/09 00:06:20 PrimaryKey: 
+2025/05/09 00:06:20 Error: sql: no rows in result set
+2025/05/09 00:06:20 tableName: backup_payroll_man_temp_emp_loss_of_pay_days
+2025/05/09 00:06:20 dbName: stohrm_cocacola
+2025/05/09 00:06:20 Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:23 TABLE,VIEW: SELECT * FROM backup_payroll_man_temp_emp_salary_release LIMIT 100
+2025/05/09 00:06:23  KEYS error Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:23 dbName: stohrm_cocacola
+2025/05/09 00:06:23 tableName: backup_payroll_man_temp_emp_salary_release
+2025/05/09 00:06:23 Query: 
+	SELECT COLUMN_NAME
+	FROM INFORMATION_SCHEMA.COLUMNS
+	WHERE TABLE_SCHEMA = ?
+	  AND TABLE_NAME = ?
+	  AND COLUMN_KEY = 'PRI'
+	LIMIT 1
+	
+2025/05/09 00:06:23 PrimaryKey: 
+2025/05/09 00:06:23 Error: sql: no rows in result set
+2025/05/09 00:06:23 tableName: backup_payroll_man_temp_emp_salary_release
+2025/05/09 00:06:23 dbName: stohrm_cocacola
+2025/05/09 00:06:23 Error getting primary key column: sql: no rows in result set
+2025/05/09 00:06:26 TABLE,VIEW: SELECT * FROM benefit_forms_profit_center_mapping LIMIT 100
+2025/05/09 00:22:08 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/09 00:22:17 TABLE,VIEW: SELECT * FROM audit_log LIMIT 100
+2025/05/09 00:25:05 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/09 00:25:06 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 00:26:05 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/09 00:26:06 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 00:26:12 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 00:28:54 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/09 00:28:55 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 00:29:29 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'laravel_starter1' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'laravel_starter1' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'laravel_starter1' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'laravel_starter1' AND routine_type = 'FUNCTION';
+2025/05/09 00:29:29 TABLE,VIEW: SELECT * FROM activity_log LIMIT 100
+2025/05/09 00:29:31 TABLE,VIEW: SELECT * FROM categories LIMIT 100
+2025/05/09 00:29:33 TABLE,VIEW: SELECT * FROM media LIMIT 100
+2025/05/09 00:29:52 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/09 00:29:55 TABLE,VIEW: SELECT * FROM audit_log LIMIT 100
+2025/05/09 00:37:50 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/09 00:37:59 TABLE,VIEW: SELECT * FROM audit_log LIMIT 100
+2025/05/09 00:50:41 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/09 00:50:42 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 00:52:22 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'FUNCTION';
+2025/05/09 00:52:23 TABLE,VIEW: SELECT * FROM banner_images LIMIT 100
+2025/05/09 00:52:35 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'stohrm_cocacola' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'stohrm_cocacola' AND routine_type = 'FUNCTION';
+2025/05/09 00:52:37 TABLE,VIEW: SELECT * FROM audit_log LIMIT 100
+2025/05/09 23:40:55 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'locations' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'locations' AND routine_type = 'FUNCTION';
+2025/05/09 23:40:56 TABLE,VIEW: SELECT * FROM postal_codes LIMIT 100
+2025/05/09 23:43:36 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'gologin' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'gologin' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'gologin' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'gologin' AND routine_type = 'FUNCTION';
+2025/05/09 23:43:36 TABLE,VIEW: SELECT * FROM users LIMIT 100
+2025/05/09 23:45:55 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'larame_photon' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'larame_photon' AND routine_type = 'FUNCTION';
+2025/05/09 23:46:06 TABLE,VIEW: SELECT * FROM carts LIMIT 100
+2025/05/09 23:46:11 queryAllStructure: SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'BASE TABLE'
+						UNION ALL
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'clearway3' AND table_type = 'VIEW'
+						UNION ALL
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'PROCEDURE'
+						UNION ALL
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'clearway3' AND routine_type = 'FUNCTION';
+2025/05/09 23:46:14 TABLE,VIEW: SELECT * FROM countries LIMIT 100
