@@ -11,7 +11,7 @@
 - **Cross-Platform** — Works on Linux, macOS, and Windows (with WSL)
 
 **Screenshot**
-![image](https://github.com/user-attachments/assets/78efe369-7033-4e3b-b1d6-d10a067e69ce)
+![image](https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8)
 
 **Direct Command:**
 .\pheri -u root -p 12345678 -host 127.0.0.1 -port 3306
