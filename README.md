@@ -1,6 +1,6 @@
 ﻿# Pheri
 
-**Pheri** is a terminal-based user interface (TUI) for MySQL. It allows you to connect to your MySQL databases and interact with them directly from your terminal — with a clean, minimal UI designed for productivity.
+**Pheri** is a terminal-based user interface for MySQL. It allows you to connect to your MySQL databases and interact with them directly from your terminal — with a clean, minimal UI designed for productivity.
 ## 🚀 Features
 
 - **Fast and Lightweight** — Optimized for speed and responsiveness
