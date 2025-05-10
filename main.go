@@ -62,6 +62,15 @@ func main() {
 		os.Exit(0)
 	}
 
+	/*
+	 THIS IS TO DEVELOP NEW EDITOR WITH CONTROLS : STILL UNDER DEVELOPMNET SO HIDDEN
+	*/
+	// app1 := tview.NewApplication()
+	// editor := ui.NewSQLEditor(app1)
+	// if err := app1.SetRoot(editor.Container, true).Run(); err != nil {
+	// 	log.Fatal(err)
+	// }
+
 	defer phhistory.Close()
 	app := tview.NewApplication()
 	ui.ShowConnectionForm(app, *user, password, *host, *port)

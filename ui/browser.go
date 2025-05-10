@@ -858,6 +858,25 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
 				return nil
 
+			case tcell.KeyCtrlF:
+				searchInput := tview.NewInputField()
+				searchInput.
+					SetLabel("Search: ").
+					SetFieldWidth(30).
+					SetDoneFunc(func(key tcell.Key) {
+						searchTerm := searchInput.GetText()
+						text := queryBox.GetText()
+
+						// Highlight all matches (simplified: uppercase the matches)
+						highlighted := strings.ReplaceAll(text, searchTerm, "[yellow::b]"+searchTerm+"[::-]")
+						queryBox.SetText(highlighted, true)
+
+						app.SetRoot(queryBox, true).SetFocus(queryBox)
+					})
+				searchInput.SetBorder(true).SetTitle("Search").SetTitleAlign(tview.AlignLeft)
+				app.SetRoot(searchInput, true).SetFocus(searchInput)
+				return nil
+
 			case tcell.KeyCtrlS:
 				// Get current word at cursor
 				row, col, _, _ := queryBox.GetCursor()
@@ -913,30 +932,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
 				return nil
 			}
-			// case tcell.KeyEnter, tcell.KeyRune:
-			// 	_, y, _, _ := queryBox.GetCursor()
-			// 	lines := queryBox.GetText()
-			// 	util.SaveLog("lines: " + lines)
-			// 	if y < len(lines) {
-			// 		util.SaveLog("y: " + fmt.Sprint(y))
-			// 		modifiable := append([]string{}, lines)
-			// 		line := modifiable[y]
-			// 		words := strings.Fields(string(line))
-			// 		if len(words) > 0 {
-			// 			lastWord := words[len(words)-1]
-			// 			suggestions := getSQLSuggestions(lastWord)
-			// 			if len(suggestions) > 0 {
-			// 				os.Exit(0)
-			// 				showSuggestionBox(app, queryBox, suggestions, func(s string) {
-			// 					// Insert suggestion at cursor or replace last word
-			// 					updatedText := strings.Join(modifiable, "\n")
-			// 					modifiable[y] = strings.TrimSuffix(string(line), lastWord) + s
-			// 					queryBox.SetText(updatedText, false)
-			// 				})
-			// 			}
-			// 		}
-			// 	}
-			// }
 			return event
 		})
 
