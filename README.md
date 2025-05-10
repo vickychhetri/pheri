@@ -8,7 +8,9 @@
 - **Run Queries** — Write and execute SQL queries directly
 - **View Results** — Display result sets in a readable tabular format
 - **Keyboard Shortcuts** — Perform common tasks with ease
-- **Cross-Platform** — Works on Linux, macOS, and Windows (with WSL)
+- **Cross-Platform** — Works on Linux, macOS, and Windows
+
+**Terminals:**  Cmd Prompt, PowerShell, Windows Terminal, WSL, Bash, Zsh, Fish, Dash, Ksh, Tcsh, Terminal.app, iTerm2, Termux, BusyBox, Alacritty, Kitty, Tilda, Guake, Yakuake, Xonsh
 
 **Screenshot**
 ![image](https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8)
