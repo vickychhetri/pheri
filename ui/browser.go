@@ -764,8 +764,6 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					return nil
 				}
 				currentWord := words[len(words)-1]
-
-				// Find suggestions
 				matches := []string{}
 				for _, kw := range sqlTemplates {
 					if strings.HasPrefix(strings.ToUpper(kw), strings.ToUpper(currentWord)) {
@@ -777,18 +775,14 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				}
 
 				util.SaveLog("matches: " + fmt.Sprint(matches))
-				// Show suggestions
 				suggestionList := tview.NewList()
 				suggestionList.ShowSecondaryText(false).
 					SetBorder(true).SetTitle("Suggestions")
 				for _, match := range matches {
 					kw := match
 					suggestionList.AddItem(kw, "", 0, func() {
-						// Replace current word with selection
 						before := currentLine[:col]
 						after := currentLine[col:]
-
-						// Replace last word in 'before' with selected keyword
 						idx := strings.LastIndex(before, currentWord)
 						newLine := before[:idx] + kw + after
 						lines[row] = newLine

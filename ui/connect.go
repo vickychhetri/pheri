@@ -159,7 +159,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	list := tview.NewList().ShowSecondaryText(false)
 	list.SetBorder(true).SetTitle(" 🗄️ Databases ").SetTitleAlign(tview.AlignLeft)
 
-	// Search input
 	searchInput := tview.NewInputField()
 	searchInput.
 		SetLabel("🔍 Search: ").
@@ -167,7 +166,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		SetPlaceholder("Start typing...").
 		SetBorder(true)
 
-	// Status footer
 	statusBar := tview.NewTextView().
 		SetText(" ↑/↓ Navigate • Enter: Select DB • b: Back ").
 		SetTextAlign(tview.AlignCenter).
@@ -189,7 +187,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		})
 	}
 
-	// Load DBs
 	rows, err := db.Query("SHOW DATABASES")
 	if err != nil {
 		list.AddItem("Error: "+err.Error(), "", 0, nil)
@@ -203,7 +200,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		filtered("")
 	}
 
-	// On input change, filter list
 	searchInput.SetChangedFunc(func(text string) {
 		filtered(text)
 	})
@@ -224,7 +220,6 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		return event
 	})
 
-	// Layout
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(searchInput, 3, 0, true).
 		AddItem(list, 0, 1, false).

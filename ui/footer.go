@@ -8,10 +8,9 @@ import (
 var commandInput *tview.InputField
 var footer *tview.TextView
 
-// CreateLayoutWithFooter wraps the given main content with a footer layout.
 func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) tview.Primitive {
 
-	commandInput := tview.NewInputField()
+	commandInput = tview.NewInputField()
 	commandInput.
 		SetLabel("Command: ").
 		SetFieldWidth(30).
@@ -22,13 +21,9 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 		SetDoneFunc(func(key tcell.Key) {
 			switch key {
 			case tcell.KeyEnter:
-				// Handle command input here
 				command := commandInput.GetText()
 				if command != "" {
-					// Process the command (e.g., execute it against the database)
-					// For now, just print it to the console
-					// In a real application, you would execute the command and update the main content accordingly
-					commandInput.SetText("") // Clear the input field after processing
+					commandInput.SetText("")
 				}
 				commandInput.SetFieldBackgroundColor(tview.Styles.PrimitiveBackgroundColor)
 				commandInput.SetFieldTextColor(tview.Styles.PrimaryTextColor)
@@ -36,8 +31,8 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 				a.SetFocus(mainContent)
 			}
 		})
-	// Create footer text view
-	footer := tview.NewTextView().
+
+	footer = tview.NewTextView().
 		SetTextAlign(tview.AlignRight).
 		SetText("© 2025 Pheri - Terminal MySQL Client").
 		SetTextColor(tview.Styles.SecondaryTextColor)
@@ -47,10 +42,9 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 		AddItem(commandInput, 50, 0, false).
 		AddItem(footer, 0, 1, false)
 
-	// Combine everything in a vertical layout
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(mainContent, 0, 1, true).   // main content expands
-		AddItem(footerLayoput, 1, 0, false) // fixed height footer
+		AddItem(mainContent, 0, 1, true).
+		AddItem(footerLayoput, 1, 0, false)
 	return layout
 }
