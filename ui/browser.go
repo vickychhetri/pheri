@@ -10,6 +10,7 @@ import (
 	"mysql-tui/util"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -17,6 +18,8 @@ import (
 )
 
 var dataTable *tview.Table
+var dataBaseList *tview.List
+var allDatabases []string
 
 // var allTables []string
 type DBObject struct {
@@ -53,104 +56,122 @@ func filterTableList(
 		search = strings.TrimSpace(parts[1])
 	}
 
-	for _, obj := range allTable {
-		// Match type filter if present
-		if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
-			continue
+	if typeFilter == "db" {
+		if dataBaseList != nil {
+			dataBaseList.Clear()
+		}
+		for _, filterDbName := range allDatabases {
+			// if strings.ToLower(filterDbName)
+
+			if strings.Contains(strings.ToLower(filterDbName), search) {
+				dataBaseList.AddItem("📁 "+filterDbName, "Press Enter to use", 0, func() {
+					IsSearchStateEnabled = false
+					UseDatabase(app, db, filterDbName)
+				})
+			}
+
 		}
 
-		// Match name
-		if strings.Contains(strings.ToLower(obj.Name), search) {
-			//displayName := fmt.Sprintf("[%s] %s", obj.Type, obj.Name)
-			displayName := obj.Type + " " + obj.Name
-			objName := obj.Name
-			objType := obj.Type
+	} else {
+		for _, obj := range allTable {
+			// Match type filter if present
+			if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
+				continue
+			}
 
-			list.AddItem("🧮 "+displayName, "Press Enter to use", 0, func() {
-				switch objType {
-				case "TABLE", "VIEW":
-					query := "SELECT * FROM " + objName + " LIMIT 100"
-					queryBox.SetText(query, true)
-					err := ExecuteQuery(app, db, query, dataTable)
+			// Match name
+			if strings.Contains(strings.ToLower(obj.Name), search) {
+				//displayName := fmt.Sprintf("[%s] %s", obj.Type, obj.Name)
+				displayName := obj.Type + " " + obj.Name
+				objName := obj.Name
+				objType := obj.Type
 
-					if err != nil {
-						modal := tview.NewModal().
-							SetText("Executing Fail: " + err.Error()).
-							AddButtons([]string{"OK"}).
-							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(app, mainFlex)
-								app.SetRoot(layout, true)
-							})
-						app.SetRoot(modal, true)
-					}
+				list.AddItem("🧮 "+displayName, "Press Enter to use", 0, func() {
+					switch objType {
+					case "TABLE", "VIEW":
+						query := "SELECT * FROM " + objName + " LIMIT 100"
+						queryBox.SetText(query, true)
+						err := ExecuteQuery(app, db, query, dataTable)
 
-					if objType == "TABLE" {
-						isEditingEnabled = true
-						err := EnableCellEditing(app, dataTable, db, dbName, objName)
 						if err != nil {
 							modal := tview.NewModal().
-								SetText("Failed to enable cell editing: " + err.Error()).
+								SetText("Executing Fail: " + err.Error()).
 								AddButtons([]string{"OK"}).
 								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 									layout := CreateLayoutWithFooter(app, mainFlex)
 									app.SetRoot(layout, true)
 								})
-
 							app.SetRoot(modal, true)
-							return
 						}
-					}
-					app.SetFocus(dataTable)
-				case "PROCEDURE":
-					// query := `SELECT ROUTINE_DEFINITION
-					// FROM INFORMATION_SCHEMA.ROUTINES
-					// WHERE ROUTINE_NAME = '` + objName + `'
-					// AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-					// queryBox.SetText(query, true)
-					// app.SetFocus(queryBox)
-					query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+
+						if objType == "TABLE" {
+							isEditingEnabled = true
+							err := EnableCellEditing(app, dataTable, db, dbName, objName)
+							if err != nil {
+								modal := tview.NewModal().
+									SetText("Failed to enable cell editing: " + err.Error()).
+									AddButtons([]string{"OK"}).
+									SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+										layout := CreateLayoutWithFooter(app, mainFlex)
+										app.SetRoot(layout, true)
+									})
+
+								app.SetRoot(modal, true)
+								return
+							}
+						}
+						app.SetFocus(dataTable)
+					case "PROCEDURE":
+						// query := `SELECT ROUTINE_DEFINITION
+						// FROM INFORMATION_SCHEMA.ROUTINES
+						// WHERE ROUTINE_NAME = '` + objName + `'
+						// AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
+						// queryBox.SetText(query, true)
+						// app.SetFocus(queryBox)
+						query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + objName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
 
-					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "PROCEDURE")
-					if err != nil {
-						modal := tview.NewModal().
-							SetText("Failed to execute query: " + err.Error()).
-							AddButtons([]string{"OK"}).
-							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(app, mainFlex)
-								app.SetRoot(layout, true)
-							})
-						app.SetRoot(modal, true)
-						return
-					}
+						routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "PROCEDURE")
+						if err != nil {
+							modal := tview.NewModal().
+								SetText("Failed to execute query: " + err.Error()).
+								AddButtons([]string{"OK"}).
+								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+									layout := CreateLayoutWithFooter(app, mainFlex)
+									app.SetRoot(layout, true)
+								})
+							app.SetRoot(modal, true)
+							return
+						}
 
-					queryBox.SetText(routineDefinition, true)
-					app.SetFocus(queryBox)
-				case "FUNCTION":
-					query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+						queryBox.SetText(routineDefinition, true)
+						app.SetFocus(queryBox)
+					case "FUNCTION":
+						query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + objName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
-					routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "FUNCTION")
-					if err != nil {
-						util.SaveLog("FUNCTION1: " + err.Error())
-						modal := tview.NewModal().
-							SetText("Failed to execute query: " + err.Error()).
-							AddButtons([]string{"OK"}).
-							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(app, mainFlex)
-								app.SetRoot(layout, true)
-							})
-						app.SetRoot(modal, true)
-						return
-					}
+						routineDefinition, err := ExeQueryToData(db, objName, query, dbName, "FUNCTION")
+						if err != nil {
+							util.SaveLog("FUNCTION1: " + err.Error())
+							modal := tview.NewModal().
+								SetText("Failed to execute query: " + err.Error()).
+								AddButtons([]string{"OK"}).
+								SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+									layout := CreateLayoutWithFooter(app, mainFlex)
+									app.SetRoot(layout, true)
+								})
+							app.SetRoot(modal, true)
+							return
+						}
 
-					queryBox.SetText(routineDefinition, true)
-					app.SetFocus(queryBox)
-				}
-			})
+						queryBox.SetText(routineDefinition, true)
+						app.SetFocus(queryBox)
+					}
+				})
+			}
 		}
 	}
 }
@@ -483,7 +504,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		return
 	}
 
-	dataBaseList := tview.NewList()
+	dataBaseList = tview.NewList()
 	dataBaseList.
 		ShowSecondaryText(false).
 		SetHighlightFullLine(true)
@@ -506,6 +527,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				log.Println("DB Fetch Error!")
 				continue
 			}
+			allDatabases = append(allDatabases, dbNameli)
 			currentDBName := dbNameli
 			dataBaseList.AddItem("📁 "+currentDBName, "Press Enter to use", 0, func() {
 				IsSearchStateEnabled = true
@@ -1315,8 +1337,8 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 	table.SetSelectable(true, true)
 	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightYellow).Foreground(tcell.ColorBlack))
 	table.SetSelectedStyle(tcell.StyleDefault.
-		Background(tcell.ColorBlack).
-		Foreground(tcell.ColorDarkRed))
+		Background(tcell.ColorWhite).
+		Foreground(tcell.ColorBlack))
 	table.SetSelectedFunc(func(row int, column int) {
 		if row == 0 {
 			return // Skip header row
@@ -1426,18 +1448,17 @@ func listFilesWithExtensions(dir string, exts []string) ([]string, error) {
 
 // Browse files in a directory
 func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Application, queryBox *tview.TextArea, returnTo tview.Primitive) {
-	list := tview.NewList().
-		ShowSecondaryText(false)
+	list := tview.NewList().ShowSecondaryText(true)
 
-	// ".." to go up a directory
+	// Go up
 	if currentDir != "/" {
 		parent := filepath.Dir(currentDir)
-		list.AddItem("..", "Go up", 0, func() {
+		list.AddItem("[::b]<..>", "Go up a directory", 'u', func() {
 			fileBrowser(button2, parent, app, queryBox, returnTo)
 		})
 	}
 
-	// Read directory
+	// Read and sort entries
 	entries, err := os.ReadDir(currentDir)
 	if err != nil {
 		log.Printf("Failed to read directory: %v", err)
@@ -1445,25 +1466,44 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		return
 	}
 
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].IsDir() != entries[j].IsDir() {
+			return entries[i].IsDir()
+		}
+		return entries[i].Name() < entries[j].Name()
+	})
+
 	for _, entry := range entries {
 		name := entry.Name()
 		fullPath := filepath.Join(currentDir, name)
 
-		if entry.IsDir() {
-			list.AddItem("[::b][DIR] "+name, "", 0, func() {
-				fileBrowser(button2, fullPath, app, queryBox, returnTo)
-			})
-		} else if strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".go") {
-			list.AddItem(name, "", 0, func() {
-				content, err := os.ReadFile(fullPath)
-				if err != nil {
-					log.Printf("Failed to read file: %v", err)
-				} else {
-					queryBox.SetText(string(content), true)
-					app.SetFocus(queryBox)
+		info, err := os.Stat(fullPath) // <- use os.Stat here
+		if err != nil {
+			continue
+		}
+		modTime := info.ModTime().Format("2006-01-02 15:04")
+		size := fmt.Sprintf("%d bytes", info.Size())
+		meta := fmt.Sprintf("%s | %s", size, modTime)
+
+		if info.IsDir() {
+			list.AddItem(fmt.Sprintf("%s", name), meta, 0, func(p string) func() {
+				return func() {
+					fileBrowser(button2, p, app, queryBox, returnTo)
 				}
-				app.SetRoot(returnTo, true)
-			})
+			}(fullPath))
+		} else if strings.HasSuffix(name, ".sql") || strings.HasSuffix(name, ".go") {
+			list.AddItem(fmt.Sprintf("[green]%s", name), meta, 0, func(p string) func() {
+				return func() {
+					content, err := os.ReadFile(p)
+					if err != nil {
+						log.Printf("Failed to read file: %v", err)
+					} else {
+						queryBox.SetText(string(content), true)
+						app.SetFocus(queryBox)
+					}
+					app.SetRoot(returnTo, true)
+				}
+			}(fullPath))
 		}
 	}
 
@@ -1472,7 +1512,17 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		app.SetFocus(button2)
 	})
 
-	layout := CreateLayoutWithFooter(app, list)
-	app.SetRoot(tview.NewFlex().AddItem(layout, 0, 1, true), true)
-	app.SetFocus(layout)
+	// Footer: current directory
+	statusBar := tview.NewTextView().
+		SetTextAlign(tview.AlignLeft).
+		SetDynamicColors(true).
+		SetText(fmt.Sprintf("[::b]Current Directory: [white]%s", currentDir))
+
+	// Layout with footer
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(list, 0, 1, true).
+		AddItem(statusBar, 1, 0, false)
+
+	app.SetRoot(layout, true)
+	app.SetFocus(list)
 }
