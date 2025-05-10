@@ -194,12 +194,6 @@ Primary function: `UseDatabase(app *tview.Application, db *sql.DB, dbName string
   - `tview.Table` for displaying results
 - Uses helper functions like `ExeQueryToData()`, `ExecuteQuery()`, `EnableCellEditing()`
 
-## Dependencies
-
-- [tview](https://github.com/rivo/tview)
-- [tcell](https://github.com/gdamore/tcell)
-- Go `database/sql` with a MySQL driver
-
 **Screenshot**
 ![image](https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8)
 
