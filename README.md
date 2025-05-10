@@ -151,7 +151,7 @@ This module provides an interactive Terminal User Interface (TUI) for exploring 
 - Press `Ctrl+R` to execute.
 - Results are shown in the Data Viewer.
 
-### 4. Keyboard Shortcuts
+### 4. Keyboard Shortcuts (Edit Query Time)
 
 | Key Combination | Action                           |
 |-----------------|----------------------------------|
