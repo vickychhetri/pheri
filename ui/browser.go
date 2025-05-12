@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -87,6 +88,142 @@ func filterTableList(
 				objType := obj.Type
 
 				list.AddItem("🧮 "+displayName, "Press Enter to use", 0, func() {
+					app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+						if event.Key() == tcell.KeyCtrlX {
+							if objType == "TABLE" {
+								// Step 1: Get the table's DDL (definition)
+
+								query := "SHOW CREATE TABLE " + objName
+								row, err := db.Query(query)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to fetch table definition: "+err.Error())
+									return nil
+								}
+								defer row.Close()
+
+								var tableName, createStatement string
+								if row.Next() {
+									err := row.Scan(&tableName, &createStatement)
+									if err != nil {
+										showErrorModal(app, mainFlex, "Scan failed: "+err.Error())
+										return nil
+									}
+
+									// Step 2: Copy the table's DDL (definition) to the clipboard
+									err = clipboard.WriteAll(createStatement + ";")
+									if err != nil {
+										showErrorModal(app, mainFlex, "Failed to copy DDL to clipboard: "+err.Error())
+										return nil
+									}
+
+									// Step 3: Get the table data (rows)
+									db.Exec("USE " + dbName)
+									dataQuery := "SELECT * FROM " + objName
+									rows, err := db.Query(dataQuery)
+									if err != nil {
+										showErrorModal(app, mainFlex, "Failed to fetch table data: "+err.Error())
+										return nil
+									}
+									defer rows.Close()
+
+									// Fetch column names
+									columns, err := rows.Columns()
+									if err != nil {
+										showErrorModal(app, mainFlex, "Failed to get columns: "+err.Error())
+										return nil
+									}
+
+									var insertStatements []string
+									for rows.Next() {
+										values := make([]interface{}, len(columns))
+										pointers := make([]interface{}, len(columns))
+										for i := range values {
+											pointers[i] = &values[i]
+										}
+
+										err := rows.Scan(pointers...)
+										if err != nil {
+											showErrorModal(app, mainFlex, "Failed to scan row: "+err.Error())
+											return nil
+										}
+
+										// Build the insert statement for the current row
+										var valuesList []string
+										for _, val := range values {
+											if val != nil {
+												switch v := val.(type) {
+												case []byte:
+													valuesList = append(valuesList, fmt.Sprintf("'%s'", string(v)))
+												default:
+													valuesList = append(valuesList, fmt.Sprintf("'%v'", v))
+												}
+											} else {
+												valuesList = append(valuesList, "NULL")
+											}
+										}
+
+										insertStatement := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", objName, strings.Join(columns, ", "), strings.Join(valuesList, ", "))
+										insertStatements = append(insertStatements, insertStatement)
+									}
+
+									// Step 4: Join all insert statements and copy them to clipboard
+									dataString := strings.Join(insertStatements, "\n")
+
+									clipboardText := util.GetClipboardText()
+									err = clipboard.WriteAll(clipboardText + "\n" + dataString)
+									if err != nil {
+										showErrorModal(app, mainFlex, "Failed to copy data to clipboard: "+err.Error())
+										return nil
+									}
+
+									// Optional: Show a confirmation modal
+									modal := tview.NewModal().
+										SetText("Table definition and data copied to clipboard as SQL INSERT statements.").
+										AddButtons([]string{"OK"}).
+										SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+											layout := CreateLayoutWithFooter(app, mainFlex)
+											app.SetRoot(layout, true)
+										})
+									app.SetRoot(modal, true)
+								}
+							}
+
+							if objType == "VIEW" {
+								query := "SHOW CREATE VIEW " + objName
+								row, err := db.Query(query)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to fetch view definition: "+err.Error())
+									return nil
+								}
+								defer row.Close()
+
+								var viewName, createStatement, charset, collation string
+								if row.Next() {
+									err := row.Scan(&viewName, &createStatement, &charset, &collation)
+									if err != nil {
+										showErrorModal(app, mainFlex, "Scan failed: "+err.Error())
+										return nil
+									}
+
+									// Copy the CREATE VIEW statement to clipboard
+									clipboard.WriteAll(createStatement)
+
+									modal := tview.NewModal().
+										SetText("View definition copied to clipboard.").
+										AddButtons([]string{"OK"}).
+										SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+											layout := CreateLayoutWithFooter(app, mainFlex)
+											app.SetRoot(layout, true)
+										})
+									app.SetRoot(modal, true)
+								}
+							}
+
+							return nil
+						}
+						return event
+					})
+
 					switch objType {
 					case "TABLE", "VIEW":
 						query := "SELECT * FROM " + objName + " LIMIT 100"
@@ -524,6 +661,16 @@ func showSuggestionBox(app *tview.Application, mainFlex *tview.Flex, editor *tvi
 	app.SetRoot(modal, true).SetFocus(list)
 }
 
+func showErrorModal(app *tview.Application, layout tview.Primitive, message string) {
+	modal := tview.NewModal().
+		SetText(message).
+		AddButtons([]string{"OK"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			app.SetRoot(layout, true)
+		})
+	app.SetRoot(modal, true)
+}
+
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "\n▶ Execute Query\n"
 	saveIcon := "\n💾 Save Query\n"
@@ -630,6 +777,177 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			currentName := name
 			currentobjectType := objectType
 			tableList.AddItem("🧮 "+dispalyName, "Press Enter to use", 0, func() {
+				// app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+				// 	if event.Key() == tcell.KeyCtrlX {
+				// 		if currentobjectType == "TABLE" {
+				// 			query := "SHOW CREATE TABLE " + currentName
+				// 			row, err := db.Query(query)
+				// 			if err != nil {
+				// 				showErrorModal(app, mainFlex, "Failed to fetch table definition: "+err.Error())
+				// 				return nil
+				// 			}
+				// 			defer row.Close()
+				// 			var tableName, createStatement string
+				// 			if row.Next() {
+				// 				err := row.Scan(&tableName, &createStatement)
+				// 				if err != nil {
+				// 					showErrorModal(app, mainFlex, "Scan failed: "+err.Error())
+				// 					return nil
+				// 				}
+				// 				// Copy to clipboard
+				// 				clipboard.WriteAll(createStatement)
+
+				// 				// Optional: Show a confirmation modal
+				// 				modal := tview.NewModal().
+				// 					SetText("Table definition copied to clipboard.").
+				// 					AddButtons([]string{"OK"}).
+				// 					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+				// 						layout := CreateLayoutWithFooter(app, mainFlex)
+				// 						app.SetRoot(layout, true)
+				// 					})
+				// 				app.SetRoot(modal, true)
+				// 			}
+				// 		}
+				// 		return nil
+				// 	}
+				// 	return event
+				// })
+
+				app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+					if event.Key() == tcell.KeyCtrlX {
+						if currentobjectType == "TABLE" {
+							// Step 1: Get the table's DDL (definition)
+
+							query := "SHOW CREATE TABLE " + currentName
+							row, err := db.Query(query)
+							if err != nil {
+								showErrorModal(app, mainFlex, "Failed to fetch table definition: "+err.Error())
+								return nil
+							}
+							defer row.Close()
+
+							var tableName, createStatement string
+							if row.Next() {
+								err := row.Scan(&tableName, &createStatement)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Scan failed: "+err.Error())
+									return nil
+								}
+
+								// Step 2: Copy the table's DDL (definition) to the clipboard
+								err = clipboard.WriteAll(createStatement)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to copy DDL to clipboard: "+err.Error())
+									return nil
+								}
+
+								// Step 3: Get the table data (rows)
+								db.Exec("USE " + dbName)
+								dataQuery := "SELECT * FROM " + currentName
+								rows, err := db.Query(dataQuery)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to fetch table data: "+err.Error())
+									return nil
+								}
+								defer rows.Close()
+
+								// Fetch column names
+								columns, err := rows.Columns()
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to get columns: "+err.Error())
+									return nil
+								}
+
+								var insertStatements []string
+								for rows.Next() {
+									values := make([]interface{}, len(columns))
+									pointers := make([]interface{}, len(columns))
+									for i := range values {
+										pointers[i] = &values[i]
+									}
+
+									err := rows.Scan(pointers...)
+									if err != nil {
+										showErrorModal(app, mainFlex, "Failed to scan row: "+err.Error())
+										return nil
+									}
+
+									// Build the insert statement for the current row
+									var valuesList []string
+									for _, val := range values {
+										if val != nil {
+											switch v := val.(type) {
+											case []byte:
+												valuesList = append(valuesList, fmt.Sprintf("'%s'", string(v)))
+											default:
+												valuesList = append(valuesList, fmt.Sprintf("'%v'", v))
+											}
+										} else {
+											valuesList = append(valuesList, "NULL")
+										}
+									}
+
+									insertStatement := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s);", currentName, strings.Join(columns, ", "), strings.Join(valuesList, ", "))
+									insertStatements = append(insertStatements, insertStatement)
+								}
+
+								// Step 4: Join all insert statements and copy them to clipboard
+								dataString := strings.Join(insertStatements, "\n")
+
+								clipboardText := util.GetClipboardText()
+								err = clipboard.WriteAll(clipboardText + "\n" + dataString)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Failed to copy data to clipboard: "+err.Error())
+									return nil
+								}
+
+								// Optional: Show a confirmation modal
+								modal := tview.NewModal().
+									SetText("Table definition and data copied to clipboard as SQL INSERT statements.").
+									AddButtons([]string{"OK"}).
+									SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+										layout := CreateLayoutWithFooter(app, mainFlex)
+										app.SetRoot(layout, true)
+									})
+								app.SetRoot(modal, true)
+							}
+						}
+
+						if currentobjectType == "VIEW" {
+							query := "SHOW CREATE VIEW " + currentName
+							row, err := db.Query(query)
+							if err != nil {
+								showErrorModal(app, mainFlex, "Failed to fetch view definition: "+err.Error())
+								return nil
+							}
+							defer row.Close()
+
+							var viewName, createStatement, charset, collation string
+							if row.Next() {
+								err := row.Scan(&viewName, &createStatement, &charset, &collation)
+								if err != nil {
+									showErrorModal(app, mainFlex, "Scan failed: "+err.Error())
+									return nil
+								}
+
+								// Copy the CREATE VIEW statement to clipboard
+								clipboard.WriteAll(createStatement)
+
+								modal := tview.NewModal().
+									SetText("View definition copied to clipboard.").
+									AddButtons([]string{"OK"}).
+									SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+										layout := CreateLayoutWithFooter(app, mainFlex)
+										app.SetRoot(layout, true)
+									})
+								app.SetRoot(modal, true)
+							}
+						}
+						return nil
+					}
+					return event
+				})
+
 				switch currentobjectType {
 				case "PROCEDURE":
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
@@ -755,7 +1073,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
-			case tcell.KeyCtrlM:
+			case tcell.KeyCtrlU:
 				app.SetFocus(runButton)
 				return nil
 			case tcell.KeyEscape:

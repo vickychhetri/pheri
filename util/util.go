@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 
+	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -15,6 +16,11 @@ var stripRegex = regexp.MustCompile(`\[[^\]]*\]`)
 
 func StripFormatting(text string) string {
 	return stripRegex.ReplaceAllString(text, "")
+}
+
+func GetClipboardText() string {
+	text, _ := clipboard.ReadAll()
+	return text
 }
 
 func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error) {

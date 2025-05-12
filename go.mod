@@ -6,6 +6,7 @@ require modernc.org/sqlite v1.37.0
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/atotto/clipboard v0.1.4
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
 	github.com/gdamore/tcell/v2 v2.7.1 // indirect
