@@ -755,7 +755,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
-			case tcell.KeyTab:
+			case tcell.KeyCtrlM:
 				app.SetFocus(runButton)
 				return nil
 			case tcell.KeyEscape:
@@ -786,6 +786,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetFocus(dataTable)
 				return nil
 
+			case tcell.KeyCtrlP:
+				clipboardText := util.GetClipboardText()
+				queryBox.SetText(clipboardText, false)
+				app.SetFocus(queryBox)
+				return nil
 			case tcell.KeyCtrlUnderscore:
 				// Get current word at cursor
 				row, col, _, _ := queryBox.GetCursor()
