@@ -368,59 +368,98 @@ func buildCreateProcedureSQL(metadata RoutineMetadata, params []Parameter, db *s
 }
 
 var sqlTemplates = []string{
-	// CREATE Commands
-	"CREATE TABLE table_name (column1 datatype, column2 datatype, ...)",
-	"CREATE DATABASE database_name",
-	"CREATE INDEX index_name ON table_name (column_name)",
-	"CREATE UNIQUE INDEX index_name ON table_name (column_name)",
-	"CREATE VIEW view_name AS SELECT column1, column2 FROM table_name WHERE condition",
+	// --- DATABASE CREATION ---
+	"CREATE DATABASE company_db",
+	"DROP DATABASE old_company_db",
 
-	// INSERT Commands
-	"INSERT INTO table_name (column1, column2) VALUES (value1, value2)",
-	"INSERT INTO table_name VALUES (value1, value2, ...)",
-	"INSERT INTO table_name (col1, col2) SELECT col1, col2 FROM other_table",
+	// --- TABLE CREATION & MODIFICATION ---
+	"CREATE TABLE employees (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(100), age INT, department_id INT, hire_date DATE)",
+	"ALTER TABLE employees ADD COLUMN salary DECIMAL(10,2)",
+	"ALTER TABLE employees DROP COLUMN middle_name",
+	"ALTER TABLE employees RENAME TO staff",
+	"ALTER TABLE employees MODIFY age SMALLINT",
+	"ALTER TABLE employees ADD CONSTRAINT fk_department FOREIGN KEY (department_id) REFERENCES departments(id)",
+	"DROP TABLE employees",
+	"TRUNCATE TABLE logs",
 
-	// ALTER Commands
-	"ALTER TABLE table_name ADD column_name datatype",
-	"ALTER TABLE table_name DROP COLUMN column_name",
-	"ALTER TABLE table_name RENAME TO new_table_name",
-	"ALTER TABLE table_name MODIFY column_name datatype",
-	"ALTER TABLE table_name ADD CONSTRAINT constraint_name FOREIGN KEY (column_name) REFERENCES other_table(column_name)",
+	// --- INDEXES ---
+	"CREATE INDEX idx_emp_name ON employees (name)",
+	"CREATE UNIQUE INDEX idx_users_email ON users (email)",
+	"DROP INDEX idx_emp_name ON employees",
 
-	// DROP/DELETE/TRUNCATE
-	"DROP TABLE table_name",
-	"DROP DATABASE database_name",
-	"DROP INDEX index_name ON table_name",
-	"TRUNCATE TABLE table_name",
-	"DELETE FROM table_name WHERE condition",
+	// --- INSERT DATA ---
+	"INSERT INTO employees (name, age, department_id) VALUES ('John Doe', 30, 2)",
+	"INSERT INTO departments (id, name) VALUES (1, 'HR'), (2, 'Engineering')",
+	"INSERT INTO archive_employees (id, name) SELECT id, name FROM employees WHERE status = 'inactive'",
 
-	// UPDATE
-	"UPDATE table_name SET column1 = value1, column2 = value2 WHERE condition",
+	// --- DELETE & UPDATE DATA ---
+	"DELETE FROM employees WHERE department_id = 5",
+	"DELETE FROM employees",
+	"UPDATE employees SET salary = salary + 1000 WHERE performance = 'excellent'",
 
-	// SELECT Queries
-	"SELECT * FROM table_name",
-	"SELECT column1, column2 FROM table_name WHERE condition",
-	"SELECT column1, COUNT(*) FROM table_name GROUP BY column1",
-	"SELECT column1 FROM table_name ORDER BY column1 DESC",
-	"SELECT DISTINCT column1 FROM table_name",
-	"SELECT column1 FROM table_name LIMIT 10 OFFSET 5",
+	// --- SIMPLE SELECT ---
+	"SELECT * FROM employees",
+	"SELECT name, age FROM employees WHERE department_id = 2",
+	"SELECT name FROM employees ORDER BY hire_date DESC",
+	"SELECT DISTINCT job_title FROM employees",
+	"SELECT * FROM employees LIMIT 10 OFFSET 5",
 
-	// Conditions and Clauses
-	"WHERE column_name = value",
-	"WHERE column_name BETWEEN value1 AND value2",
-	"WHERE column_name LIKE '%value%'",
-	"ORDER BY column_name ASC",
-	"GROUP BY column_name",
-	"HAVING COUNT(column_name) > value",
-	"LIMIT number",
-	"OFFSET number",
+	// --- SELECT WITH CONDITIONS ---
+	"WHERE age > 25",
+	"WHERE name LIKE 'J%'",
+	"WHERE salary BETWEEN 30000 AND 50000",
+	"WHERE department_id IN (1, 2, 3)",
+	"WHERE hire_date IS NOT NULL",
 
-	// Aggregate Functions
-	"SELECT COUNT(*) FROM table_name",
-	"SELECT SUM(column_name) FROM table_name",
-	"SELECT AVG(column_name) FROM table_name",
-	"SELECT MIN(column_name) FROM table_name",
-	"SELECT MAX(column_name) FROM table_name",
+	// --- AGGREGATES & GROUPING ---
+	"SELECT COUNT(*) FROM employees",
+	"SELECT AVG(salary) FROM employees WHERE department_id = 2",
+	"SELECT department_id, SUM(salary) FROM employees GROUP BY department_id",
+	"SELECT department_id, COUNT(*) FROM employees GROUP BY department_id",
+	"SELECT department_id, AVG(salary) FROM employees GROUP BY department_id HAVING AVG(salary) > 50000",
+
+	// --- JOIN OPERATIONS ---
+	"SELECT e.name, d.name FROM employees e INNER JOIN departments d ON e.department_id = d.id",
+	"SELECT e.name, d.name FROM employees e LEFT JOIN departments d ON e.department_id = d.id",
+	"SELECT e.name, d.name FROM employees e RIGHT JOIN departments d ON e.department_id = d.id",
+	"SELECT e.name, d.name FROM employees e FULL OUTER JOIN departments d ON e.department_id = d.id", // (if supported)
+
+	// --- SUBQUERIES ---
+	"SELECT name FROM employees WHERE department_id = (SELECT id FROM departments WHERE name = 'Engineering')",
+	"SELECT name FROM employees WHERE salary > (SELECT AVG(salary) FROM employees)",
+
+	// --- ORDER / LIMIT / OFFSET ---
+	"ORDER BY hire_date DESC",
+	"LIMIT 10",
+	"OFFSET 20",
+
+	// --- VIEWS ---
+	"CREATE VIEW active_employees AS SELECT id, name FROM employees WHERE status = 'active'",
+
+	// --- TRANSACTIONS ---
+	"START TRANSACTION",
+	"COMMIT",
+	"ROLLBACK",
+
+	// --- USER & PERMISSIONS (MySQL Specific) ---
+	"CREATE USER 'user1'@'localhost' IDENTIFIED BY 'password123'",
+	"GRANT SELECT, INSERT ON company_db.* TO 'user1'@'localhost'",
+	"REVOKE INSERT ON company_db.* FROM 'user1'@'localhost'",
+	"DROP USER 'user1'@'localhost'",
+
+	// --- STORED PROCEDURE TEMPLATE ---
+	`DELIMITER //
+	CREATE PROCEDURE GetEmployeeByID(IN emp_id INT)
+	BEGIN
+		SELECT * FROM employees WHERE id = emp_id;
+	END //
+	DELIMITER ;`,
+
+	// --- TRIGGER TEMPLATE ---
+	`CREATE TRIGGER before_insert_employee
+	BEFORE INSERT ON employees
+	FOR EACH ROW
+	SET NEW.hire_date = NOW();`,
 }
 
 var sqlKeywords = []string{
