@@ -2,6 +2,8 @@
 package ui
 
 import (
+	"bufio"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
 	"io/fs"
@@ -12,6 +14,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
@@ -670,6 +674,510 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 		})
 	app.SetRoot(modal, true)
 }
+func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", "root", "12345678", "127.0.0.1", "3306", dbName)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to connect to DB: %v", err)
+		close(progressChan)
+		return
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(time.Minute * 5)
+
+	f, err := os.Create(outputFile + ".gz")
+	if err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to create output file: %v", err)
+		close(progressChan)
+		return
+	}
+	gzipWriter := gzip.NewWriter(f)
+	writer := bufio.NewWriter(gzipWriter)
+
+	defer func() {
+		writer.Flush()
+		gzipWriter.Close()
+		f.Close()
+	}()
+
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	workerCount := 10
+	tasks := make(chan DBObject, len(allTables))
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for obj := range tasks {
+				var ddl string
+
+				// Retry ping
+				var err error
+				for i := 0; i < 3; i++ {
+					if err = db.Ping(); err == nil {
+						break
+					}
+					time.Sleep(time.Second * 2)
+				}
+				if err != nil {
+					progressChan <- fmt.Sprintf("[red]DB connection not alive for %s: %v", obj.Name, err)
+					continue
+				}
+
+				switch obj.Type {
+				case "TABLE":
+					var table, createStmt string
+					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+					if err := row.Scan(&table, &createStmt); err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+						continue
+					}
+					ddl = createStmt
+
+					var inserts []string
+					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+					if err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+						break
+					}
+					defer rows.Close()
+
+					cols, _ := rows.Columns()
+					colCount := len(cols)
+					values := make([]interface{}, colCount)
+					valuePtrs := make([]interface{}, colCount)
+
+					for rows.Next() {
+						for i := range values {
+							valuePtrs[i] = &values[i]
+						}
+						err := rows.Scan(valuePtrs...)
+						if err != nil {
+							continue
+						}
+
+						var valStrings []string
+						for _, val := range values {
+							switch v := val.(type) {
+							case nil:
+								valStrings = append(valStrings, "NULL")
+							case []byte:
+								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
+							case string:
+								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
+							default:
+								valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
+							}
+						}
+						insert := fmt.Sprintf("INSERT INTO `%s` VALUES (%s);", obj.Name, strings.Join(valStrings, ", "))
+						inserts = append(inserts, insert)
+					}
+
+					mu.Lock()
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(ddl + ";\n\n")
+
+					if len(inserts) > 0 {
+						writer.WriteString("-- DATA\n")
+						for _, ins := range inserts {
+							writer.WriteString(ins + "\n")
+						}
+						writer.WriteString("\n")
+					}
+					mu.Unlock()
+
+				case "VIEW":
+					var view, createStmt, charset, collation string
+					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+						continue
+					}
+					ddl = createStmt
+
+					mu.Lock()
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(ddl + ";\n\n")
+					mu.Unlock()
+
+				case "PROCEDURE", "FUNCTION":
+					var name, createStmt, charset string
+					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+					if err := row.Scan(&name, &createStmt, &charset); err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+						continue
+					}
+					ddl = createStmt
+
+					mu.Lock()
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString(ddl + ";\n\n")
+					mu.Unlock()
+				}
+
+				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+			}
+		}()
+	}
+
+	for _, obj := range allTables {
+		tasks <- obj
+	}
+	close(tasks)
+
+	wg.Wait()
+	close(progressChan)
+}
+
+func escapeString(input string) string {
+	// Escape single quotes and backslashes
+	input = strings.ReplaceAll(input, "\\", "\\\\")
+	input = strings.ReplaceAll(input, "'", "\\'")
+	return input
+}
+
+// func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+// 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", "root", "12345678", "127.0.0.1", "3306", dbName)
+
+// 	// Create single shared DB connection pool
+// 	db, err := sql.Open("mysql", dsn)
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to connect to DB: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	defer db.Close()
+
+// 	// Set limits on DB connection pool
+// 	db.SetMaxOpenConns(10)
+// 	db.SetMaxIdleConns(5)
+// 	db.SetConnMaxLifetime(time.Minute * 5)
+
+// 	f, err := os.Create(outputFile)
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to create output file: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	defer func() {
+// 		f.Sync()
+// 		f.Close()
+// 	}()
+
+// 	var mu sync.Mutex
+// 	var wg sync.WaitGroup
+
+// 	workerCount := 10
+// 	tasks := make(chan DBObject, len(allTables))
+
+// 	// Worker pool
+// 	for w := 0; w < workerCount; w++ {
+// 		wg.Add(1)
+// 		go func() {
+// 			defer wg.Done()
+// 			for obj := range tasks {
+// 				var ddl string
+
+// 				// Retry logic for Ping
+// 				var err error
+// 				for i := 0; i < 3; i++ {
+// 					if err = db.Ping(); err == nil {
+// 						break
+// 					}
+// 					time.Sleep(time.Second * 2)
+// 				}
+// 				if err != nil {
+// 					progressChan <- fmt.Sprintf("[red]DB connection not alive for %s: %v", obj.Name, err)
+// 					continue
+// 				}
+
+// 				switch obj.Type {
+// 				case "TABLE":
+// 					var table, createStmt string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+// 					if err := row.Scan(&table, &createStmt); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+// 				case "VIEW":
+// 					var view, createStmt, charset, collation string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+// 					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+// 				case "PROCEDURE", "FUNCTION":
+// 					var name, createStmt, charset string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+// 					if err := row.Scan(&name, &createStmt, &charset); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+// 				default:
+// 					progressChan <- fmt.Sprintf("[red]Unknown object type: %s", obj.Type)
+// 					continue
+// 				}
+
+// 				if ddl == "" {
+// 					progressChan <- fmt.Sprintf("[red]Empty DDL for %s: %s", obj.Type, obj.Name)
+// 					continue
+// 				}
+
+// 				// Write to file with lock
+// 				mu.Lock()
+// 				f.WriteString("-- ----------------------------\n")
+// 				f.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+// 				f.WriteString("-- ----------------------------\n")
+// 				f.WriteString(ddl + ";\n\n")
+// 				mu.Unlock()
+
+// 				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+// 			}
+// 		}()
+// 	}
+
+// 	// Enqueue tasks
+// 	for _, obj := range allTables {
+// 		tasks <- obj
+// 	}
+// 	close(tasks)
+
+// 	// Wait for all workers
+// 	wg.Wait()
+// 	close(progressChan)
+// }
+
+// func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+
+// 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", "root", "12345678", "127.0.0.1", "3306", dbName)
+// 	util.SaveLog(dsn)
+// 	var dbPool []*sql.DB
+// 	for i := 0; i < len(allTables)+50; i++ {
+// 		conn1, err := sql.Open("mysql", dsn)
+// 		if err != nil {
+// 			log.Println("DB connection error:", err)
+// 			continue
+// 		}
+// 		dbPool = append(dbPool, conn1)
+// 	}
+// 	defer func() {
+// 		for _, db1 := range dbPool {
+// 			db1.Close()
+// 		}
+// 	}()
+
+// 	var wg sync.WaitGroup
+// 	var mu sync.Mutex
+
+// 	f, err := os.Create(outputFile)
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to create file: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	defer func() {
+// 		f.Sync()
+// 		f.Close()
+// 	}()
+
+// 	for i, obj := range allTables {
+// 		wg.Add(1)
+
+// 		go func(i int, obj DBObject) {
+// 			defer wg.Done()
+// 			db := dbPool[i%len(dbPool)]
+
+// 			// Validate DB is alive
+// 			if err := db.Ping(); err != nil {
+// 				progressChan <- fmt.Sprintf("[red]DB connection is not alive for %s: %v", obj.Name, err)
+// 				return
+// 			}
+
+// 			var ddl string
+// 			switch obj.Type {
+// 			case "TABLE", "VIEW":
+// 				var table, createStmt string
+// 				row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+// 				if err := row.Scan(&table, &createStmt); err != nil {
+// 					progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+// 					return
+// 				}
+// 				ddl = createStmt
+
+// 			case "PROCEDURE", "FUNCTION":
+// 				var name, createStmt, charset string
+// 				row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+// 				if err := row.Scan(&name, &createStmt, &charset); err != nil {
+// 					progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+// 					return
+// 				}
+// 				ddl = createStmt
+// 			}
+
+// 			if ddl == "" {
+// 				progressChan <- fmt.Sprintf("[red]WARNING: Empty DDL for %s: %s", obj.Type, obj.Name)
+// 				return
+// 			}
+
+// 			mu.Lock()
+// 			f.WriteString("-- ----------------------------\n")
+// 			f.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+// 			f.WriteString("-- ----------------------------\n")
+// 			f.WriteString(ddl + ";\n\n")
+// 			mu.Unlock()
+
+// 			progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+// 		}(i, obj)
+// 	}
+
+// 	wg.Wait()
+// 	close(progressChan)
+// }
+
+// func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+// 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", "root", "12345678", "127.0.0.1", "3306", dbName)
+// 	util.SaveLog(dsn)
+
+// 	var dbPool []*sql.DB
+// 	for i := 0; i < len(allTables)+50; i++ {
+// 		conn1, err := sql.Open("mysql", dsn)
+
+// 		if err != nil {
+// 			log.Println("DB connection error:", err)
+// 			continue
+// 		}
+// 		dbPool = append(dbPool, conn1)
+// 	}
+// 	countStr := fmt.Sprintf("%d", len(dbPool))
+// 	util.SaveLog(countStr)
+// 	defer func() {
+// 		for _, db1 := range dbPool {
+// 			db1.Close()
+// 		}
+// 	}()
+
+// 	var wg sync.WaitGroup
+// 	var mu sync.Mutex
+
+// 	f, err := os.Create(outputFile)
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to create file: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	defer func() {
+// 		f.Sync()
+// 		f.Close()
+// 	}()
+
+// 	for i, obj := range allTables {
+// 		wg.Add(1)
+
+// 		go func(obj DBObject) {
+// 			defer wg.Done()
+// 			db := dbPool[i%len(dbPool)]
+
+// 			defer db.Close()
+// 			if err := db.Ping(); err != nil {
+// 				for attempts := 0; attempts < 3; attempts++ {
+// 					db, err = sql.Open("mysql", dsn)
+// 					if err == nil {
+// 						break // success
+// 					}
+// 					if attempts == 2 {
+// 						progressChan <- fmt.Sprintf("[red]DB RE-connection not alive for %s: %v", obj.Name, err)
+// 						return
+// 					}
+// 					time.Sleep(time.Second * 2)
+// 				}
+// 			}
+
+// 			// Validate DB is alive
+// 			if err := db.Ping(); err != nil {
+// 				progressChan <- fmt.Sprintf("[red]DB connection not alive for %s: %v", obj.Name, err)
+// 				return
+// 			}
+
+// 			var ddl string
+// 			switch obj.Type {
+// 			case "TABLE":
+// 				var table, createStmt string
+// 				row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+// 				if err := row.Scan(&table, &createStmt); err != nil {
+// 					progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+// 					return
+// 				}
+// 				ddl = createStmt
+
+// 			case "VIEW":
+// 				var view, createStmt, charset, collation string
+// 				row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+// 				if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+// 					progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+// 					return
+// 				}
+// 				ddl = createStmt
+
+// 			case "PROCEDURE", "FUNCTION":
+// 				var name, createStmt, charset string
+// 				row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+// 				if err := row.Scan(&name, &createStmt, &charset); err != nil {
+// 					progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+// 					return
+// 				}
+// 				ddl = createStmt
+// 			}
+
+// 			if ddl == "" {
+// 				progressChan <- fmt.Sprintf("[red]WARNING: Empty DDL for %s: %s", obj.Type, obj.Name)
+// 				return
+// 			}
+
+// 			mu.Lock()
+// 			f.WriteString("-- ----------------------------\n")
+// 			f.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+// 			f.WriteString("-- ----------------------------\n")
+// 			f.WriteString(ddl + ";\n\n")
+// 			mu.Unlock()
+
+// 			progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+
+// 		}(obj)
+// 	}
+
+// 	wg.Wait()
+// 	close(progressChan)
+// }
+
+func createDbPool(conns []string) []*sql.DB {
+	var pool []*sql.DB
+	for _, dsn := range conns {
+		db, err := sql.Open("mysql", dsn)
+		if err != nil {
+			log.Fatalf("Failed to open DB: %v", err)
+		}
+		if err := db.Ping(); err != nil {
+			log.Fatalf("Cannot connect to DB: %v", err)
+		}
+		pool = append(pool, db)
+	}
+	return pool
+}
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "\n▶ Execute Query\n"
@@ -813,7 +1321,57 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				// 	return event
 				// })
 
+				progressView := tview.NewTextView().
+					SetDynamicColors(true).
+					SetScrollable(true).
+					SetChangedFunc(func() {
+						app.Draw()
+					})
+
 				app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+
+					if event.Key() == tcell.KeyCtrlY {
+
+						go func() {
+							progressChan := make(chan string)
+
+							go func() {
+								for msg := range progressChan {
+									util.SaveLog(msg)
+								}
+							}()
+							app.QueueUpdateDraw(func() {
+								progressView.SetText("[blue]Starting export...\n")
+								app.SetRoot(progressView, true)
+							})
+
+							util.SaveLog(fmt.Sprintf("Exporting %d objects...\n", len(allTables)))
+
+							go exportAllObjects("backup.sql", progressChan, dbName)
+
+							// Read from progress channel and update UI
+							go func() {
+								for msg := range progressChan {
+									app.QueueUpdateDraw(func() {
+										fmt.Fprintln(progressView, msg)
+									})
+								}
+
+								// After export is done
+								app.QueueUpdateDraw(func() {
+									modal := tview.NewModal().
+										SetText("Export completed successfully!").
+										AddButtons([]string{"OK"}).
+										SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+											app.SetRoot(mainFlex, true)
+										})
+									app.SetRoot(modal, true)
+								})
+							}()
+						}()
+						return nil
+					}
+
 					if event.Key() == tcell.KeyCtrlX {
 						if currentobjectType == "TABLE" {
 							// Step 1: Get the table's DDL (definition)

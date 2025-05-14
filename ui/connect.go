@@ -14,6 +14,8 @@ import (
 
 var user, pass, host, port string
 
+var User, Pass, Host, Port string
+
 func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 	var form *tview.Form
 
@@ -36,7 +38,10 @@ func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 				port = form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
 				user = form.GetFormItemByLabel("User").(*tview.InputField).GetText()
 				pass = form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
-
+				User = user
+				Pass = pass
+				Host = host
+				Port = port
 				phhistory.SetUser(user)
 				phhistory.SetHost(host)
 				phhistory.SetPort(port)
