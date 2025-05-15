@@ -811,9 +811,9 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					mu.Unlock()
 
 				case "PROCEDURE", "FUNCTION":
-					var name, createStmt, charset string
+					var name, sqlMode, createStmt, charset, collation, dbCollation string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
-					if err := row.Scan(&name, &createStmt, &charset); err != nil {
+					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
 						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
 						continue
 					}
@@ -825,6 +825,7 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					writer.WriteString("-- ----------------------------\n")
 					writer.WriteString(ddl + ";\n\n")
 					mu.Unlock()
+
 				}
 
 				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
