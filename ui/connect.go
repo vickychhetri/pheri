@@ -20,6 +20,10 @@ func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 	var form *tview.Form
 
 	if user != "" && host != "" && port != "" {
+		User = user
+		Pass = pass
+		Host = host
+		Port = port
 		conn, err := dbs.Connect(user, pass, host, port)
 		if err != nil {
 			log.Printf("Error in db Connection: %v", err)
