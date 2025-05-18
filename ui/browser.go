@@ -685,6 +685,7 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 		})
 	app.SetRoot(modal, true)
 }
+
 func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", User, Pass, Host, Port, dbName)
 
@@ -700,19 +701,74 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Minute * 5)
 
-	f, err := os.Create(outputFile + ".gz")
-	if err != nil {
-		progressChan <- fmt.Sprintf("[red]Failed to create output file: %v", err)
+	// Set up multiple writers
+	type fileWriters struct {
+		table, view, viewddl, procedure, function *bufio.Writer
+		tableFile, viewFile, viewddlFile          *os.File
+		procedureFile, functionFile               *os.File
+		tableGzip, viewGzip, viewddlGzip          *gzip.Writer
+		procedureGzip, functionGzip               *gzip.Writer
+	}
+
+	fw := &fileWriters{}
+
+	openGz := func(suffix string) (*os.File, *gzip.Writer, *bufio.Writer, error) {
+		f, err := os.Create(fmt.Sprintf("%s_%s.gz", outputFile, suffix))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		gz := gzip.NewWriter(f)
+		buf := bufio.NewWriter(gz)
+		return f, gz, buf, nil
+	}
+
+	if fw.tableFile, fw.tableGzip, fw.table, err = openGz("table"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open table file: %v", err)
 		close(progressChan)
 		return
 	}
-	gzipWriter := gzip.NewWriter(f)
-	writer := bufio.NewWriter(gzipWriter)
+	if fw.viewFile, fw.viewGzip, fw.view, err = openGz("view"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open view file: %v", err)
+		close(progressChan)
+		return
+	}
+	if fw.viewddlFile, fw.viewddlGzip, fw.viewddl, err = openGz("viewddl"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open viewddl file: %v", err)
+		close(progressChan)
+		return
+	}
+
+	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open procedure file: %v", err)
+		close(progressChan)
+		return
+	}
+	if fw.functionFile, fw.functionGzip, fw.function, err = openGz("function"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open function file: %v", err)
+		close(progressChan)
+		return
+	}
 
 	defer func() {
-		writer.Flush()
-		gzipWriter.Close()
-		f.Close()
+		fw.table.Flush()
+		fw.tableGzip.Close()
+		fw.tableFile.Close()
+
+		fw.view.Flush()
+		fw.viewGzip.Close()
+		fw.viewFile.Close()
+
+		fw.viewddl.Flush()
+		fw.viewddlGzip.Close()
+		fw.viewddlFile.Close()
+
+		fw.procedure.Flush()
+		fw.procedureGzip.Close()
+		fw.procedureFile.Close()
+
+		fw.function.Flush()
+		fw.functionGzip.Close()
+		fw.functionFile.Close()
 	}()
 
 	var mu sync.Mutex
@@ -727,22 +783,19 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 			defer wg.Done()
 			for obj := range tasks {
 				var ddl string
+				var writer *bufio.Writer
+				var writerddl *bufio.Writer
 
-				// Retry ping
-				var err error
 				for i := 0; i < 3; i++ {
-					if err = db.Ping(); err == nil {
+					if err := db.Ping(); err == nil {
 						break
 					}
-					time.Sleep(time.Second * 2)
-				}
-				if err != nil {
-					progressChan <- fmt.Sprintf("[red]DB connection not alive for %s: %v", obj.Name, err)
-					continue
+					time.Sleep(2 * time.Second)
 				}
 
 				switch obj.Type {
 				case "TABLE":
+					writer = fw.table
 					const insertBatchSize = 1000
 					var table, createStmt string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
@@ -755,7 +808,7 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
 					if err != nil {
 						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
-						break
+						continue
 					}
 					defer rows.Close()
 
@@ -763,10 +816,10 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					colCount := len(cols)
 					values := make([]interface{}, colCount)
 					valuePtrs := make([]interface{}, colCount)
-
 					colList := "`" + strings.Join(cols, "`, `") + "`"
-					// util.SaveLog("colList: " + colList)
+
 					var valueRows []string
+					rowCount := 0
 
 					mu.Lock()
 					writer.WriteString("-- ----------------------------\n")
@@ -775,9 +828,6 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					writer.WriteString(ddl + ";\n\n")
 					writer.WriteString("-- DATA\n")
 					mu.Unlock()
-
-					rowCount := 0
-					batchCount := 0
 
 					for rows.Next() {
 						for i := range values {
@@ -805,20 +855,17 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
 						rowCount++
 
-						// Write batch if limit is reached
 						if rowCount >= insertBatchSize {
 							mu.Lock()
 							writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
 							writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
 							mu.Unlock()
 
-							valueRows = valueRows[:0] // Reset slice
+							valueRows = valueRows[:0]
 							rowCount = 0
-							batchCount++
 						}
 					}
 
-					// Write remaining rows
 					if len(valueRows) > 0 {
 						mu.Lock()
 						writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
@@ -826,70 +873,46 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 						mu.Unlock()
 					}
 
-				// case "TABLE":
-				// 	var table, createStmt string
-				// 	row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
-				// 	if err := row.Scan(&table, &createStmt); err != nil {
-				// 		progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
-				// 		continue
-				// 	}
-				// 	ddl = createStmt
-
-				// 	var inserts []string
-				// 	rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
-				// 	if err != nil {
-				// 		progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
-				// 		break
-				// 	}
-				// 	defer rows.Close()
-
-				// 	cols, _ := rows.Columns()
-				// 	colCount := len(cols)
-				// 	values := make([]interface{}, colCount)
-				// 	valuePtrs := make([]interface{}, colCount)
-
-				// 	for rows.Next() {
-				// 		for i := range values {
-				// 			valuePtrs[i] = &values[i]
-				// 		}
-				// 		err := rows.Scan(valuePtrs...)
-				// 		if err != nil {
-				// 			continue
-				// 		}
-
-				// 		var valStrings []string
-				// 		for _, val := range values {
-				// 			switch v := val.(type) {
-				// 			case nil:
-				// 				valStrings = append(valStrings, "NULL")
-				// 			case []byte:
-				// 				valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
-				// 			case string:
-				// 				valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
-				// 			default:
-				// 				valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
-				// 			}
-				// 		}
-				// 		insert := fmt.Sprintf("INSERT INTO `%s` VALUES (%s);", obj.Name, strings.Join(valStrings, ", "))
-				// 		inserts = append(inserts, insert)
-				// 	}
-
-				// 	mu.Lock()
-				// 	writer.WriteString("-- ----------------------------\n")
-				// 	writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
-				// 	writer.WriteString("-- ----------------------------\n")
-				// 	writer.WriteString(ddl + ";\n\n")
-
-				// 	if len(inserts) > 0 {
-				// 		writer.WriteString("-- DATA\n")
-				// 		for _, ins := range inserts {
-				// 			writer.WriteString(ins + "\n")
-				// 		}
-				// 		writer.WriteString("\n")
-				// 	}
-				// 	mu.Unlock()
-
 				case "VIEW":
+					writerddl = fw.viewddl
+					columnQuery := fmt.Sprintf("SELECT * FROM `%s` LIMIT 0", obj.Name)
+					rowsddl, err := db.Query(columnQuery)
+					if err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to select data from VIEW: %s - %v", obj.Name, err)
+						continue
+					}
+					cols, err := rowsddl.ColumnTypes()
+					rowsddl.Close()
+					if err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed to get column types from VIEW: %s - %v", obj.Name, err)
+						continue
+					}
+					var structBuilder strings.Builder
+					structBuilder.WriteString("-- ----------------------------\n")
+					structBuilder.WriteString(fmt.Sprintf("--  STRUCTURE (DUMMY TABLE FOR VIEW): %s\n", obj.Name))
+					structBuilder.WriteString("-- ----------------------------\n")
+					structBuilder.WriteString(fmt.Sprintf("CREATE TABLE `%s` (\n", obj.Name))
+					for i, col := range cols {
+						colName := col.Name()
+						colType := col.DatabaseTypeName()
+						nullable, _ := col.Nullable()
+						nullStr := "NOT NULL"
+						if nullable {
+							nullStr = "NULL"
+						}
+
+						colDef := fmt.Sprintf("  `%s` %s %s", colName, mapSQLType(colType), nullStr)
+
+						if i < len(cols)-1 {
+							colDef += ",\n"
+
+						} else {
+							colDef += "\n"
+						}
+						structBuilder.WriteString(colDef)
+					}
+					structBuilder.WriteString(");\n\n")
+					writer = fw.view
 					var view, createStmt, charset, collation string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
 					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
@@ -899,13 +922,23 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					ddl = createStmt
 
 					mu.Lock()
+					writerddl.WriteString(structBuilder.String())
+					writerddl.Flush()
 					writer.WriteString("-- ----------------------------\n")
 					writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
 					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
 					writer.WriteString(ddl + ";\n\n")
+					writer.Flush()
 					mu.Unlock()
 
 				case "PROCEDURE", "FUNCTION":
+					if obj.Type == "PROCEDURE" {
+						writer = fw.procedure
+					} else {
+						writer = fw.function
+					}
+
 					var name, sqlMode, createStmt, charset, collation, dbCollation string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
 					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
@@ -918,12 +951,14 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					writer.WriteString("-- ----------------------------\n")
 					writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
 					writer.WriteString("-- ----------------------------\n")
+					writer.WriteString("DELIMITER //\n")
 					writer.WriteString(ddl + ";\n\n")
+					writer.WriteString("// \nDELIMITER ;\n")
 					mu.Unlock()
-
 				}
 
 				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+				time.Sleep(50 * time.Millisecond)
 			}
 		}()
 	}
@@ -937,6 +972,277 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	close(progressChan)
 }
 
+func mapSQLType(mysqlType string) string {
+	switch strings.ToUpper(mysqlType) {
+	case "VARCHAR", "TEXT", "CHAR":
+		return "VARCHAR(1)"
+	case "INT", "INTEGER", "SMALLINT", "TINYINT", "MEDIUMINT", "BIGINT":
+		return "INT(11)"
+	case "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE":
+		return "DECIMAL(10,2)"
+	case "DATE":
+		return "DATE"
+	case "DATETIME", "TIMESTAMP":
+		return "DATETIME"
+	case "BLOB", "LONGBLOB", "MEDIUMBLOB":
+		return "BLOB"
+	default:
+		return "VARCHAR(1)"
+	}
+}
+
+// func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+// 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", User, Pass, Host, Port, dbName)
+
+// 	db, err := sql.Open("mysql", dsn)
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to connect to DB: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	defer db.Close()
+
+// 	db.SetMaxOpenConns(10)
+// 	db.SetMaxIdleConns(5)
+// 	db.SetConnMaxLifetime(time.Minute * 5)
+
+// 	f, err := os.Create(outputFile + ".gz")
+// 	if err != nil {
+// 		progressChan <- fmt.Sprintf("[red]Failed to create output file: %v", err)
+// 		close(progressChan)
+// 		return
+// 	}
+// 	gzipWriter := gzip.NewWriter(f)
+// 	writer := bufio.NewWriter(gzipWriter)
+
+// 	defer func() {
+// 		writer.Flush()
+// 		gzipWriter.Close()
+// 		f.Close()
+// 	}()
+
+// 	var mu sync.Mutex
+// 	var wg sync.WaitGroup
+
+// 	workerCount := 10
+// 	tasks := make(chan DBObject, len(allTables))
+
+// 	for w := 0; w < workerCount; w++ {
+// 		wg.Add(1)
+// 		go func() {
+// 			defer wg.Done()
+// 			for obj := range tasks {
+// 				var ddl string
+
+// 				// Retry ping
+// 				var err error
+// 				for i := 0; i < 3; i++ {
+// 					if err = db.Ping(); err == nil {
+// 						break
+// 					}
+// 					time.Sleep(time.Second * 2)
+// 				}
+// 				if err != nil {
+// 					progressChan <- fmt.Sprintf("[red]DB connection not alive for %s: %v", obj.Name, err)
+// 					continue
+// 				}
+
+// 				switch obj.Type {
+// 				case "TABLE":
+// 					const insertBatchSize = 1000
+// 					var table, createStmt string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+// 					if err := row.Scan(&table, &createStmt); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+
+// 					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+// 					if err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+// 						break
+// 					}
+// 					defer rows.Close()
+
+// 					cols, _ := rows.Columns()
+// 					colCount := len(cols)
+// 					values := make([]interface{}, colCount)
+// 					valuePtrs := make([]interface{}, colCount)
+
+// 					colList := "`" + strings.Join(cols, "`, `") + "`"
+// 					// util.SaveLog("colList: " + colList)
+// 					var valueRows []string
+
+// 					mu.Lock()
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(ddl + ";\n\n")
+// 					writer.WriteString("-- DATA\n")
+// 					mu.Unlock()
+
+// 					rowCount := 0
+// 					batchCount := 0
+
+// 					for rows.Next() {
+// 						for i := range values {
+// 							valuePtrs[i] = &values[i]
+// 						}
+// 						err := rows.Scan(valuePtrs...)
+// 						if err != nil {
+// 							continue
+// 						}
+
+// 						var valStrings []string
+// 						for _, val := range values {
+// 							switch v := val.(type) {
+// 							case nil:
+// 								valStrings = append(valStrings, "NULL")
+// 							case []byte:
+// 								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
+// 							case string:
+// 								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
+// 							default:
+// 								valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
+// 							}
+// 						}
+
+// 						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
+// 						rowCount++
+
+// 						// Write batch if limit is reached
+// 						if rowCount >= insertBatchSize {
+// 							mu.Lock()
+// 							writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+// 							writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+// 							mu.Unlock()
+
+// 							valueRows = valueRows[:0] // Reset slice
+// 							rowCount = 0
+// 							batchCount++
+// 						}
+// 					}
+
+// 					// Write remaining rows
+// 					if len(valueRows) > 0 {
+// 						mu.Lock()
+// 						writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+// 						writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+// 						mu.Unlock()
+// 					}
+
+// 				// case "TABLE":
+// 				// 	var table, createStmt string
+// 				// 	row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+// 				// 	if err := row.Scan(&table, &createStmt); err != nil {
+// 				// 		progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+// 				// 		continue
+// 				// 	}
+// 				// 	ddl = createStmt
+
+// 				// 	var inserts []string
+// 				// 	rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+// 				// 	if err != nil {
+// 				// 		progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+// 				// 		break
+// 				// 	}
+// 				// 	defer rows.Close()
+
+// 				// 	cols, _ := rows.Columns()
+// 				// 	colCount := len(cols)
+// 				// 	values := make([]interface{}, colCount)
+// 				// 	valuePtrs := make([]interface{}, colCount)
+
+// 				// 	for rows.Next() {
+// 				// 		for i := range values {
+// 				// 			valuePtrs[i] = &values[i]
+// 				// 		}
+// 				// 		err := rows.Scan(valuePtrs...)
+// 				// 		if err != nil {
+// 				// 			continue
+// 				// 		}
+
+// 				// 		var valStrings []string
+// 				// 		for _, val := range values {
+// 				// 			switch v := val.(type) {
+// 				// 			case nil:
+// 				// 				valStrings = append(valStrings, "NULL")
+// 				// 			case []byte:
+// 				// 				valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
+// 				// 			case string:
+// 				// 				valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
+// 				// 			default:
+// 				// 				valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
+// 				// 			}
+// 				// 		}
+// 				// 		insert := fmt.Sprintf("INSERT INTO `%s` VALUES (%s);", obj.Name, strings.Join(valStrings, ", "))
+// 				// 		inserts = append(inserts, insert)
+// 				// 	}
+
+// 				// 	mu.Lock()
+// 				// 	writer.WriteString("-- ----------------------------\n")
+// 				// 	writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+// 				// 	writer.WriteString("-- ----------------------------\n")
+// 				// 	writer.WriteString(ddl + ";\n\n")
+
+// 				// 	if len(inserts) > 0 {
+// 				// 		writer.WriteString("-- DATA\n")
+// 				// 		for _, ins := range inserts {
+// 				// 			writer.WriteString(ins + "\n")
+// 				// 		}
+// 				// 		writer.WriteString("\n")
+// 				// 	}
+// 				// 	mu.Unlock()
+
+// 				case "VIEW":
+// 					var view, createStmt, charset, collation string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+// 					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+
+// 					mu.Lock()
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(ddl + ";\n\n")
+// 					mu.Unlock()
+
+// 				case "PROCEDURE", "FUNCTION":
+// 					var name, sqlMode, createStmt, charset, collation, dbCollation string
+// 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+// 					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
+// 						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+// 						continue
+// 					}
+// 					ddl = createStmt
+
+// 					mu.Lock()
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+// 					writer.WriteString("-- ----------------------------\n")
+// 					writer.WriteString(ddl + ";\n\n")
+// 					mu.Unlock()
+
+// 				}
+
+// 				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+// 			}
+// 		}()
+// 	}
+
+// 	for _, obj := range allTables {
+// 		tasks <- obj
+// 	}
+// 	close(tasks)
+
+// 	wg.Wait()
+// 	close(progressChan)
+// }
+
 // func escapeString(input string) string {
 // 	// Escape single quotes and backslashes
 // 	input = strings.ReplaceAll(input, "\\", "\\\\")
@@ -944,8 +1250,23 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 // 	return input
 // }
 
+// func escapeString(str string) string {
+// 	return strings.ReplaceAll(str, "'", "''")
+// }
+
+// func escapeString(str string) string {
+// 	str = strings.ReplaceAll(str, "'", "''") // Escape single quotes
+// 	str = strings.ReplaceAll(str, "\n", "")  // Remove newlines
+// 	str = strings.ReplaceAll(str, "\r", "")  // Remove carriage returns (Windows-style newlines)
+// 	return str
+// }
+
 func escapeString(str string) string {
-	return strings.ReplaceAll(str, "'", "''")
+	str = strings.ReplaceAll(str, "'", "''") // Escape single quotes
+	str = strings.ReplaceAll(str, "\n", "")  // Remove newlines (Unix-style)
+	str = strings.ReplaceAll(str, "\r", "")  // Remove carriage returns (Windows-style)
+	str = strings.ReplaceAll(str, "\t", "")  // Optional: remove tabs if present
+	return str
 }
 
 // func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
