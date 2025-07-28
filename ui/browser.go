@@ -713,7 +713,17 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	fw := &fileWriters{}
 
 	openGz := func(suffix string) (*os.File, *gzip.Writer, *bufio.Writer, error) {
-		f, err := os.Create(fmt.Sprintf("%s_%s.gz", outputFile, suffix))
+		now := time.Now()
+		dateFolder := now.Format("2006-01-02_150405")
+		fileTimeStamp := now.Format("20060102_150405")
+		dirPath := filepath.Join("export", dateFolder, dbName)
+		if err := os.MkdirAll(dirPath, 0777); err != nil {
+			return nil, nil, nil, fmt.Errorf("failed to create directory: %w", err)
+		}
+		filename := fmt.Sprintf("%s_%s.gz", fileTimeStamp, suffix)
+		fullPath := filepath.Join(dirPath, filename)
+
+		f, err := os.Create(fullPath)
 		if err != nil {
 			return nil, nil, nil, err
 		}
