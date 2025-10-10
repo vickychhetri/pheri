@@ -687,7 +687,8 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 }
 
 func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", User, Pass, Host, Port, dbName)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=true&loc=Local",
+		User, Pass, Host, Port, dbName)
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -732,53 +733,99 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		return f, gz, buf, nil
 	}
 
-	if fw.tableFile, fw.tableGzip, fw.table, err = openGz("table"); err != nil {
+	if fw.tableFile, fw.tableGzip, fw.table, err = openGz("table.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open table file: %v", err)
 		close(progressChan)
 		return
 	}
-	if fw.viewFile, fw.viewGzip, fw.view, err = openGz("view"); err != nil {
+	if fw.viewFile, fw.viewGzip, fw.view, err = openGz("view.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open view file: %v", err)
 		close(progressChan)
 		return
 	}
-	if fw.viewddlFile, fw.viewddlGzip, fw.viewddl, err = openGz("viewddl"); err != nil {
+	if fw.viewddlFile, fw.viewddlGzip, fw.viewddl, err = openGz("viewddl.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open viewddl file: %v", err)
 		close(progressChan)
 		return
 	}
 
-	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure"); err != nil {
+	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open procedure file: %v", err)
 		close(progressChan)
 		return
 	}
-	if fw.functionFile, fw.functionGzip, fw.function, err = openGz("function"); err != nil {
+	if fw.functionFile, fw.functionGzip, fw.function, err = openGz("function.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open function file: %v", err)
 		close(progressChan)
 		return
 	}
 
+	// After opening all files, add character set headers
+	headers := []string{
+		"/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
+		"/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;",
+		"/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;",
+		"/*!40101 SET NAMES utf8mb4 */;",
+		"/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;",
+		"/*!40103 SET TIME_ZONE='+00:00' */;",
+		"/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;",
+		"/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;",
+		"/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;",
+		"/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n",
+	}
+
+	// Write headers to all files
+	writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
+	for _, writer := range writers {
+		for _, header := range headers {
+			_, err := writer.WriteString(header + "\n")
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// Add footers to restore original settings
+	footers := []string{
+		"\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
+		"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+		"/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;",
+		"/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;",
+		"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;",
+		"/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;",
+		"/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;",
+		"/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;",
+	}
+
 	defer func() {
-		fw.table.Flush()
-		fw.tableGzip.Close()
-		fw.tableFile.Close()
+		for _, writer := range writers {
+			for _, footer := range footers {
+				_, err := writer.WriteString(footer + "\n")
+				if err != nil {
+					return
+				}
+			}
+		}
 
-		fw.view.Flush()
-		fw.viewGzip.Close()
-		fw.viewFile.Close()
+		_ = fw.table.Flush()
+		_ = fw.tableGzip.Close()
+		_ = fw.tableFile.Close()
 
-		fw.viewddl.Flush()
-		fw.viewddlGzip.Close()
-		fw.viewddlFile.Close()
+		_ = fw.view.Flush()
+		_ = fw.viewGzip.Close()
+		_ = fw.viewFile.Close()
 
-		fw.procedure.Flush()
-		fw.procedureGzip.Close()
-		fw.procedureFile.Close()
+		_ = fw.viewddl.Flush()
+		_ = fw.viewddlGzip.Close()
+		_ = fw.viewddlFile.Close()
 
-		fw.function.Flush()
-		fw.functionGzip.Close()
-		fw.functionFile.Close()
+		_ = fw.procedure.Flush()
+		_ = fw.procedureGzip.Close()
+		_ = fw.procedureFile.Close()
+
+		_ = fw.function.Flush()
+		_ = fw.functionGzip.Close()
+		_ = fw.functionFile.Close()
 	}()
 
 	var mu sync.Mutex
@@ -832,11 +879,11 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					rowCount := 0
 
 					mu.Lock()
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString(ddl + ";\n\n")
-					writer.WriteString("-- DATA\n")
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString(ddl + ";\n\n")
+					_, _ = writer.WriteString("-- DATA\n")
 					mu.Unlock()
 
 					for rows.Next() {
@@ -867,8 +914,8 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 
 						if rowCount >= insertBatchSize {
 							mu.Lock()
-							writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
-							writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+							_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+							_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
 							mu.Unlock()
 
 							valueRows = valueRows[:0]
@@ -878,8 +925,8 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 
 					if len(valueRows) > 0 {
 						mu.Lock()
-						writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
-						writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+						_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+						_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
 						mu.Unlock()
 					}
 
@@ -932,14 +979,14 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					ddl = createStmt
 
 					mu.Lock()
-					writerddl.WriteString(structBuilder.String())
-					writerddl.Flush()
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
-					writer.WriteString(ddl + ";\n\n")
-					writer.Flush()
+					_, _ = writerddl.WriteString(structBuilder.String())
+					_ = writerddl.Flush()
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
+					_, _ = writer.WriteString(ddl + ";\n\n")
+					_ = writer.Flush()
 					mu.Unlock()
 
 				case "PROCEDURE", "FUNCTION":
@@ -958,12 +1005,12 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					ddl = createStmt
 
 					mu.Lock()
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
-					writer.WriteString("-- ----------------------------\n")
-					writer.WriteString("DELIMITER //\n")
-					writer.WriteString(ddl + ";\n\n")
-					writer.WriteString("// \nDELIMITER ;\n")
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString("DELIMITER //\n")
+					_, _ = writer.WriteString(ddl + ";\n\n")
+					_, _ = writer.WriteString("// \nDELIMITER ;\n")
 					mu.Unlock()
 				}
 
@@ -1271,12 +1318,41 @@ func mapSQLType(mysqlType string) string {
 // 	return str
 // }
 
+//func escapeString(str string) string {
+//	str = strings.ReplaceAll(str, "'", "''") // Escape single quotes
+//	str = strings.ReplaceAll(str, "\n", "")  // Remove newlines (Unix-style)
+//	str = strings.ReplaceAll(str, "\r", "")  // Remove carriage returns (Windows-style)
+//	str = strings.ReplaceAll(str, "\t", "")  // Optional: remove tabs if present
+//	return str
+//}
+
 func escapeString(str string) string {
-	str = strings.ReplaceAll(str, "'", "''") // Escape single quotes
-	str = strings.ReplaceAll(str, "\n", "")  // Remove newlines (Unix-style)
-	str = strings.ReplaceAll(str, "\r", "")  // Remove carriage returns (Windows-style)
-	str = strings.ReplaceAll(str, "\t", "")  // Optional: remove tabs if present
-	return str
+	var buf strings.Builder
+	for i := 0; i < len(str); i++ {
+		switch str[i] {
+		case '\'':
+			buf.WriteString(`\'`) // Escape single quotes
+		case '"':
+			buf.WriteString(`\"`) // Escape double quotes
+		case '\\':
+			buf.WriteString(`\\`) // Escape backslashes
+		case '\n':
+			buf.WriteString(`\n`) // ESCAPE newlines, don't remove
+		case '\r':
+			buf.WriteString(`\r`) // ESCAPE carriage returns, don't remove
+		case '\t':
+			buf.WriteString(`\t`) // ESCAPE tabs, don't remove
+		case '\b':
+			buf.WriteString(`\b`) // Escape backspace
+		case '\x00':
+			buf.WriteString(`\0`) // Escape null bytes
+		case '\x1a':
+			buf.WriteString(`\Z`) // Escape Ctrl+Z (substitute)
+		default:
+			buf.WriteByte(str[i]) // Keep all other characters
+		}
+	}
+	return buf.String()
 }
 
 // func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
