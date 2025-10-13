@@ -39,7 +39,6 @@ func CreateLayoutWithFooter(a *tview.Application, mainContent tview.Primitive) t
 
 	footerLayoput := tview.NewFlex().
 		SetDirection(tview.FlexColumn).
-		AddItem(commandInput, 50, 0, false).
 		AddItem(footer, 0, 1, false)
 
 	layout := tview.NewFlex().

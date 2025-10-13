@@ -6,6 +6,9 @@ import (
 	"compress/gzip"
 	"database/sql"
 	"fmt"
+	"github.com/atotto/clipboard"
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 	"io/fs"
 	"log"
 	"mysql-tui/phhistory"
@@ -15,11 +18,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
-
-	"github.com/atotto/clipboard"
-	"github.com/gdamore/tcell/v2"
-	"github.com/rivo/tview"
 )
 
 var dataTable *tview.Table
@@ -686,9 +686,585 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 	app.SetRoot(modal, true)
 }
 
+//type DBObjectWithDeps struct {
+//	DBObject
+//	Dependencies []string
+//}
+
+//func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+//	// Add timezone parameter to DSN to use UTC
+//	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=true&loc=UTC",
+//		User, Pass, Host, Port, dbName)
+//
+//	db, err := sql.Open("mysql", dsn)
+//	if err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to connect to DB: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	defer db.Close()
+//
+//	db.SetMaxOpenConns(10)
+//	db.SetMaxIdleConns(5)
+//	db.SetConnMaxLifetime(time.Minute * 5)
+//
+//	// Set up multiple writers
+//	type fileWriters struct {
+//		table, view, viewddl, procedure, function *bufio.Writer
+//		tableFile, viewFile, viewddlFile          *os.File
+//		procedureFile, functionFile               *os.File
+//		tableGzip, viewGzip, viewddlGzip          *gzip.Writer
+//		procedureGzip, functionGzip               *gzip.Writer
+//	}
+//
+//	fw := &fileWriters{}
+//
+//	openGz := func(suffix string) (*os.File, *gzip.Writer, *bufio.Writer, error) {
+//		now := time.Now()
+//		dateFolder := now.Format("2006-01-02_150405")
+//		fileTimeStamp := now.Format("20060102_150405")
+//		dirPath := filepath.Join("export", dateFolder, dbName)
+//		if err := os.MkdirAll(dirPath, 0777); err != nil {
+//			return nil, nil, nil, fmt.Errorf("failed to create directory: %w", err)
+//		}
+//		filename := fmt.Sprintf("%s_%s.gz", fileTimeStamp, suffix)
+//		fullPath := filepath.Join(dirPath, filename)
+//
+//		f, err := os.Create(fullPath)
+//		if err != nil {
+//			return nil, nil, nil, err
+//		}
+//		gz := gzip.NewWriter(f)
+//		buf := bufio.NewWriter(gz)
+//		return f, gz, buf, nil
+//	}
+//
+//	if fw.tableFile, fw.tableGzip, fw.table, err = openGz("table.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open table file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.viewFile, fw.viewGzip, fw.view, err = openGz("view.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open view file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.viewddlFile, fw.viewddlGzip, fw.viewddl, err = openGz("viewddl.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open viewddl file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//
+//	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open procedure file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.functionFile, fw.functionGzip, fw.function, err = openGz("function.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open function file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//
+//	// After opening all files, add character set headers
+//	headers := []string{
+//		"/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
+//		"/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;",
+//		"/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;",
+//		"/*!40101 SET NAMES utf8mb4 */;",
+//		"/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;",
+//		"/*!40103 SET TIME_ZONE='+00:00' */;", // Use UTC timezone
+//		"/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;",
+//		"/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;",
+//		"/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;",
+//		"/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n",
+//	}
+//
+//	// Write headers to all files
+//	writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
+//	for _, writer := range writers {
+//		for _, header := range headers {
+//			_, err := writer.WriteString(header + "\n")
+//			if err != nil {
+//				return
+//			}
+//		}
+//	}
+//
+//	// Add footers to restore original settings
+//	footers := []string{
+//		"\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
+//		"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+//		"/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;",
+//		"/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;",
+//		"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;",
+//		"/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;",
+//		"/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;",
+//		"/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;",
+//	}
+//
+//	defer func() {
+//		for _, writer := range writers {
+//			for _, footer := range footers {
+//				_, err := writer.WriteString(footer + "\n")
+//				if err != nil {
+//					return
+//				}
+//			}
+//		}
+//
+//		_ = fw.table.Flush()
+//		_ = fw.tableGzip.Close()
+//		_ = fw.tableFile.Close()
+//
+//		_ = fw.view.Flush()
+//		_ = fw.viewGzip.Close()
+//		_ = fw.viewFile.Close()
+//
+//		_ = fw.viewddl.Flush()
+//		_ = fw.viewddlGzip.Close()
+//		_ = fw.viewddlFile.Close()
+//
+//		_ = fw.procedure.Flush()
+//		_ = fw.procedureGzip.Close()
+//		_ = fw.procedureFile.Close()
+//
+//		_ = fw.function.Flush()
+//		_ = fw.functionGzip.Close()
+//		_ = fw.functionFile.Close()
+//	}()
+//
+//	// First, categorize objects by type and get dependencies
+//	type DBObjectWithDeps struct {
+//		DBObject
+//		Dependencies []string
+//	}
+//
+//	var allObjectsWithDeps []DBObjectWithDeps
+//
+//	// Get all tables first to understand dependencies
+//	for _, obj := range allTables {
+//		deps := []string{}
+//		if obj.Type == "VIEW" {
+//			// For views, we need to parse the CREATE VIEW to find table dependencies
+//			var view, createStmt, charset, collation string
+//			row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+//			if err := row.Scan(&view, &createStmt, &charset, &collation); err == nil {
+//				// Simple regex to find table references in the view
+//				// This is a basic implementation - you might need to enhance it
+//				re := regexp.MustCompile(`FROM\s+` + "`" + `([^` + "`" + `]+)` + "`" + `|JOIN\s+` + "`" + `([^` + "`" + `]+)` + "`")
+//				matches := re.FindAllStringSubmatch(createStmt, -1)
+//				for _, match := range matches {
+//					if len(match) > 1 && match[1] != "" {
+//						deps = append(deps, match[1])
+//					}
+//				}
+//			}
+//		}
+//		allObjectsWithDeps = append(allObjectsWithDeps, DBObjectWithDeps{
+//			DBObject:     obj,
+//			Dependencies: deps,
+//		})
+//	}
+//
+//	// Sort objects for proper import order:
+//	// 1. Tables (without foreign key dependencies first)
+//	// 2. Functions
+//	// 3. Procedures
+//	// 4. Views (after all tables they depend on)
+//
+//	var tables, functions, procedures, views []DBObjectWithDeps
+//	for _, obj := range allObjectsWithDeps {
+//		switch obj.Type {
+//		case "TABLE":
+//			tables = append(tables, obj)
+//		case "FUNCTION":
+//			functions = append(functions, obj)
+//		case "PROCEDURE":
+//			procedures = append(procedures, obj)
+//		case "VIEW":
+//			views = append(views, obj)
+//		}
+//	}
+//
+//	// Reorder tables to handle foreign key dependencies (basic topological sort)
+//	orderedTables := orderTablesByDependencies(tables, db)
+//
+//	// Create the final execution order
+//	var executionOrder []DBObjectWithDeps
+//	executionOrder = append(executionOrder, orderedTables...) // Tables first
+//	executionOrder = append(executionOrder, functions...)     // Then functions
+//	executionOrder = append(executionOrder, procedures...)    // Then procedures
+//	executionOrder = append(executionOrder, views...)         // Views last (they depend on tables)
+//
+//	var mu sync.Mutex
+//	var wg sync.WaitGroup
+//
+//	workerCount := 10
+//	tasks := make(chan DBObjectWithDeps, len(executionOrder))
+//
+//	// Helper function to properly format values
+//	formatValue := func(val interface{}) string {
+//		switch v := val.(type) {
+//		case nil:
+//			return "NULL"
+//		case []byte:
+//			// Check if it's a datetime/timestamp by trying to parse it
+//			strVal := string(v)
+//
+//			// Try to parse as datetime/timestamp
+//			if t, err := time.Parse("2006-01-02 15:04:05", strVal); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+//			}
+//			if t, err := time.Parse("2006-01-02 15:04:05.999999", strVal); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05.999999"))
+//			}
+//			if t, err := time.Parse(time.RFC3339, strVal); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+//			}
+//
+//			// It's not a datetime, treat as string
+//			return fmt.Sprintf("'%s'", escapeString(strVal))
+//		case string:
+//			// Try to parse as datetime/timestamp
+//			if t, err := time.Parse("2006-01-02 15:04:05", v); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+//			}
+//			if t, err := time.Parse("2006-01-02 15:04:05.999999", v); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05.999999"))
+//			}
+//			if t, err := time.Parse(time.RFC3339, v); err == nil {
+//				return fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+//			}
+//
+//			// It's not a datetime, treat as string
+//			return fmt.Sprintf("'%s'", escapeString(v))
+//		case time.Time:
+//			return fmt.Sprintf("'%s'", v.Format("2006-01-02 15:04:05"))
+//		default:
+//			// For numeric types and others
+//			return fmt.Sprintf("'%v'", v)
+//		}
+//	}
+//
+//	for w := 0; w < workerCount; w++ {
+//		wg.Add(1)
+//		go func() {
+//			defer wg.Done()
+//			for obj := range tasks {
+//				var ddl string
+//				var writer *bufio.Writer
+//				var writerddl *bufio.Writer
+//
+//				for i := 0; i < 3; i++ {
+//					if err := db.Ping(); err == nil {
+//						break
+//					}
+//					time.Sleep(2 * time.Second)
+//				}
+//
+//				switch obj.Type {
+//				case "TABLE":
+//					writer = fw.table
+//					const insertBatchSize = 1000
+//					var table, createStmt string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+//					if err := row.Scan(&table, &createStmt); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					// Remove foreign key constraints for export (they'll be added later)
+//					ddl = removeForeignKeyConstraints(ddl)
+//
+//					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+//					if err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					defer rows.Close()
+//
+//					cols, _ := rows.Columns()
+//					colTypes, _ := rows.ColumnTypes()
+//					colCount := len(cols)
+//					values := make([]interface{}, colCount)
+//					valuePtrs := make([]interface{}, colCount)
+//					colList := "`" + strings.Join(cols, "`, `") + "`"
+//
+//					var valueRows []string
+//					rowCount := 0
+//
+//					mu.Lock()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
+//					_, _ = writer.WriteString(ddl + ";\n\n")
+//					_, _ = writer.WriteString("-- DATA\n")
+//					mu.Unlock()
+//
+//					for rows.Next() {
+//						for i := range values {
+//							valuePtrs[i] = &values[i]
+//						}
+//						err := rows.Scan(valuePtrs...)
+//						if err != nil {
+//							continue
+//						}
+//
+//						var valStrings []string
+//						for i, val := range values {
+//							// Check if column is datetime/timestamp type
+//							colType := colTypes[i].DatabaseTypeName()
+//							if colType == "DATETIME" || colType == "TIMESTAMP" {
+//								// Handle datetime types specifically
+//								if v, ok := val.([]byte); ok {
+//									strVal := string(v)
+//									if t, err := time.Parse("2006-01-02 15:04:05", strVal); err == nil {
+//										valStrings = append(valStrings, fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05")))
+//										continue
+//									}
+//									if t, err := time.Parse("2006-01-02 15:04:05.999999", strVal); err == nil {
+//										valStrings = append(valStrings, fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05.999999")))
+//										continue
+//									}
+//								}
+//							}
+//							valStrings = append(valStrings, formatValue(val))
+//						}
+//
+//						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
+//						rowCount++
+//
+//						if rowCount >= insertBatchSize {
+//							mu.Lock()
+//							_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+//							_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+//							mu.Unlock()
+//
+//							valueRows = valueRows[:0]
+//							rowCount = 0
+//						}
+//					}
+//
+//					if len(valueRows) > 0 {
+//						mu.Lock()
+//						_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+//						_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+//						mu.Unlock()
+//					}
+//
+//				case "VIEW":
+//					writerddl = fw.viewddl
+//					writer = fw.view
+//					var view, createStmt, charset, collation string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+//					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					mu.Lock()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString("DROP VIEW IF EXISTS `" + obj.Name + "`;\n")
+//					_, _ = writer.WriteString(ddl + ";\n\n")
+//					_ = writer.Flush()
+//					mu.Unlock()
+//
+//				case "PROCEDURE", "FUNCTION":
+//					if obj.Type == "PROCEDURE" {
+//						writer = fw.procedure
+//					} else {
+//						writer = fw.function
+//					}
+//
+//					var name, sqlMode, createStmt, charset, collation, dbCollation string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+//					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					mu.Lock()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("DROP %s IF EXISTS `%s`;\n", obj.Type, obj.Name))
+//					_, _ = writer.WriteString("DELIMITER //\n")
+//					_, _ = writer.WriteString(ddl + "//\n")
+//					_, _ = writer.WriteString("DELIMITER ;\n\n")
+//					mu.Unlock()
+//				}
+//
+//				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+//				time.Sleep(50 * time.Millisecond)
+//			}
+//		}()
+//	}
+//
+//	// Send objects in proper order
+//	for _, obj := range executionOrder {
+//		tasks <- obj
+//	}
+//	close(tasks)
+//
+//	wg.Wait()
+//
+//	// After all data is exported, add foreign key constraints at the end
+//	addForeignKeyConstraints(fw.table, db, tables)
+//
+//	close(progressChan)
+//}
+//
+//// Helper functions for proper MySQL import order
+//
+//func orderTablesByDependencies(tables []DBObjectWithDeps, db *sql.DB) []DBObjectWithDeps {
+//	// Simple topological sort for tables based on foreign key dependencies
+//	graph := make(map[string][]string)
+//	inDegree := make(map[string]int)
+//
+//	// Build dependency graph
+//	for _, table := range tables {
+//		tableName := table.Name
+//		inDegree[tableName] = 0
+//		graph[tableName] = []string{}
+//
+//		// Get foreign key dependencies for this table
+//		rows, err := db.Query(`
+//			SELECT REFERENCED_TABLE_NAME
+//			FROM information_schema.KEY_COLUMN_USAGE
+//			WHERE TABLE_SCHEMA = DATABASE()
+//			AND TABLE_NAME = ?
+//			AND REFERENCED_TABLE_NAME IS NOT NULL
+//		`, tableName)
+//
+//		if err == nil {
+//			defer rows.Close()
+//			for rows.Next() {
+//				var refTable string
+//				if err := rows.Scan(&refTable); err == nil {
+//					graph[tableName] = append(graph[tableName], refTable)
+//					inDegree[refTable]++
+//				}
+//			}
+//		}
+//	}
+//
+//	// Topological sort
+//	var result []DBObjectWithDeps
+//	var queue []string
+//
+//	// Add tables with no dependencies
+//	for tableName, deg := range inDegree {
+//		if deg == 0 {
+//			queue = append(queue, tableName)
+//		}
+//	}
+//
+//	for len(queue) > 0 {
+//		current := queue[0]
+//		queue = queue[1:]
+//
+//		// Find and add the table object to result
+//		for _, table := range tables {
+//			if table.Name == current {
+//				result = append(result, table)
+//				break
+//			}
+//		}
+//
+//		// Reduce in-degree of neighbors
+//		for _, neighbor := range graph[current] {
+//			inDegree[neighbor]--
+//			if inDegree[neighbor] == 0 {
+//				queue = append(queue, neighbor)
+//			}
+//		}
+//	}
+//
+//	// If there are cycles or remaining tables, add them at the end
+//	if len(result) < len(tables) {
+//		added := make(map[string]bool)
+//		for _, table := range result {
+//			added[table.Name] = true
+//		}
+//		for _, table := range tables {
+//			if !added[table.Name] {
+//				result = append(result, table)
+//			}
+//		}
+//	}
+//
+//	return result
+//}
+//
+//func removeForeignKeyConstraints(createStmt string) string {
+//	// Remove FOREIGN KEY constraints from CREATE TABLE statement
+//	lines := strings.Split(createStmt, "\n")
+//	var result []string
+//	inFk := false
+//
+//	for _, line := range lines {
+//		trimmed := strings.TrimSpace(line)
+//		if strings.HasPrefix(trimmed, "CONSTRAINT") && strings.Contains(trimmed, "FOREIGN KEY") {
+//			inFk = true
+//			continue
+//		}
+//		if inFk && strings.HasSuffix(trimmed, ",") {
+//			inFk = false
+//			continue
+//		}
+//		if inFk && strings.HasSuffix(trimmed, ")") {
+//			inFk = false
+//			continue
+//		}
+//		if !inFk {
+//			result = append(result, line)
+//		}
+//	}
+//
+//	return strings.Join(result, "\n")
+//}
+//
+//func addForeignKeyConstraints(writer *bufio.Writer, db *sql.DB, tables []DBObjectWithDeps) {
+//	// Add foreign key constraints at the end of the file
+//	writer.WriteString("\n\n-- ----------------------------\n")
+//	writer.WriteString("-- FOREIGN KEY CONSTRAINTS\n")
+//	writer.WriteString("-- ----------------------------\n")
+//
+//	for _, table := range tables {
+//		rows, err := db.Query(`
+//			SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+//			FROM information_schema.KEY_COLUMN_USAGE
+//			WHERE TABLE_SCHEMA = DATABASE()
+//			AND TABLE_NAME = ?
+//			AND REFERENCED_TABLE_NAME IS NOT NULL
+//		`, table.Name)
+//
+//		if err != nil {
+//			continue
+//		}
+//		defer rows.Close()
+//
+//		for rows.Next() {
+//			var constraintName, columnName, refTable, refColumn string
+//			if err := rows.Scan(&constraintName, &columnName, &refTable, &refColumn); err == nil {
+//				fkSQL := fmt.Sprintf("ALTER TABLE `%s` ADD CONSTRAINT `%s` FOREIGN KEY (`%s`) REFERENCES `%s` (`%s`);\n",
+//					table.Name, constraintName, columnName, refTable, refColumn)
+//				writer.WriteString(fkSQL)
+//			}
+//		}
+//	}
+//}
+
 func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=true&loc=Local",
-		User, Pass, Host, Port, dbName)
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=false",
+		User, Pass, Host, Port, dbName) // parseTime=false keeps raw DB datetime values
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
@@ -696,13 +1272,23 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		close(progressChan)
 		return
 	}
-	defer db.Close()
+
+	defer func() {
+		// Restore SQL mode before closing
+		_, _ = db.Exec("SET sql_mode = @old_sql_mode;")
+		db.Close()
+	}()
 
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(time.Minute * 5)
 
-	// Set up multiple writers
+	// Save current SQL mode
+	_, _ = db.Exec("SET @old_sql_mode = @@sql_mode;")
+
+	// Disable ONLY_FULL_GROUP_BY if present
+	_, _ = db.Exec("SET sql_mode=(SELECT REPLACE(@@sql_mode, 'ONLY_FULL_GROUP_BY', ''));")
+
 	type fileWriters struct {
 		table, view, viewddl, procedure, function *bufio.Writer
 		tableFile, viewFile, viewddlFile          *os.File
@@ -748,7 +1334,6 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		close(progressChan)
 		return
 	}
-
 	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure.sql"); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to open procedure file: %v", err)
 		close(progressChan)
@@ -760,7 +1345,6 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		return
 	}
 
-	// After opening all files, add character set headers
 	headers := []string{
 		"/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
 		"/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;",
@@ -774,18 +1358,13 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		"/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n",
 	}
 
-	// Write headers to all files
 	writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
 	for _, writer := range writers {
 		for _, header := range headers {
-			_, err := writer.WriteString(header + "\n")
-			if err != nil {
-				return
-			}
+			_, _ = writer.WriteString(header + "\n")
 		}
 	}
 
-	// Add footers to restore original settings
 	footers := []string{
 		"\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
 		"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
@@ -800,40 +1379,33 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	defer func() {
 		for _, writer := range writers {
 			for _, footer := range footers {
-				_, err := writer.WriteString(footer + "\n")
-				if err != nil {
-					return
-				}
+				_, _ = writer.WriteString(footer + "\n")
 			}
+			_ = writer.Flush()
 		}
 
-		_ = fw.table.Flush()
 		_ = fw.tableGzip.Close()
 		_ = fw.tableFile.Close()
-
-		_ = fw.view.Flush()
 		_ = fw.viewGzip.Close()
 		_ = fw.viewFile.Close()
-
-		_ = fw.viewddl.Flush()
 		_ = fw.viewddlGzip.Close()
 		_ = fw.viewddlFile.Close()
-
-		_ = fw.procedure.Flush()
 		_ = fw.procedureGzip.Close()
 		_ = fw.procedureFile.Close()
-
-		_ = fw.function.Flush()
 		_ = fw.functionGzip.Close()
 		_ = fw.functionFile.Close()
 	}()
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-
 	workerCount := 10
 	tasks := make(chan DBObject, len(allTables))
 
+	totalObjects := len(allTables)
+	var completed int64
+	startTime := time.Now()
+
+	// Spawn workers
 	for w := 0; w < workerCount; w++ {
 		wg.Add(1)
 		go func() {
@@ -843,13 +1415,6 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 				var writer *bufio.Writer
 				var writerddl *bufio.Writer
 
-				for i := 0; i < 3; i++ {
-					if err := db.Ping(); err == nil {
-						break
-					}
-					time.Sleep(2 * time.Second)
-				}
-
 				switch obj.Type {
 				case "TABLE":
 					writer = fw.table
@@ -857,14 +1422,14 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					var table, createStmt string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
 					if err := row.Scan(&table, &createStmt); err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed TABLE: %s - %v", obj.Name, err)
 						continue
 					}
 					ddl = createStmt
 
 					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
 					if err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed DATA TABLE: %s - %v", obj.Name, err)
 						continue
 					}
 					defer rows.Close()
@@ -874,16 +1439,13 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					values := make([]interface{}, colCount)
 					valuePtrs := make([]interface{}, colCount)
 					colList := "`" + strings.Join(cols, "`, `") + "`"
-
 					var valueRows []string
 					rowCount := 0
 
 					mu.Lock()
-					_, _ = writer.WriteString("-- ----------------------------\n")
+					_, _ = writer.WriteString("\n-- ===== TABLE =====\n")
 					_, _ = writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
-					_, _ = writer.WriteString("-- ----------------------------\n")
 					_, _ = writer.WriteString(ddl + ";\n\n")
-					_, _ = writer.WriteString("-- DATA\n")
 					mu.Unlock()
 
 					for rows.Next() {
@@ -895,34 +1457,31 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 							continue
 						}
 
-						var valStrings []string
-						for _, val := range values {
+						valStrings := make([]string, colCount)
+						for i, val := range values {
 							switch v := val.(type) {
 							case nil:
-								valStrings = append(valStrings, "NULL")
+								valStrings[i] = "NULL"
 							case []byte:
-								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
+								valStrings[i] = fmt.Sprintf("'%s'", escapeString(string(v)))
 							case string:
-								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
+								valStrings[i] = fmt.Sprintf("'%s'", escapeString(v))
 							default:
-								valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
+								valStrings[i] = fmt.Sprintf("'%v'", v)
 							}
 						}
 
 						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
 						rowCount++
-
 						if rowCount >= insertBatchSize {
 							mu.Lock()
 							_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
 							_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
 							mu.Unlock()
-
 							valueRows = valueRows[:0]
 							rowCount = 0
 						}
 					}
-
 					if len(valueRows) > 0 {
 						mu.Lock()
 						_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
@@ -932,48 +1491,45 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 
 				case "VIEW":
 					writerddl = fw.viewddl
+					writer = fw.view
 					columnQuery := fmt.Sprintf("SELECT * FROM `%s` LIMIT 0", obj.Name)
 					rowsddl, err := db.Query(columnQuery)
 					if err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to select data from VIEW: %s - %v", obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed VIEW: %s - %v", obj.Name, err)
 						continue
 					}
 					cols, err := rowsddl.ColumnTypes()
 					rowsddl.Close()
 					if err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to get column types from VIEW: %s - %v", obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed VIEW: %s - %v", obj.Name, err)
 						continue
 					}
+
 					var structBuilder strings.Builder
-					structBuilder.WriteString("-- ----------------------------\n")
-					structBuilder.WriteString(fmt.Sprintf("--  STRUCTURE (DUMMY TABLE FOR VIEW): %s\n", obj.Name))
-					structBuilder.WriteString("-- ----------------------------\n")
+					structBuilder.WriteString(fmt.Sprintf("-- STRUCTURE FOR VIEW: %s\n", obj.Name))
 					structBuilder.WriteString(fmt.Sprintf("CREATE TABLE `%s` (\n", obj.Name))
 					for i, col := range cols {
 						colName := col.Name()
-						colType := col.DatabaseTypeName()
+						colType := mapSQLType(col.DatabaseTypeName())
 						nullable, _ := col.Nullable()
 						nullStr := "NOT NULL"
 						if nullable {
 							nullStr = "NULL"
 						}
-
-						colDef := fmt.Sprintf("  `%s` %s %s", colName, mapSQLType(colType), nullStr)
-
+						colDef := fmt.Sprintf("  `%s` %s %s", colName, colType, nullStr)
 						if i < len(cols)-1 {
 							colDef += ",\n"
-
 						} else {
 							colDef += "\n"
 						}
 						structBuilder.WriteString(colDef)
 					}
 					structBuilder.WriteString(");\n\n")
-					writer = fw.view
+
 					var view, createStmt, charset, collation string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
 					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed CREATE VIEW: %s - %v", obj.Name, err)
 						continue
 					}
 					ddl = createStmt
@@ -981,12 +1537,9 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					mu.Lock()
 					_, _ = writerddl.WriteString(structBuilder.String())
 					_ = writerddl.Flush()
-					_, _ = writer.WriteString("-- ----------------------------\n")
 					_, _ = writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
-					_, _ = writer.WriteString("-- ----------------------------\n")
 					_, _ = writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
 					_, _ = writer.WriteString(ddl + ";\n\n")
-					_ = writer.Flush()
 					mu.Unlock()
 
 				case "PROCEDURE", "FUNCTION":
@@ -995,39 +1548,402 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					} else {
 						writer = fw.function
 					}
-
 					var name, sqlMode, createStmt, charset, collation, dbCollation string
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
 					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+						progressChan <- fmt.Sprintf("[yellow]Failed %s: %s - %v", obj.Type, obj.Name, err)
 						continue
 					}
 					ddl = createStmt
 
 					mu.Lock()
-					_, _ = writer.WriteString("-- ----------------------------\n")
 					_, _ = writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
-					_, _ = writer.WriteString("-- ----------------------------\n")
 					_, _ = writer.WriteString("DELIMITER //\n")
-					_, _ = writer.WriteString(ddl + ";\n\n")
-					_, _ = writer.WriteString("// \nDELIMITER ;\n")
+					_, _ = writer.WriteString(ddl + ";\n//\nDELIMITER ;\n\n")
 					mu.Unlock()
 				}
 
-				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
-				time.Sleep(50 * time.Millisecond)
+				//progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+				//time.Sleep(50 * time.Millisecond)
+				atomic.AddInt64(&completed, 1)
+				elapsed := time.Since(startTime).Seconds()
+				percent := float64(completed) / float64(totalObjects) * 100
+				eta := time.Duration((elapsed/float64(completed))*float64(totalObjects-int(completed))) * time.Second
+
+				progressChan <- fmt.Sprintf("[green]Exported %-10s: %-30s [%.1f%%] (ETA %s)",
+					obj.Type, obj.Name, percent, eta.Round(time.Second))
+
 			}
 		}()
 	}
 
+	// === ORDER FIX: TABLE → VIEW → PROCEDURE → FUNCTION ===
+	var tables, views, procedures, functions []DBObject
 	for _, obj := range allTables {
+		switch obj.Type {
+		case "TABLE":
+			tables = append(tables, obj)
+		case "VIEW":
+			views = append(views, obj)
+		case "PROCEDURE":
+			procedures = append(procedures, obj)
+		case "FUNCTION":
+			functions = append(functions, obj)
+		}
+	}
+	orderedObjects := append(append(append(tables, views...), procedures...), functions...)
+
+	for _, obj := range orderedObjects {
 		tasks <- obj
 	}
 	close(tasks)
-
 	wg.Wait()
 	close(progressChan)
+
 }
+
+//func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
+//	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=true&loc=Local",
+//		User, Pass, Host, Port, dbName)
+//
+//	db, err := sql.Open("mysql", dsn)
+//	if err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to connect to DB: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	defer db.Close()
+//
+//	db.SetMaxOpenConns(10)
+//	db.SetMaxIdleConns(5)
+//	db.SetConnMaxLifetime(time.Minute * 5)
+//
+//	// Set up multiple writers
+//	type fileWriters struct {
+//		table, view, viewddl, procedure, function *bufio.Writer
+//		tableFile, viewFile, viewddlFile          *os.File
+//		procedureFile, functionFile               *os.File
+//		tableGzip, viewGzip, viewddlGzip          *gzip.Writer
+//		procedureGzip, functionGzip               *gzip.Writer
+//	}
+//
+//	fw := &fileWriters{}
+//
+//	openGz := func(suffix string) (*os.File, *gzip.Writer, *bufio.Writer, error) {
+//		now := time.Now()
+//		dateFolder := now.Format("2006-01-02_150405")
+//		fileTimeStamp := now.Format("20060102_150405")
+//		dirPath := filepath.Join("export", dateFolder, dbName)
+//		if err := os.MkdirAll(dirPath, 0777); err != nil {
+//			return nil, nil, nil, fmt.Errorf("failed to create directory: %w", err)
+//		}
+//		filename := fmt.Sprintf("%s_%s.gz", fileTimeStamp, suffix)
+//		fullPath := filepath.Join(dirPath, filename)
+//
+//		f, err := os.Create(fullPath)
+//		if err != nil {
+//			return nil, nil, nil, err
+//		}
+//		gz := gzip.NewWriter(f)
+//		buf := bufio.NewWriter(gz)
+//		return f, gz, buf, nil
+//	}
+//
+//	if fw.tableFile, fw.tableGzip, fw.table, err = openGz("table.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open table file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.viewFile, fw.viewGzip, fw.view, err = openGz("view.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open view file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.viewddlFile, fw.viewddlGzip, fw.viewddl, err = openGz("viewddl.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open viewddl file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//
+//	if fw.procedureFile, fw.procedureGzip, fw.procedure, err = openGz("procedure.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open procedure file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//	if fw.functionFile, fw.functionGzip, fw.function, err = openGz("function.sql"); err != nil {
+//		progressChan <- fmt.Sprintf("[red]Failed to open function file: %v", err)
+//		close(progressChan)
+//		return
+//	}
+//
+//	// After opening all files, add character set headers
+//	headers := []string{
+//		"/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
+//		"/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;",
+//		"/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;",
+//		"/*!40101 SET NAMES utf8mb4 */;",
+//		"/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;",
+//		"/*!40103 SET TIME_ZONE='+00:00' */;",
+//		"/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;",
+//		"/*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;",
+//		"/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;",
+//		"/*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;\n\n",
+//	}
+//
+//	// Write headers to all files
+//	writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
+//	for _, writer := range writers {
+//		for _, header := range headers {
+//			_, err := writer.WriteString(header + "\n")
+//			if err != nil {
+//				return
+//			}
+//		}
+//	}
+//
+//	// Add footers to restore original settings
+//	footers := []string{
+//		"\n/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
+//		"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+//		"/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */;",
+//		"/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */;",
+//		"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;",
+//		"/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;",
+//		"/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;",
+//		"/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;",
+//	}
+//
+//	defer func() {
+//		for _, writer := range writers {
+//			for _, footer := range footers {
+//				_, err := writer.WriteString(footer + "\n")
+//				if err != nil {
+//					return
+//				}
+//			}
+//		}
+//
+//		_ = fw.table.Flush()
+//		_ = fw.tableGzip.Close()
+//		_ = fw.tableFile.Close()
+//
+//		_ = fw.view.Flush()
+//		_ = fw.viewGzip.Close()
+//		_ = fw.viewFile.Close()
+//
+//		_ = fw.viewddl.Flush()
+//		_ = fw.viewddlGzip.Close()
+//		_ = fw.viewddlFile.Close()
+//
+//		_ = fw.procedure.Flush()
+//		_ = fw.procedureGzip.Close()
+//		_ = fw.procedureFile.Close()
+//
+//		_ = fw.function.Flush()
+//		_ = fw.functionGzip.Close()
+//		_ = fw.functionFile.Close()
+//	}()
+//
+//	var mu sync.Mutex
+//	var wg sync.WaitGroup
+//
+//	workerCount := 10
+//	tasks := make(chan DBObject, len(allTables))
+//
+//	for w := 0; w < workerCount; w++ {
+//		wg.Add(1)
+//		go func() {
+//			defer wg.Done()
+//			for obj := range tasks {
+//				var ddl string
+//				var writer *bufio.Writer
+//				var writerddl *bufio.Writer
+//
+//				for i := 0; i < 3; i++ {
+//					if err := db.Ping(); err == nil {
+//						break
+//					}
+//					time.Sleep(2 * time.Second)
+//				}
+//
+//				switch obj.Type {
+//				case "TABLE":
+//					writer = fw.table
+//					const insertBatchSize = 1000
+//					var table, createStmt string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+//					if err := row.Scan(&table, &createStmt); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export TABLE: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+//					if err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to select data from TABLE: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					defer rows.Close()
+//
+//					cols, _ := rows.Columns()
+//					colCount := len(cols)
+//					values := make([]interface{}, colCount)
+//					valuePtrs := make([]interface{}, colCount)
+//					colList := "`" + strings.Join(cols, "`, `") + "`"
+//
+//					var valueRows []string
+//					rowCount := 0
+//
+//					mu.Lock()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- TABLE: %s\n", obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(ddl + ";\n\n")
+//					_, _ = writer.WriteString("-- DATA\n")
+//					mu.Unlock()
+//
+//					for rows.Next() {
+//						for i := range values {
+//							valuePtrs[i] = &values[i]
+//						}
+//						err := rows.Scan(valuePtrs...)
+//						if err != nil {
+//							continue
+//						}
+//
+//						var valStrings []string
+//						for _, val := range values {
+//							switch v := val.(type) {
+//							case nil:
+//								valStrings = append(valStrings, "NULL")
+//							case []byte:
+//								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(string(v))))
+//							case string:
+//								valStrings = append(valStrings, fmt.Sprintf("'%s'", escapeString(v)))
+//							default:
+//								valStrings = append(valStrings, fmt.Sprintf("'%v'", v))
+//							}
+//						}
+//
+//						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
+//						rowCount++
+//
+//						if rowCount >= insertBatchSize {
+//							mu.Lock()
+//							_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+//							_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+//							mu.Unlock()
+//
+//							valueRows = valueRows[:0]
+//							rowCount = 0
+//						}
+//					}
+//
+//					if len(valueRows) > 0 {
+//						mu.Lock()
+//						_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+//						_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+//						mu.Unlock()
+//					}
+//
+//				case "VIEW":
+//					writerddl = fw.viewddl
+//					columnQuery := fmt.Sprintf("SELECT * FROM `%s` LIMIT 0", obj.Name)
+//					rowsddl, err := db.Query(columnQuery)
+//					if err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to select data from VIEW: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					cols, err := rowsddl.ColumnTypes()
+//					rowsddl.Close()
+//					if err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to get column types from VIEW: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					var structBuilder strings.Builder
+//					structBuilder.WriteString("-- ----------------------------\n")
+//					structBuilder.WriteString(fmt.Sprintf("--  STRUCTURE (DUMMY TABLE FOR VIEW): %s\n", obj.Name))
+//					structBuilder.WriteString("-- ----------------------------\n")
+//					structBuilder.WriteString(fmt.Sprintf("CREATE TABLE `%s` (\n", obj.Name))
+//					for i, col := range cols {
+//						colName := col.Name()
+//						colType := col.DatabaseTypeName()
+//						nullable, _ := col.Nullable()
+//						nullStr := "NOT NULL"
+//						if nullable {
+//							nullStr = "NULL"
+//						}
+//
+//						colDef := fmt.Sprintf("  `%s` %s %s", colName, mapSQLType(colType), nullStr)
+//
+//						if i < len(cols)-1 {
+//							colDef += ",\n"
+//
+//						} else {
+//							colDef += "\n"
+//						}
+//						structBuilder.WriteString(colDef)
+//					}
+//					structBuilder.WriteString(");\n\n")
+//					writer = fw.view
+//					var view, createStmt, charset, collation string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE VIEW `%s`", obj.Name))
+//					if err := row.Scan(&view, &createStmt, &charset, &collation); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export VIEW: %s - %v", obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					mu.Lock()
+//					_, _ = writerddl.WriteString(structBuilder.String())
+//					_ = writerddl.Flush()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- VIEW: %s\n", obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString("DROP TABLE IF EXISTS `" + obj.Name + "`;\n")
+//					_, _ = writer.WriteString(ddl + ";\n\n")
+//					_ = writer.Flush()
+//					mu.Unlock()
+//
+//				case "PROCEDURE", "FUNCTION":
+//					if obj.Type == "PROCEDURE" {
+//						writer = fw.procedure
+//					} else {
+//						writer = fw.function
+//					}
+//
+//					var name, sqlMode, createStmt, charset, collation, dbCollation string
+//					row := db.QueryRow(fmt.Sprintf("SHOW CREATE %s `%s`", obj.Type, obj.Name))
+//					if err := row.Scan(&name, &sqlMode, &createStmt, &charset, &collation, &dbCollation); err != nil {
+//						progressChan <- fmt.Sprintf("[yellow]Failed to export %s: %s - %v", obj.Type, obj.Name, err)
+//						continue
+//					}
+//					ddl = createStmt
+//
+//					mu.Lock()
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString(fmt.Sprintf("-- %s: %s\n", obj.Type, obj.Name))
+//					_, _ = writer.WriteString("-- ----------------------------\n")
+//					_, _ = writer.WriteString("DELIMITER //\n")
+//					_, _ = writer.WriteString(ddl + ";\n\n")
+//					_, _ = writer.WriteString("// \nDELIMITER ;\n")
+//					mu.Unlock()
+//				}
+//
+//				progressChan <- fmt.Sprintf("[green]Exported %s: %s", obj.Type, obj.Name)
+//				time.Sleep(50 * time.Millisecond)
+//			}
+//		}()
+//	}
+//
+//	for _, obj := range allTables {
+//		tasks <- obj
+//	}
+//	close(tasks)
+//
+//	wg.Wait()
+//	close(progressChan)
+//}
 
 func mapSQLType(mysqlType string) string {
 	switch strings.ToUpper(mysqlType) {
@@ -1847,34 +2763,82 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				})
 				app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 
+					//if event.Key() == tcell.KeyCtrlY {
+					//
+					//	go func() {
+					//		progressChan := make(chan string)
+					//
+					//		go func() {
+					//			for msg := range progressChan {
+					//				util.SaveLog(msg)
+					//			}
+					//		}()
+					//		app.QueueUpdateDraw(func() {
+					//			progressView.SetText("[blue]Starting export...\n")
+					//			app.SetRoot(progressView, true)
+					//		})
+					//
+					//		util.SaveLog(fmt.Sprintf("Exporting %d objects...\n", len(allTables)))
+					//
+					//		go exportAllObjects("backup.sql", progressChan, dbName)
+					//
+					//		// Read from progress channel and update UI
+					//		go func() {
+					//			for msg := range progressChan {
+					//				app.QueueUpdateDraw(func() {
+					//					fmt.Fprintln(progressView, msg)
+					//				})
+					//			}
+					//
+					//			// After export is done
+					//			app.QueueUpdateDraw(func() {
+					//				modal := tview.NewModal().
+					//					SetText("Export completed successfully!").
+					//					AddButtons([]string{"OK"}).
+					//					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					//						app.SetRoot(mainFlex, true)
+					//					})
+					//				app.SetRoot(modal, true)
+					//			})
+					//		}()
+					//	}()
+					//	return nil
+					//}
+
 					if event.Key() == tcell.KeyCtrlY {
 
 						go func() {
 							progressChan := make(chan string)
 
+							// Log writer goroutine
 							go func() {
 								for msg := range progressChan {
 									util.SaveLog(msg)
 								}
 							}()
+
 							app.QueueUpdateDraw(func() {
+								progressView.SetDynamicColors(true)
 								progressView.SetText("[blue]Starting export...\n")
+								progressView.ScrollToEnd() // 👈 scroll to bottom immediately
 								app.SetRoot(progressView, true)
 							})
 
 							util.SaveLog(fmt.Sprintf("Exporting %d objects...\n", len(allTables)))
 
+							// Run export in background
 							go exportAllObjects("backup.sql", progressChan, dbName)
 
-							// Read from progress channel and update UI
+							// Read progress and update UI
 							go func() {
 								for msg := range progressChan {
 									app.QueueUpdateDraw(func() {
 										fmt.Fprintln(progressView, msg)
+										progressView.ScrollToEnd() // 👈 ensure view auto-scrolls
 									})
 								}
 
-								// After export is done
+								// After export is complete
 								app.QueueUpdateDraw(func() {
 									modal := tview.NewModal().
 										SetText("Export completed successfully!").

@@ -57,19 +57,6 @@ func InitPhHistory(dbPath string, userLocal, hostLocal, portLocal string) error 
 	return nil
 }
 
-// SaveQuery saves a new executed query into the history table
-// func SaveQuery(query string) error {
-// 	if db == nil {
-// 		return fmt.Errorf("database not initialized. Call InitPhHistory first.")
-// 	}
-
-// 	_, err := db.Exec(`INSERT INTO pheri_phhistory (query_text) VALUES (?)`, query)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to save query: %w", err)
-// 	}
-// 	return nil
-// }
-
 // SaveQuery saves a query along with host IP and database name
 func SaveQuery(query, dbName string) error {
 	if db == nil {
