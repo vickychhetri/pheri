@@ -32,53 +32,125 @@ func ShowConnectionForm(app *tview.Application, user, pass, host, port string) {
 		ShowDatabaseList(app, conn)
 
 	} else {
+		// form = tview.NewForm().
+		// 	AddInputField("Host", "127.0.0.1", 20, nil, nil).
+		// 	AddInputField("Port", "3306", 6, nil, nil).
+		// 	AddInputField("User", "root", 20, nil, nil).
+		// 	AddPasswordField("Password", "", 20, '*', nil).
+		// 	AddButton("[lime::b]▶ Connect", func() {
+		// 		host = form.GetFormItemByLabel("Host").(*tview.InputField).GetText()
+		// 		port = form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
+		// 		user = form.GetFormItemByLabel("User").(*tview.InputField).GetText()
+		// 		pass = form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
+		// 		User = user
+		// 		Pass = pass
+		// 		Host = host
+		// 		Port = port
+		// 		phhistory.SetUser(user)
+		// 		phhistory.SetHost(host)
+		// 		phhistory.SetPort(port)
+		// 		conn, err := dbs.Connect(user, pass, host, port)
+		// 		if err != nil {
+		// 			modal := tview.NewModal().
+		// 				SetText("Connection failed: " + err.Error()).
+		// 				AddButtons([]string{"OK"}).
+		// 				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		// 					app.SetRoot(form, true)
+		// 				})
+		// 			app.SetRoot(modal, true)
+		// 			return
+		// 		}
+
+		// 		ShowDatabaseList(app, conn)
+		// 	}).
+		// 	AddButton("[yellow::b]⟳ Clear", func() {
+		// 		form.GetFormItemByLabel("Host").(*tview.InputField).SetText("")
+		// 		form.GetFormItemByLabel("Port").(*tview.InputField).SetText("")
+		// 		form.GetFormItemByLabel("User").(*tview.InputField).SetText("")
+		// 		form.GetFormItemByLabel("Password").(*tview.InputField).SetText("")
+
+		// 	}).
+		// 	AddButton("[red::b]✖ Quit", func() {
+		// 		app.Stop()
+		// 	})
+		// form.SetFieldBackgroundColor(tcell.ColorBlack)
+		// form.SetBorder(true).SetTitle("MySQL Connection")
+		// form.SetBorderPadding(1, 1, 2, 2) // Top, bottom, left, right padding
+
+		// layout := CreateLayoutWithFooter(app, form)
+		// app.SetRoot(layout, true).SetFocus(form)
+		// if 'form' is declared above this function, use '=' instead of ':='
 		form = tview.NewForm().
 			AddInputField("Host", "127.0.0.1", 20, nil, nil).
 			AddInputField("Port", "3306", 6, nil, nil).
 			AddInputField("User", "root", 20, nil, nil).
-			AddPasswordField("Password", "", 20, '*', nil).
-			AddButton("Connect", func() {
-				host = form.GetFormItemByLabel("Host").(*tview.InputField).GetText()
-				port = form.GetFormItemByLabel("Port").(*tview.InputField).GetText()
-				user = form.GetFormItemByLabel("User").(*tview.InputField).GetText()
-				pass = form.GetFormItemByLabel("Password").(*tview.InputField).GetText()
-				User = user
-				Pass = pass
-				Host = host
-				Port = port
-				phhistory.SetUser(user)
-				phhistory.SetHost(host)
-				phhistory.SetPort(port)
-				conn, err := dbs.Connect(user, pass, host, port)
-				if err != nil {
-					modal := tview.NewModal().
-						SetText("Connection failed: " + err.Error()).
-						AddButtons([]string{"OK"}).
-						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							app.SetRoot(form, true)
-						})
-					app.SetRoot(modal, true)
-					return
+			AddPasswordField("Password", "", 20, '*', nil)
+
+		form.AddButton("[lime::b]▶ CONNECT", func() {
+			host := form.GetFormItem(0).(*tview.InputField).GetText()
+			port := form.GetFormItem(1).(*tview.InputField).GetText()
+			user := form.GetFormItem(2).(*tview.InputField).GetText()
+			pass := form.GetFormItem(3).(*tview.InputField).GetText()
+
+			User = user
+			Pass = pass
+			Host = host
+			Port = port
+
+			phhistory.SetUser(user)
+			phhistory.SetHost(host)
+			phhistory.SetPort(port)
+
+			conn, err := dbs.Connect(user, pass, host, port)
+			if err != nil {
+				modal := tview.NewModal().
+					SetText("[red::b]Connection failed: [white]" + err.Error()).
+					AddButtons([]string{"[green]OK"}).
+					SetBackgroundColor(tcell.ColorBlack).
+					SetButtonBackgroundColor(tcell.ColorDarkGreen).
+					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						app.SetRoot(form, true)
+					})
+				app.SetRoot(modal, true)
+				return
+			}
+
+			ShowDatabaseList(app, conn)
+		}).
+			AddButton("[yellow::b]⟳ CLEAR", func() {
+				for i := 0; i < 4; i++ {
+					form.GetFormItem(i).(*tview.InputField).SetText("")
 				}
-
-				ShowDatabaseList(app, conn)
 			}).
-			AddButton("Clear", func() {
-				form.GetFormItemByLabel("Host").(*tview.InputField).SetText("")
-				form.GetFormItemByLabel("Port").(*tview.InputField).SetText("")
-				form.GetFormItemByLabel("User").(*tview.InputField).SetText("")
-				form.GetFormItemByLabel("Password").(*tview.InputField).SetText("")
-
-			}).
-			AddButton("Quit", func() {
+			AddButton("[red::b]✖ QUIT", func() {
 				app.Stop()
 			})
-		form.SetFieldBackgroundColor(tcell.ColorLightGray)
-		form.SetBorder(true).SetTitle("MySQL Connection")
-		form.SetBorderPadding(1, 1, 2, 2) // Top, bottom, left, right padding
 
-		layout := CreateLayoutWithFooter(app, form)
+		// --- Hacker Theme ---
+		form.SetBorder(true).
+			SetTitle(" [green::b]⚙ MYSQL TERMINAL LOGIN ").
+			SetTitleAlign(tview.AlignCenter).
+			SetBorderPadding(2, 2, 6, 6)
+		form.SetBackgroundColor(tcell.ColorBlack)
+		form.SetFieldBackgroundColor(tcell.Color16)
+		form.SetLabelColor(tcell.ColorGreen)
+		form.SetButtonBackgroundColor(tcell.ColorBlack)
+		form.SetButtonTextColor(tcell.ColorWhite)
+
+		footer := tview.NewTextView().
+			SetText("[green::b]>_ Type credentials and press ▶ CONNECT | [yellow]TAB[/yellow] to move | [red]ESC[/red] to quit").
+			SetTextAlign(tview.AlignCenter).
+			SetDynamicColors(true).
+			SetBackgroundColor(tcell.ColorBlack)
+
+		layout := tview.NewFlex().
+			SetDirection(tview.FlexRow).
+			AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorBlack), 1, 0, false).
+			AddItem(form, 0, 1, true).
+			AddItem(footer, 1, 0, false)
+
 		app.SetRoot(layout, true).SetFocus(form)
+
 	}
 
 }
