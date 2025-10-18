@@ -687,6 +687,13 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 		})
 	app.SetRoot(modal, true)
 }
+func writeInsert(writer *bufio.Writer, mu *sync.Mutex, table, cols string, valueRows []string) {
+	mu.Lock()
+	defer mu.Unlock()
+	writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", table, cols))
+	writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+	writer.Flush()
+}
 
 func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=false",
@@ -703,9 +710,9 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		db.Close()
 	}()
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Minute * 5)
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(15)
+	db.SetConnMaxLifetime(time.Minute * 10)
 
 	type fileWriters struct {
 		table, view, viewddl, procedure, function *bufio.Writer
@@ -859,17 +866,21 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 				switch obj.Type {
 				case "TABLE":
 					writer = fw.table
-					const insertBatchSize = 1000
+					const insertBatchSize = 1000 // per INSERT
+					const batchSize = 1_000_000  // number of rows fetched per goroutine batch
+					const maxWorkers = 8         // parallel queries
 					var table, createStmt string
+
+					// --- STEP 1: Get DDL
 					row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
 					if err := row.Scan(&table, &createStmt); err != nil {
 						progressChan <- fmt.Sprintf("[yellow]Failed TABLE: %s - %v", obj.Name, err)
 						atomic.AddInt64(&completed, 1)
 						continue
 					}
-					ddl = createStmt
 
-					// WRITE TABLE STRUCTURE
+					// --- STEP 2: Write table structure
+					ddl := createStmt
 					mu.Lock()
 					_, _ = writer.WriteString(fmt.Sprintf(
 						"-- ------------------------------------------------------\n"+
@@ -880,85 +891,214 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					_, _ = writer.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` DISABLE KEYS */;\n", obj.Name))
 					mu.Unlock()
 
-					// EXPORT TABLE DATA
-					rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
-					if err != nil {
-						progressChan <- fmt.Sprintf("[yellow]Failed DATA TABLE: %s - %v", obj.Name, err)
+					// --- STEP 3: Count rows
+					var totalRows int
+					if err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM `%s`", obj.Name)).Scan(&totalRows); err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed COUNT TABLE: %s - %v", obj.Name, err)
 						atomic.AddInt64(&completed, 1)
 						continue
 					}
+					if totalRows == 0 {
+						progressChan <- fmt.Sprintf("[blue]TABLE: %s has no rows.", obj.Name)
+						continue
+					}
 
-					cols, _ := rows.Columns()
-					colCount := len(cols)
-					values := make([]interface{}, colCount)
-					valuePtrs := make([]interface{}, colCount)
-					colList := "`" + strings.Join(cols, "`, `") + "`"
-					var valueRows []string
-					rowCount := 0
+					totalBatches := (totalRows + batchSize - 1) / batchSize
+					progressChan <- fmt.Sprintf("[cyan]TABLE: %s has %d rows (%d batches)", obj.Name, totalRows, totalBatches)
 
-					for rows.Next() {
-						for i := range values {
-							valuePtrs[i] = &values[i]
-						}
-						err := rows.Scan(valuePtrs...)
-						if err != nil {
-							// skip row on scan error
-							continue
-						}
+					// --- STEP 4: Channel for batch offsets
+					batchChan := make(chan int, totalBatches)
+					for i := 0; i < totalBatches; i++ {
+						batchChan <- i
+					}
+					close(batchChan)
 
-						valStrings := make([]string, colCount)
-						for i, val := range values {
-							switch v := val.(type) {
-							case nil:
-								valStrings[i] = "NULL"
-							case []byte:
-								// Detect binary data (contains non-printable bytes)
-								isBinary := false
-								for _, b := range v {
-									if b < 32 && b != 9 && b != 10 && b != 13 {
-										isBinary = true
-										break
+					// --- STEP 5: Worker pool using pooled DB
+					var wg sync.WaitGroup
+					for w := 0; w < maxWorkers; w++ {
+						wg.Add(1)
+						go func(workerID int) {
+							defer wg.Done()
+
+							for batchIdx := range batchChan {
+								offset := batchIdx * batchSize
+								query := fmt.Sprintf("SELECT * FROM `%s` LIMIT %d OFFSET %d", obj.Name, batchSize, offset)
+								rows, err := db.Query(query)
+								if err != nil {
+									progressChan <- fmt.Sprintf("[yellow]Worker %d failed batch %d of %s: %v", workerID, batchIdx, obj.Name, err)
+									continue
+								}
+
+								cols, _ := rows.Columns()
+								colCount := len(cols)
+								values := make([]interface{}, colCount)
+								valuePtrs := make([]interface{}, colCount)
+								colList := "`" + strings.Join(cols, "`, `") + "`"
+								var valueRows []string
+								rowCount := 0
+
+								for rows.Next() {
+									for i := range values {
+										valuePtrs[i] = &values[i]
+									}
+									if err := rows.Scan(valuePtrs...); err != nil {
+										continue
+									}
+
+									valStrings := make([]string, colCount)
+									for i, val := range values {
+										switch v := val.(type) {
+										case nil:
+											valStrings[i] = "NULL"
+										case []byte:
+											isBinary := false
+											for _, b := range v {
+												if b < 32 && b != 9 && b != 10 && b != 13 {
+													isBinary = true
+													break
+												}
+											}
+											if isBinary {
+												valStrings[i] = fmt.Sprintf("0x%s", hex.EncodeToString(v))
+											} else {
+												valStrings[i] = fmt.Sprintf("'%s'", escapeString(string(v)))
+											}
+										case string:
+											valStrings[i] = fmt.Sprintf("'%s'", escapeString(v))
+										default:
+											valStrings[i] = fmt.Sprintf("'%v'", v)
+										}
+									}
+
+									valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
+									rowCount++
+									if rowCount >= insertBatchSize {
+										writeInsert(writer, &mu, obj.Name, colList, valueRows)
+										valueRows = valueRows[:0]
+										rowCount = 0
 									}
 								}
-								if isBinary {
-									// Encode as hex (MySQL-safe)
-									valStrings[i] = fmt.Sprintf("0x%s", hex.EncodeToString(v))
-								} else {
-									// Treat as normal UTF-8 text
-									valStrings[i] = fmt.Sprintf("'%s'", escapeString(string(v)))
+								rows.Close()
+								if len(valueRows) > 0 {
+									writeInsert(writer, &mu, obj.Name, colList, valueRows)
 								}
-							case string:
-								valStrings[i] = fmt.Sprintf("'%s'", escapeString(v))
-							default:
-								valStrings[i] = fmt.Sprintf("'%v'", v)
+
+								progressChan <- fmt.Sprintf("[green]Worker %d finished batch %d/%d of %s", workerID, batchIdx+1, totalBatches, obj.Name)
 							}
-						}
-
-						valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
-						rowCount++
-						if rowCount >= insertBatchSize {
-							mu.Lock()
-							_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
-							_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
-							_ = writer.Flush()
-							mu.Unlock()
-							valueRows = valueRows[:0]
-							rowCount = 0
-						}
+						}(w)
 					}
-					rows.Close()
 
-					if len(valueRows) > 0 {
-						mu.Lock()
-						_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
-						_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
-						_ = writer.Flush()
-						mu.Unlock()
-					}
-					// Re-enable keys for this table after inserts
+					wg.Wait()
+
+					// --- STEP 6: Re-enable keys after all batches
 					mu.Lock()
 					_, _ = writer.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` ENABLE KEYS */;\n\n", obj.Name))
 					mu.Unlock()
+
+					progressChan <- fmt.Sprintf("[green]Completed TABLE: %s", obj.Name)
+
+				//case "TABLE":
+				//	writer = fw.table
+				//	const insertBatchSize = 1000
+				//	var table, createStmt string
+				//	row := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", obj.Name))
+				//	if err := row.Scan(&table, &createStmt); err != nil {
+				//		progressChan <- fmt.Sprintf("[yellow]Failed TABLE: %s - %v", obj.Name, err)
+				//		atomic.AddInt64(&completed, 1)
+				//		continue
+				//	}
+				//	ddl = createStmt
+				//
+				//	// WRITE TABLE STRUCTURE
+				//	mu.Lock()
+				//	_, _ = writer.WriteString(fmt.Sprintf(
+				//		"-- ------------------------------------------------------\n"+
+				//			"-- Structure for table `%s`\n"+
+				//			"-- ------------------------------------------------------\n", obj.Name))
+				//	_, _ = writer.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", obj.Name))
+				//	_, _ = writer.WriteString(ddl + ";\n\n")
+				//	_, _ = writer.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` DISABLE KEYS */;\n", obj.Name))
+				//	mu.Unlock()
+				//
+				//	// EXPORT TABLE DATA
+				//	rows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", obj.Name))
+				//	if err != nil {
+				//		progressChan <- fmt.Sprintf("[yellow]Failed DATA TABLE: %s - %v", obj.Name, err)
+				//		atomic.AddInt64(&completed, 1)
+				//		continue
+				//	}
+				//
+				//	cols, _ := rows.Columns()
+				//	colCount := len(cols)
+				//	values := make([]interface{}, colCount)
+				//	valuePtrs := make([]interface{}, colCount)
+				//	colList := "`" + strings.Join(cols, "`, `") + "`"
+				//	var valueRows []string
+				//	rowCount := 0
+				//
+				//	for rows.Next() {
+				//		for i := range values {
+				//			valuePtrs[i] = &values[i]
+				//		}
+				//		err := rows.Scan(valuePtrs...)
+				//		if err != nil {
+				//			// skip row on scan error
+				//			continue
+				//		}
+				//
+				//		valStrings := make([]string, colCount)
+				//		for i, val := range values {
+				//			switch v := val.(type) {
+				//			case nil:
+				//				valStrings[i] = "NULL"
+				//			case []byte:
+				//				// Detect binary data (contains non-printable bytes)
+				//				isBinary := false
+				//				for _, b := range v {
+				//					if b < 32 && b != 9 && b != 10 && b != 13 {
+				//						isBinary = true
+				//						break
+				//					}
+				//				}
+				//				if isBinary {
+				//					// Encode as hex (MySQL-safe)
+				//					valStrings[i] = fmt.Sprintf("0x%s", hex.EncodeToString(v))
+				//				} else {
+				//					// Treat as normal UTF-8 text
+				//					valStrings[i] = fmt.Sprintf("'%s'", escapeString(string(v)))
+				//				}
+				//			case string:
+				//				valStrings[i] = fmt.Sprintf("'%s'", escapeString(v))
+				//			default:
+				//				valStrings[i] = fmt.Sprintf("'%v'", v)
+				//			}
+				//		}
+				//
+				//		valueRows = append(valueRows, fmt.Sprintf("(%s)", strings.Join(valStrings, ", ")))
+				//		rowCount++
+				//		if rowCount >= insertBatchSize {
+				//			mu.Lock()
+				//			_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+				//			_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+				//			_ = writer.Flush()
+				//			mu.Unlock()
+				//			valueRows = valueRows[:0]
+				//			rowCount = 0
+				//		}
+				//	}
+				//	rows.Close()
+				//
+				//	if len(valueRows) > 0 {
+				//		mu.Lock()
+				//		_, _ = writer.WriteString(fmt.Sprintf("INSERT INTO `%s` (%s) VALUES\n", obj.Name, colList))
+				//		_, _ = writer.WriteString(strings.Join(valueRows, ",\n") + ";\n\n")
+				//		_ = writer.Flush()
+				//		mu.Unlock()
+				//	}
+				//	// Re-enable keys for this table after inserts
+				//	mu.Lock()
+				//	_, _ = writer.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` ENABLE KEYS */;\n\n", obj.Name))
+				//	mu.Unlock()
 
 				case "VIEW":
 					writer = fw.view
