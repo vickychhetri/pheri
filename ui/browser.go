@@ -688,6 +688,48 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 	app.SetRoot(modal, true)
 }
 
+func getDDL(db *sql.DB, query string) (string, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return "", err
+	}
+
+	if !rows.Next() {
+		return "", fmt.Errorf("no result found")
+	}
+
+	values := make([]interface{}, len(cols))
+	valuePtrs := make([]interface{}, len(cols))
+
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	if err := rows.Scan(valuePtrs...); err != nil {
+		return "", err
+	}
+
+	// DDL always at index 2
+	if len(values) < 3 {
+		return "", fmt.Errorf("unexpected result format")
+	}
+
+	switch v := values[2].(type) {
+	case []byte:
+		return string(v), nil
+	case string:
+		return v, nil
+	default:
+		return fmt.Sprintf("%v", v), nil
+	}
+}
+
 func exportAllObjects(outputFile string, progressChan chan string, dbName string) {
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&collation=utf8mb4_unicode_ci&parseTime=false",
 		User, Pass, Host, Port, dbName) // parseTime=false keeps raw DB datetime values
@@ -708,11 +750,15 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	db.SetConnMaxLifetime(time.Minute * 5)
 
 	type fileWriters struct {
-		table, view, viewddl, procedure, function *bufio.Writer
-		tableFile, viewFile, viewddlFile          *os.File
-		procedureFile, functionFile               *os.File
-		tableGzip, viewGzip, viewddlGzip          *gzip.Writer
-		procedureGzip, functionGzip               *gzip.Writer
+		table, view, viewddl, procedure, function, trigger, event *bufio.Writer
+
+		tableFile, viewFile, viewddlFile *os.File
+		procedureFile, functionFile      *os.File
+		triggerFile, eventFile           *os.File
+
+		tableGzip, viewGzip, viewddlGzip *gzip.Writer
+		procedureGzip, functionGzip      *gzip.Writer
+		triggerGzip, eventGzip           *gzip.Writer
 	}
 
 	fw := &fileWriters{}
@@ -763,6 +809,18 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		return
 	}
 
+	if fw.triggerFile, fw.triggerGzip, fw.trigger, err = openGz("trigger.sql"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open trigger file: %v", err)
+		close(progressChan)
+		return
+	}
+
+	if fw.eventFile, fw.eventGzip, fw.event, err = openGz("event.sql"); err != nil {
+		progressChan <- fmt.Sprintf("[red]Failed to open event file: %v", err)
+		close(progressChan)
+		return
+	}
+
 	headers := []string{
 		"-- ------------------------------------------------------",
 		fmt.Sprintf("-- MySQL Database Export"),
@@ -793,7 +851,12 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		"SET SESSION collation_connection = 'utf8mb4_unicode_ci';\n",
 	}
 
-	writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
+	// writers := []*bufio.Writer{fw.table, fw.view, fw.viewddl, fw.procedure, fw.function}
+	writers := []*bufio.Writer{
+		fw.table, fw.view, fw.viewddl,
+		fw.procedure, fw.function,
+		fw.trigger, fw.event,
+	}
 	for _, writer := range writers {
 		for _, header := range headers {
 			_, _ = writer.WriteString(header + "\n")
@@ -835,6 +898,10 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		_ = fw.procedureFile.Close()
 		_ = fw.functionGzip.Close()
 		_ = fw.functionFile.Close()
+		_ = fw.triggerGzip.Close()
+		_ = fw.triggerFile.Close()
+		_ = fw.eventGzip.Close()
+		_ = fw.eventFile.Close()
 	}()
 
 	var mu sync.Mutex
@@ -1056,6 +1123,51 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 					_, _ = writer.WriteString(ddl + ";\n//\nDELIMITER ;\n\n")
 					_ = writer.Flush()
 					mu.Unlock()
+				case "TRIGGER":
+					writer = fw.trigger
+
+					query := fmt.Sprintf("SHOW CREATE TRIGGER `%s`.`%s`", dbName, obj.Name)
+					createStmt, err := getDDL(db, query)
+					if err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed TRIGGER: %s - %v", obj.Name, err)
+						atomic.AddInt64(&completed, 1)
+						continue
+					}
+
+					mu.Lock()
+					_, _ = writer.WriteString(fmt.Sprintf(
+						"-- ------------------------------------------------------\n"+
+							"-- TRIGGER: %s\n"+
+							"-- ------------------------------------------------------\n", obj.Name))
+
+					_, _ = writer.WriteString(fmt.Sprintf("DROP TRIGGER IF EXISTS `%s`;\n", obj.Name))
+					_, _ = writer.WriteString("DELIMITER //\n")
+					_, _ = writer.WriteString(createStmt + ";\n//\nDELIMITER ;\n\n")
+					_ = writer.Flush()
+					mu.Unlock()
+
+				case "EVENT":
+					writer = fw.event
+
+					query := fmt.Sprintf("SHOW CREATE EVENT `%s`.`%s`", dbName, obj.Name)
+					createStmt, err := getDDL(db, query)
+					if err != nil {
+						progressChan <- fmt.Sprintf("[yellow]Failed EVENT: %s - %v", obj.Name, err)
+						atomic.AddInt64(&completed, 1)
+						continue
+					}
+
+					mu.Lock()
+					_, _ = writer.WriteString(fmt.Sprintf(
+						"-- ------------------------------------------------------\n"+
+							"-- EVENT: %s\n"+
+							"-- ------------------------------------------------------\n", obj.Name))
+
+					_, _ = writer.WriteString(fmt.Sprintf("DROP EVENT IF EXISTS `%s`;\n", obj.Name))
+					_, _ = writer.WriteString("DELIMITER //\n")
+					_, _ = writer.WriteString(createStmt + ";\n//\nDELIMITER ;\n\n")
+					_ = writer.Flush()
+					mu.Unlock()
 				}
 
 				atomic.AddInt64(&completed, 1)
@@ -1075,7 +1187,8 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 	}
 
 	// === ORDER FIX: TABLE → VIEW → PROCEDURE → FUNCTION ===
-	var tables, views, procedures, functions []DBObject
+	var tables, views, procedures, functions, triggers, events []DBObject
+
 	for _, obj := range allTables {
 		switch obj.Type {
 		case "TABLE":
@@ -1086,9 +1199,23 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 			procedures = append(procedures, obj)
 		case "FUNCTION":
 			functions = append(functions, obj)
+		case "TRIGGER":
+			triggers = append(triggers, obj)
+		case "EVENT":
+			events = append(events, obj)
+
 		}
 	}
-	orderedObjects := append(append(append(tables, views...), procedures...), functions...)
+	orderedObjects := append(
+		append(
+			append(
+				append(
+					append(tables, views...),
+					procedures...),
+				functions...),
+			triggers...),
+		events...,
+	)
 
 	for _, obj := range orderedObjects {
 		tasks <- obj
@@ -1161,6 +1288,112 @@ func createDbPool(conns []string) []*sql.DB {
 	return pool
 }
 
+func getDDLFromShowCreate(db *sql.DB, query string) (string, error) {
+	// row := db.QueryRow(query)
+
+	// Use Rows instead of Row for dynamic columns
+	rows, err := db.Query(query)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return "", err
+	}
+
+	if !rows.Next() {
+		return "", fmt.Errorf("no result found")
+	}
+
+	values := make([]interface{}, len(cols))
+	valuePtrs := make([]interface{}, len(cols))
+
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	if err := rows.Scan(valuePtrs...); err != nil {
+		return "", err
+	}
+
+	// 🔥 DDL is always column index 2
+	if len(values) < 3 {
+		return "", fmt.Errorf("unexpected result format")
+	}
+
+	var ddl string
+	switch v := values[2].(type) {
+	case []byte:
+		ddl = string(v)
+	case string:
+		ddl = v
+	default:
+		ddl = fmt.Sprintf("%v", v)
+	}
+
+	return ddl, nil
+}
+
+// func GetTriggerDDL(db *sql.DB, dbName, triggerName string) (string, error) {
+// 	query := "SHOW CREATE TRIGGER `" + dbName + "`.`" + triggerName + "`"
+
+// 	row := db.QueryRow(query)
+
+// 	var name, sqlMode, ddl, charset, collation, dbCollation string
+// 	var created sql.NullString
+
+// 	err := row.Scan(
+// 		&name,
+// 		&sqlMode,
+// 		&ddl,
+// 		&charset,
+// 		&collation,
+// 		&dbCollation,
+// 		&created,
+// 	)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	return ddl, nil
+// }
+
+func GetTriggerDDL(db *sql.DB, dbName, triggerName string) (string, error) {
+	query := "SHOW CREATE TRIGGER `" + dbName + "`.`" + triggerName + "`"
+	return getDDLFromShowCreate(db, query)
+}
+
+// func GetEventDDL(db *sql.DB, dbName, eventName string) (string, error) {
+// 	query := "SHOW CREATE EVENT `" + dbName + "`.`" + eventName + "`"
+
+// 	row := db.QueryRow(query)
+
+// 	var name, sqlMode, ddl, charset, collation, dbCollation string
+// 	var created sql.NullString
+
+// 	err := row.Scan(
+// 		&name,
+// 		&sqlMode,
+// 		&ddl,
+// 		&charset,
+// 		&collation,
+// 		&dbCollation,
+// 		&created,
+// 	)
+// 	if err != nil {
+// 		return "", err
+// 	}
+
+// 	return ddl, nil
+// }
+
+func GetEventDDL(db *sql.DB, dbName, eventName string) (string, error) {
+	query := "SHOW CREATE EVENT `" + dbName + "`.`" + eventName + "`"
+	return getDDLFromShowCreate(db, query)
+}
+
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "▶  Run"
 	saveIcon := "💾  Save"
@@ -1225,21 +1458,41 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		SetTitleAlign(tview.AlignLeft).
 		SetBorderColor(tcell.ColorYellow)
 
-	queryAllStructure := `SELECT table_name AS name, 'TABLE' AS type 
+	queryAllStructure := `
+						SELECT table_name AS name, 'TABLE' AS type 
 						FROM information_schema.tables 
 						WHERE table_schema = '` + dbName + `' AND table_type = 'BASE TABLE'
+
 						UNION ALL
+
 						SELECT table_name AS name, 'VIEW' AS type 
 						FROM information_schema.tables 
 						WHERE table_schema = '` + dbName + `' AND table_type = 'VIEW'
+
 						UNION ALL
+
 						SELECT routine_name AS name, 'PROCEDURE' AS type 
 						FROM information_schema.routines 
 						WHERE routine_schema = '` + dbName + `' AND routine_type = 'PROCEDURE'
+
 						UNION ALL
+
 						SELECT routine_name AS name, 'FUNCTION' AS type 
 						FROM information_schema.routines 
-						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION';`
+						WHERE routine_schema = '` + dbName + `' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = '` + dbName + `'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = '` + dbName + `';`
+
 	util.SaveLog("queryAllStructure: " + queryAllStructure)
 	rows, err := db.Query(queryAllStructure)
 	if err != nil {
@@ -1321,6 +1574,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					"VIEW":      1,
 					"FUNCTION":  2,
 					"PROCEDURE": 3,
+					"TRIGGER":   4,
+					"EVENT":     5,
 				}
 
 				sort.Slice(allTables, func(i, j int) bool {
@@ -1637,7 +1892,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 				switch currentobjectType {
 				case "PROCEDURE":
-					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
@@ -1657,7 +1912,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					queryBox.SetText(routineDefinition, true)
 					app.SetFocus(queryBox)
 				case "FUNCTION":
-					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
+					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
@@ -1676,6 +1931,36 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					}
 					queryBox.SetText(routineDefinition, true)
 					app.SetFocus(queryBox)
+				case "TRIGGER":
+
+					definition, err := GetTriggerDDL(db, dbName, currentName)
+					// query := "SHOW CREATE TRIGGER `" + dbName + "`.`" + currentName + "`"
+					// util.SaveLog("TRIGGER: " + query)
+
+					// definition, err := ExeQueryToData(db, currentName, query, dbName, "TRIGGER")
+					if err != nil {
+						showErrorModal(app, mainFlex, "Failed to fetch trigger: "+err.Error())
+						return
+					}
+
+					queryBox.SetText(definition, true)
+					app.SetFocus(queryBox)
+
+				case "EVENT":
+
+					definition, err := GetEventDDL(db, dbName, currentName)
+					// query := "SHOW CREATE EVENT `" + dbName + "`.`" + currentName + "`"
+					// util.SaveLog("EVENT: " + query)
+
+					// definition, err := ExeQueryToData(db, currentName, query, dbName, "EVENT")
+					if err != nil {
+						showErrorModal(app, mainFlex, "Failed to fetch event: "+err.Error())
+						return
+					}
+
+					queryBox.SetText(definition, true)
+					app.SetFocus(queryBox)
+
 				case "TABLE", "VIEW":
 					query := "SELECT * FROM " + currentName + " LIMIT 100"
 					queryBox.SetText(query, true)
