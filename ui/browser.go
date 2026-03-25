@@ -1756,6 +1756,94 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
+					if event.Key() == tcell.KeyCtrlI {
+						go func() {
+							progressChan := make(chan string)
+
+							// Create UI components
+							statusBar := tview.NewTextView().
+								SetDynamicColors(true).
+								SetTextAlign(tview.AlignCenter)
+							statusBar.SetBorder(true).SetTitle("Status")
+
+							progressView := tview.NewTextView().
+								SetDynamicColors(true).
+								SetScrollable(true)
+							progressView.SetBorder(true).SetTitle(" Import Progress ")
+
+							layout := tview.NewFlex().
+								SetDirection(tview.FlexRow).
+								AddItem(tview.NewTextView().
+									SetText("[::b]  📥 Importing Database  ").
+									SetDynamicColors(true), 1, 1, false).
+								AddItem(progressView, 0, 1, false).
+								AddItem(statusBar, 1, 1, false)
+
+							// Log writer
+							go func() {
+								for msg := range progressChan {
+									util.SaveLog(msg)
+								}
+							}()
+
+							// Start import
+							app.QueueUpdateDraw(func() {
+								progressView.SetText("[blue]Preparing import...\n")
+								statusBar.SetText("[yellow]Initializing import process...")
+								app.SetRoot(layout, true)
+							})
+
+							util.SaveLog("Starting import...\n")
+
+							// Spinner
+							spinnerDone := make(chan struct{})
+							go func() {
+								icons := []string{"|", "/", "-", "\\"}
+								i := 0
+								for {
+									select {
+									case <-spinnerDone:
+										return
+									default:
+										app.QueueUpdateDraw(func() {
+											statusBar.SetText(fmt.Sprintf("[yellow]Importing... %s", icons[i%len(icons)]))
+										})
+										i++
+										time.Sleep(150 * time.Millisecond)
+									}
+								}
+							}()
+
+							// Actual import
+							go importAllObjects(progressChan, dbName)
+
+							// Update log view
+							go func() {
+								for msg := range progressChan {
+									app.QueueUpdateDraw(func() {
+										fmt.Fprintln(progressView, msg)
+										progressView.ScrollToEnd()
+									})
+								}
+
+								// Done
+								close(spinnerDone)
+								app.QueueUpdateDraw(func() {
+									statusBar.SetText("[green] Import completed successfully!")
+									modal := tview.NewModal().
+										SetText("[green::b]✓ Import completed successfully!\n\nDatabase restored from latest backup.").
+										AddButtons([]string{"OK"}).
+										SetDoneFunc(func(i int, label string) {
+											app.SetRoot(mainFlex, true)
+										})
+
+									app.SetRoot(modal, true)
+								})
+							}()
+						}()
+						return nil
+					}
+
 					if event.Key() == tcell.KeyCtrlX {
 						if currentobjectType == "TABLE" {
 							// Step 1: Get the table's DDL (definition)
