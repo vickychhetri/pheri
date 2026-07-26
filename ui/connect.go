@@ -15,6 +15,8 @@ import (
 
 var user, pass, host, port string
 var User, Pass, Host, Port string
+var ActiveEnv string = "DEV"
+var ActiveReadOnly bool = false
 
 func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portArg string) {
 	if userArg != "" && hostArg != "" && portArg != "" {
@@ -53,7 +55,11 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 	profileOptions := []string{"-- Custom / New Connection --"}
 	for _, p := range profiles {
-		profileOptions = append(profileOptions, fmt.Sprintf("🔑 %s@%s:%s", p.User, p.Host, p.Port))
+		envTag := p.Environment
+		if envTag == "" {
+			envTag = "DEV"
+		}
+		profileOptions = append(profileOptions, fmt.Sprintf("🔑 %s@%s:%s [%s]", p.User, p.Host, p.Port, envTag))
 	}
 
 	form.AddDropDown("Quick Saved Profile", profileOptions, 0, func(optionText string, optionIndex int) {
@@ -63,6 +69,15 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 			form.GetFormItem(2).(*tview.InputField).SetText(p.Port)
 			form.GetFormItem(3).(*tview.InputField).SetText(p.User)
 			form.GetFormItem(4).(*tview.InputField).SetText(p.Pass)
+
+			envIdx := 0
+			if p.Environment == "STAGING" {
+				envIdx = 1
+			} else if p.Environment == "PROD" {
+				envIdx = 2
+			}
+			form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(envIdx)
+			form.GetFormItem(6).(*tview.Checkbox).SetChecked(p.ReadOnly)
 		}
 	})
 
@@ -71,6 +86,8 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		AddInputField("Port", "3306", 8, nil, nil).
 		AddInputField("User", "root", 26, nil, nil).
 		AddPasswordField("Password", "", 26, '*', nil).
+		AddDropDown("Environment Tag", []string{"DEV (Development)", "STAGING (Test/Staging)", "PROD (Production)"}, 0, nil).
+		AddCheckbox("Read-Only Mode (Block Write Queries)", false, nil).
 		AddCheckbox("Remember Credentials", true, nil)
 
 	connectAction := func() {
@@ -78,7 +95,19 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		port = form.GetFormItem(2).(*tview.InputField).GetText()
 		user = form.GetFormItem(3).(*tview.InputField).GetText()
 		pass = form.GetFormItem(4).(*tview.InputField).GetText()
-		remember := form.GetFormItem(5).(*tview.Checkbox).IsChecked()
+		_, envOpt := form.GetFormItem(5).(*tview.DropDown).GetCurrentOption()
+		readOnly := form.GetFormItem(6).(*tview.Checkbox).IsChecked()
+		remember := form.GetFormItem(7).(*tview.Checkbox).IsChecked()
+
+		envTag := "DEV"
+		if strings.Contains(envOpt, "PROD") {
+			envTag = "PROD"
+		} else if strings.Contains(envOpt, "STAGING") {
+			envTag = "STAGING"
+		}
+
+		ActiveEnv = envTag
+		ActiveReadOnly = readOnly
 
 		User = user
 		Pass = pass
@@ -104,7 +133,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		}
 
 		if remember {
-			_ = phhistory.SaveConnectionProfile(host, port, user, pass)
+			_ = phhistory.SaveConnectionProfile(host, port, user, pass, envTag, readOnly)
 		}
 
 		ShowDatabaseList(app, conn)
@@ -149,8 +178,8 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		AddItem(tview.NewFlex().
 			SetDirection(tview.FlexColumn).
 			AddItem(nil, 0, 1, false).
-			AddItem(form, 64, 1, true).
-			AddItem(nil, 0, 1, false), 18, 1, true).
+			AddItem(form, 68, 1, true).
+			AddItem(nil, 0, 1, false), 20, 1, true).
 		AddItem(footer, 1, 0, false)
 
 	app.SetRoot(flex, true).SetFocus(form)

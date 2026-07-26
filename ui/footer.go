@@ -57,7 +57,14 @@ func updateFooterText(status string) {
 	if footerBar == nil {
 		return
 	}
-	text := fmt.Sprintf("[white::b]PHERI TUI[-] | [green]F1:[-] Help | [cyan]F3:[-] Schema | [lime]Ctrl+R:[-] Run | [yellow]Ctrl+E:[-] Export | [aqua]Ctrl+N/P:[-] Page | [white]Tab:[-] Switch | [red]Esc:[-] Back [gray]| %s", status)
+	envBadge := "[green::b]DEV[-::-]"
+	if ActiveEnv == "PROD" {
+		envBadge = "[red::b]PROD[-::-]"
+	} else if ActiveEnv == "STAGING" {
+		envBadge = "[yellow::b]STAGING[-::-]"
+	}
+
+	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [green]F1:[-] Help | [cyan]F3:[-] Schema | [yellow]F4:[-] Top | [lime]Ctrl+R:[-] Run | [yellow]Ctrl+E:[-] Export | [white]Tab:[-] Switch [gray]| %s", envBadge, status)
 	footerBar.SetText(text)
 }
 
@@ -83,6 +90,18 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		} else {
 			updateFooterText("No active database selected to export")
 		}
+	case "process", "top", "proc":
+		if activeGridDB != nil {
+			ShowProcessListModal(app, activeGridDB)
+		} else {
+			updateFooterText("No active database connection for Process Manager")
+		}
+	case "explain", "expq", "plan":
+		if activeGridDB != nil && activeGridQuery != "" {
+			showExplainModal(app, activeGridDB, activeGridQuery)
+		} else {
+			updateFooterText("No active query available to explain")
+		}
 	default:
 		updateFooterText("Unknown command: " + cmd)
 	}
@@ -90,6 +109,10 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 
 func showGlobalHelpModal(app *tview.Application) {
 	helpText := `[aqua::b]⚡ PHERI MYSQL TUI DEVELOPER SHORTCUTS ⚡[::-]
+
+[lime::b]DevOps & Process Manager:[::-]
+  • [white]F4 / :process / :top[-]: Open Live Process Manager & Query Killer
+  • [white]F5 / :explain[-]: View Query Execution Plan (EXPLAIN ANALYZE)
 
 [lime::b]Editor Controls:[::-]
   • [white]Ctrl+R / Ctrl+Enter[-]: Execute SQL Query
@@ -100,11 +123,10 @@ func showGlobalHelpModal(app *tview.Application) {
   • [white]Tab / Shift+Tab[-]: Cycle focus between Sidebar, Editor, and Grid
   • [white]Esc[-]: Back to main layout / Clear focus
   • [white]F3[-]: Inspect Table Columns & Indexes Schema
-  • [white]Ctrl+N / Ctrl+P[-]: Next / Previous Data Page
-  • [white]Ctrl+E[-]: Export Data Grid to CSV / JSON
+  • [white]Ctrl+E / :export[-]: Multi-Object Selective Database Export
 
 [lime::b]Command Launcher:[::-]
-  • Type [yellow]:help[-], [yellow]:clear[-], or [yellow]:quit[-] in Command Prompt.`
+  • Type [yellow]:help[-], [yellow]:process[-], [yellow]:explain[-], [yellow]:export[-], or [yellow]:quit[-]`
 
 	modal := tview.NewModal().
 		SetText(helpText).

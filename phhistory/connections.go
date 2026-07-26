@@ -10,13 +10,15 @@ import (
 )
 
 type ConnectionProfile struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Host     string    `json:"host"`
-	Port     string    `json:"port"`
-	User     string    `json:"user"`
-	Pass     string    `json:"pass"`
-	LastUsed time.Time `json:"last_used"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Host        string    `json:"host"`
+	Port        string    `json:"port"`
+	User        string    `json:"user"`
+	Pass        string    `json:"pass"`
+	Environment string    `json:"environment"` // "DEV", "STAGING", "PROD"
+	ReadOnly    bool      `json:"read_only"`
+	LastUsed    time.Time `json:"last_used"`
 }
 
 func getConnectionsFilePath() string {
@@ -44,11 +46,22 @@ func LoadSavedConnections() ([]ConnectionProfile, error) {
 	if err != nil {
 		return []ConnectionProfile{}, nil
 	}
+
+	for i := range profiles {
+		if profiles[i].Environment == "" {
+			profiles[i].Environment = "DEV"
+		}
+	}
+
 	return profiles, nil
 }
 
 // SaveConnectionProfile adds or updates a saved profile
-func SaveConnectionProfile(host, port, user, pass string) error {
+func SaveConnectionProfile(host, port, user, pass, env string, readOnly bool) error {
+	if env == "" {
+		env = "DEV"
+	}
+
 	profiles, _ := LoadSavedConnections()
 
 	id := fmt.Sprintf("%s@%s:%s", user, host, port)
@@ -58,6 +71,8 @@ func SaveConnectionProfile(host, port, user, pass string) error {
 	for i, p := range profiles {
 		if p.ID == id {
 			profiles[i].Pass = pass
+			profiles[i].Environment = env
+			profiles[i].ReadOnly = readOnly
 			profiles[i].LastUsed = time.Now()
 			updated = true
 			break
@@ -66,13 +81,15 @@ func SaveConnectionProfile(host, port, user, pass string) error {
 
 	if !updated {
 		newProf := ConnectionProfile{
-			ID:       id,
-			Name:     name,
-			Host:     host,
-			Port:     port,
-			User:     user,
-			Pass:     pass,
-			LastUsed: time.Now(),
+			ID:          id,
+			Name:        name,
+			Host:        host,
+			Port:        port,
+			User:        user,
+			Pass:        pass,
+			Environment: env,
+			ReadOnly:    readOnly,
+			LastUsed:    time.Now(),
 		}
 		profiles = append([]ConnectionProfile{newProf}, profiles...)
 	}

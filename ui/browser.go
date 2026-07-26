@@ -2586,6 +2586,21 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	activeGridQuery = query
 	activeGridDB = db
 
+	cleanQ := strings.TrimSpace(strings.ToUpper(query))
+	isMutation := strings.HasPrefix(cleanQ, "INSERT") ||
+		strings.HasPrefix(cleanQ, "UPDATE") ||
+		strings.HasPrefix(cleanQ, "DELETE") ||
+		strings.HasPrefix(cleanQ, "DROP") ||
+		strings.HasPrefix(cleanQ, "TRUNCATE") ||
+		strings.HasPrefix(cleanQ, "ALTER") ||
+		strings.HasPrefix(cleanQ, "REPLACE") ||
+		strings.HasPrefix(cleanQ, "CREATE")
+
+	if isMutation && ActiveReadOnly {
+		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.")
+		return fmt.Errorf("read-only mode enabled")
+	}
+
 	rows, err := db.Query(query)
 	if err != nil {
 		table.Clear()
@@ -2655,8 +2670,15 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 	duration := time.Since(startTime)
 	rowCount := rowIndex - 1
 
-	titleStr := fmt.Sprintf(" [::b]Query Result [white](%d rows, %s) | Pg %d | [yellow]Ctrl+N/P[::-]:Page [yellow]Ctrl+E[::-]:Export [yellow]F3/Ctrl+K[::-]:Schema [yellow]F1/?::-:Help ",
-		rowCount, duration.Round(time.Microsecond), currentGridPage+1)
+	envTagStr := "[green::b]DEV[-::-]"
+	if ActiveEnv == "PROD" {
+		envTagStr = "[red::b]PROD[-::-]"
+	} else if ActiveEnv == "STAGING" {
+		envTagStr = "[yellow::b]STAGING[-::-]"
+	}
+
+	titleStr := fmt.Sprintf(" [::b]Query Result [%s] [white](%d rows, %s) | Pg %d | [yellow]Ctrl+N/P[::-]:Pg [yellow]Ctrl+E[::-]:Export [yellow]F3[::-]:Schema [yellow]F4[::-]:Top [yellow]F5[::-]:Plan ",
+		envTagStr, rowCount, duration.Round(time.Microsecond), currentGridPage+1)
 	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -2676,6 +2698,18 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 				ShowExportWizardModal(app, activeGridDB, activeGridDBName)
 			} else {
 				showExportResultsModal(app, table)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF4:
+			if activeGridDB != nil {
+				ShowProcessListModal(app, activeGridDB)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF5:
+			if activeGridDB != nil && activeGridQuery != "" {
+				showExplainModal(app, activeGridDB, activeGridQuery)
 			}
 			return nil
 
@@ -2739,6 +2773,11 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 	table.SetSelectedFunc(func(row int, column int) {
 		if row == 0 {
 			return // Skip header row
+		}
+
+		if ActiveReadOnly {
+			showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode. Inline cell editing is disabled.")
+			return
 		}
 
 		cell := table.GetCell(row, column)
@@ -3208,11 +3247,6 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		}
 	}
 
-	list.SetDoneFunc(func() {
-		app.SetRoot(returnTo, true)
-		app.SetFocus(button2)
-	})
-
 	// Footer: current directory
 	statusBar := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
@@ -3226,4 +3260,96 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 
 	app.SetRoot(layout, true)
 	app.SetFocus(list)
+}
+
+func showExplainModal(app *tview.Application, db *sql.DB, query string) {
+	if db == nil || strings.TrimSpace(query) == "" {
+		showErrorModal(app, mainFlex, "No active database connection or query available to explain.")
+		return
+	}
+
+	cleanQ := strings.TrimRight(strings.TrimSpace(query), ";")
+	explainQuery := "EXPLAIN " + cleanQ
+	rows, err := db.Query(explainQuery)
+	if err != nil {
+		showErrorModal(app, mainFlex, "EXPLAIN execution failed: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		showErrorModal(app, mainFlex, "Failed to fetch EXPLAIN column metadata: "+err.Error())
+		return
+	}
+
+	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
+	table.SetBorder(true).
+		SetTitle(" 🔍 Query Execution Plan (EXPLAIN ANALYZE) ").
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderColor(tcell.ColorYellow)
+
+	table.SetBackgroundColor(tcell.ColorBlack)
+
+	headerStyle := tcell.StyleDefault.
+		Foreground(tcell.ColorBlack).
+		Background(tcell.ColorYellow).
+		Bold(true)
+
+	for i, col := range columns {
+		table.SetCell(0, i, tview.NewTableCell(" "+col+" ").SetStyle(headerStyle).SetSelectable(false))
+	}
+
+	scanVals := make([]interface{}, len(columns))
+	rawVals := make([]sql.RawBytes, len(columns))
+	for i := range rawVals {
+		scanVals[i] = &rawVals[i]
+	}
+
+	rIdx := 1
+	for rows.Next() {
+		if err := rows.Scan(scanVals...); err == nil {
+			for c, rByte := range rawVals {
+				valStr := string(rByte)
+				if rByte == nil {
+					valStr = "NULL"
+				}
+				table.SetCell(rIdx, c, tview.NewTableCell(" "+valStr+" ").SetTextColor(tcell.ColorWhite))
+			}
+			rIdx++
+		}
+	}
+
+	if rIdx == 1 {
+		table.SetCell(1, 0, tview.NewTableCell(" No execution plan returned ").SetTextColor(tcell.ColorYellow))
+	} else {
+		table.Select(1, 0)
+	}
+
+	statusBar := tview.NewTextView().
+		SetText("[yellow]ESC / ENTER[-] Close Execution Plan Window").
+		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
+		SetBackgroundColor(tcell.ColorBlack)
+
+	layout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true).
+		AddItem(statusBar, 1, 0, false)
+
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+			if tableList != nil {
+				util.SetFocusWithBorder(app, tableList)
+			}
+			return nil
+		}
+		return event
+	})
+
+	fullLayout := CreateLayoutWithFooter(app, layout)
+	app.SetRoot(fullLayout, true)
+	app.SetFocus(table)
 }
