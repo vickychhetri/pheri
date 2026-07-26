@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -26,7 +27,9 @@ import (
 
 var dataTable *tview.Table
 var dataBaseList *tview.List
+var tableList *tview.List
 var allDatabases []string
+var activeSQLEditor *SQLEditor
 
 // var allTables []string
 type DBObject struct {
@@ -42,6 +45,15 @@ var fileNameInput *tview.InputField
 var isEditingEnabled bool = false
 var searchFiltertext string
 var IsSearchStateEnabled = false
+
+var currentGridPage int = 0
+var gridPageSize int = 100
+var activeGridQuery string = ""
+var activeGridObject string = ""
+var activeGridObjectType string = ""
+var activeGridDBName string = ""
+var activeGridDB *sql.DB = nil
+
 
 func filterTableList(
 	search string,
@@ -1394,6 +1406,15 @@ func GetEventDDL(db *sql.DB, dbName, eventName string) (string, error) {
 	return getDDLFromShowCreate(db, query)
 }
 
+func setEditorText(queryBox *tview.TextArea, text string) {
+	if queryBox != nil {
+		queryBox.SetText(text, true)
+	}
+	if activeSQLEditor != nil {
+		activeSQLEditor.SetText(text)
+	}
+}
+
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	runIcon := "▶  Run"
 	saveIcon := "💾  Save"
@@ -1401,7 +1422,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	exitIcon := "✖  Exit"
 
 	// Use selected DB
-	_, err := db.Exec("USE " + dbName)
+	_, err := db.Exec("USE " + util.QuoteIdentifier(dbName))
 	if err != nil {
 		modal := tview.NewModal().
 			SetText("Failed to use DB: " + err.Error()).
@@ -1447,7 +1468,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 
 	// LEFT: Table list (using tview.List)
-	tableList := tview.NewList()
+	tableList = tview.NewList()
 	tableList.
 		ShowSecondaryText(false).
 		SetHighlightFullLine(true)
@@ -1756,93 +1777,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
+					// Import feature disabled to prevent conflict with Tab key
+					/*
 					if event.Key() == tcell.KeyCtrlI {
-						go func() {
-							progressChan := make(chan string)
-
-							// Create UI components
-							statusBar := tview.NewTextView().
-								SetDynamicColors(true).
-								SetTextAlign(tview.AlignCenter)
-							statusBar.SetBorder(true).SetTitle("Status")
-
-							progressView := tview.NewTextView().
-								SetDynamicColors(true).
-								SetScrollable(true)
-							progressView.SetBorder(true).SetTitle(" Import Progress ")
-
-							layout := tview.NewFlex().
-								SetDirection(tview.FlexRow).
-								AddItem(tview.NewTextView().
-									SetText("[::b]  📥 Importing Database  ").
-									SetDynamicColors(true), 1, 1, false).
-								AddItem(progressView, 0, 1, false).
-								AddItem(statusBar, 1, 1, false)
-
-							// Log writer
-							go func() {
-								for msg := range progressChan {
-									util.SaveLog(msg)
-								}
-							}()
-
-							// Start import
-							app.QueueUpdateDraw(func() {
-								progressView.SetText("[blue]Preparing import...\n")
-								statusBar.SetText("[yellow]Initializing import process...")
-								app.SetRoot(layout, true)
-							})
-
-							util.SaveLog("Starting import...\n")
-
-							// Spinner
-							spinnerDone := make(chan struct{})
-							go func() {
-								icons := []string{"|", "/", "-", "\\"}
-								i := 0
-								for {
-									select {
-									case <-spinnerDone:
-										return
-									default:
-										app.QueueUpdateDraw(func() {
-											statusBar.SetText(fmt.Sprintf("[yellow]Importing... %s", icons[i%len(icons)]))
-										})
-										i++
-										time.Sleep(150 * time.Millisecond)
-									}
-								}
-							}()
-
-							// Actual import
-							go importAllObjects(progressChan, dbName)
-
-							// Update log view
-							go func() {
-								for msg := range progressChan {
-									app.QueueUpdateDraw(func() {
-										fmt.Fprintln(progressView, msg)
-										progressView.ScrollToEnd()
-									})
-								}
-
-								// Done
-								close(spinnerDone)
-								app.QueueUpdateDraw(func() {
-									statusBar.SetText("[green] Import completed successfully!")
-									modal := tview.NewModal().
-										SetText("[green::b]✓ Import completed successfully!\n\nDatabase restored from latest backup.").
-										AddButtons([]string{"OK"}).
-										SetDoneFunc(func(i int, label string) {
-											app.SetRoot(mainFlex, true)
-										})
-
-									app.SetRoot(modal, true)
-								})
-							}()
-						}()
-						return nil
+						// Import disabled
 					}
+					*/
 
 					if event.Key() == tcell.KeyCtrlX {
 						if currentobjectType == "TABLE" {
@@ -1984,74 +1924,55 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'PROCEDURE';`
-					util.SaveLog("FUNCTION: " + query)
 					routineDefinition, err := ExeQueryToData(db, currentName, query, dbName, "PROCEDURE")
 					if err != nil {
-						modal := tview.NewModal().
-							SetText("Failed to execute query: " + err.Error()).
-							AddButtons([]string{"OK"}).
-							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(app, mainFlex)
-								app.SetRoot(layout, true)
-							})
-						app.SetRoot(modal, true)
+						showErrorModal(app, mainFlex, "Failed to fetch procedure: "+err.Error())
 						return
 					}
-					queryBox.SetText(routineDefinition, true)
-					app.SetFocus(queryBox)
+					setEditorText(queryBox, routineDefinition)
+					app.SetFocus(activeSQLEditor.Editor)
+
 				case "FUNCTION":
 					query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition
 					FROM INFORMATION_SCHEMA.ROUTINES
 					WHERE ROUTINE_NAME = '` + currentName + `'
 					AND ROUTINE_SCHEMA = '` + dbName + `' AND ROUTINE_TYPE = 'FUNCTION';`
-					util.SaveLog("FUNCTION: " + query)
 					routineDefinition, err := ExeQueryToData(db, currentName, query, dbName, "FUNCTION")
 					if err != nil {
-						modal := tview.NewModal().
-							SetText("Failed to execute query: " + err.Error()).
-							AddButtons([]string{"OK"}).
-							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-								layout := CreateLayoutWithFooter(app, mainFlex)
-								app.SetRoot(layout, true)
-							})
-						app.SetRoot(modal, true)
+						showErrorModal(app, mainFlex, "Failed to fetch function: "+err.Error())
 						return
 					}
-					queryBox.SetText(routineDefinition, true)
-					app.SetFocus(queryBox)
+					setEditorText(queryBox, routineDefinition)
+					app.SetFocus(activeSQLEditor.Editor)
+
 				case "TRIGGER":
-
 					definition, err := GetTriggerDDL(db, dbName, currentName)
-					// query := "SHOW CREATE TRIGGER `" + dbName + "`.`" + currentName + "`"
-					// util.SaveLog("TRIGGER: " + query)
-
-					// definition, err := ExeQueryToData(db, currentName, query, dbName, "TRIGGER")
 					if err != nil {
 						showErrorModal(app, mainFlex, "Failed to fetch trigger: "+err.Error())
 						return
 					}
-
-					queryBox.SetText(definition, true)
-					app.SetFocus(queryBox)
+					setEditorText(queryBox, definition)
+					app.SetFocus(activeSQLEditor.Editor)
 
 				case "EVENT":
-
 					definition, err := GetEventDDL(db, dbName, currentName)
-					// query := "SHOW CREATE EVENT `" + dbName + "`.`" + currentName + "`"
-					// util.SaveLog("EVENT: " + query)
-
-					// definition, err := ExeQueryToData(db, currentName, query, dbName, "EVENT")
 					if err != nil {
 						showErrorModal(app, mainFlex, "Failed to fetch event: "+err.Error())
 						return
 					}
-
-					queryBox.SetText(definition, true)
-					app.SetFocus(queryBox)
+					setEditorText(queryBox, definition)
+					app.SetFocus(activeSQLEditor.Editor)
 
 				case "TABLE", "VIEW":
-					query := "SELECT * FROM " + currentName + " LIMIT 100"
-					queryBox.SetText(query, true)
+					activeGridObject = currentName
+					activeGridObjectType = currentobjectType
+					activeGridDBName = dbName
+					currentGridPage = 0
+
+					query := fmt.Sprintf("SELECT * FROM %s.%s LIMIT 100",
+						util.QuoteIdentifier(dbName),
+						util.QuoteIdentifier(currentName))
+					setEditorText(queryBox, query)
 					util.SaveLog("TABLE,VIEW: " + query)
 					err = ExecuteQuery(app, db, query, dataTable)
 					if err != nil {
@@ -2114,26 +2035,37 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			AddItem(runButton, 0, 1, true). // Button
 			AddItem(nil, 2, 0, false)       // Right padding
 
-		// queryBox = tview.NewTextArea()
-		// queryBox.
-		// 	SetBorder(true).
-		// 	SetTitle("Query- ctrl+R: Run, ctrl+F11: FullScreen, ctrl+T: Table, ctrl+S: SQL Keywords, ctrl+_: SQL Templates.").
-		// 	SetTitleAlign(tview.AlignCenter).Blur()
-		// queryBox.SetTitleAlign(tview.AlignLeft).
-		// 	SetBorderColor(tcell.ColorWhite)
-
 		queryBox = tview.NewTextArea()
 		queryBox.
+			SetPlaceholder("Enter SQL query here...").
 			SetBorder(true).
-			SetTitle(" [::b]Query Editor[::-] - [green]Ctrl+R:[-]Run  [green]Ctrl+F11:[-]FullScreen  [green]Ctrl+T:[-]Table  [green]Ctrl+S:[-]Keywords  [green]Ctrl+_:[-]Templates").
-			SetTitleAlign(tview.AlignCenter).
+			SetTitle(" 📝 [::b]SQL Query Editor[::-] [white]([green]Ctrl+R:[-]Run  [green]F11:[-]Fullscreen  [green]Tab:[-]Next) ").
+			SetTitleAlign(tview.AlignLeft).
 			SetBorderColor(tcell.ColorLightCyan).
-			SetTitleColor(tcell.ColorAqua).
-			Blur()
+			SetTitleColor(tcell.ColorAqua)
+
+		activeSQLEditor = NewSQLEditor(app)
+		activeSQLEditor.OnExecute = func(query string) {
+			err := ExecuteQuery(app, db, query, dataTable)
+			phhistory.SaveQuery(query, dbName)
+			isEditingEnabled = false
+			if err != nil {
+				modal := tview.NewModal().
+					SetText("Failed to execute query: " + err.Error()).
+					AddButtons([]string{"OK"}).
+					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						layout := CreateLayoutWithFooter(app, mainFlex)
+						app.SetRoot(layout, true)
+					})
+				app.SetRoot(modal, true)
+				return
+			}
+			app.SetFocus(dataTable)
+		}
 
 		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
-			case tcell.KeyCtrlU:
+			case tcell.KeyTab:
 				app.SetFocus(runButton)
 				return nil
 			case tcell.KeyEscape:
@@ -2141,9 +2073,9 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetRoot(layout, true)
 				app.SetFocus(tableList)
 				return nil
-
 			case tcell.KeyF11:
 				app.SetRoot(queryBox, true)
+				return nil
 			case tcell.KeyCtrlR:
 				query := queryBox.GetText()
 				err := ExecuteQuery(app, db, query, dataTable)
@@ -2496,7 +2428,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(queryBox, 4, 1, true).
+			AddItem(queryBox, 6, 1, true).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
 				AddItem(buttonBox, 0, 1, false).
 				AddItem(saveButtonBox, 0, 1, false).
@@ -2504,13 +2436,14 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				AddItem(exitButtonBox, 0, 1, false), 1, 0, false)
 
 		dataTable = tview.NewTable()
-		dataTable.SetBorders(true).
-			SetSelectable(true, false). // Allow vertical navigation only
-			SetFixed(1, 0).             // Fix the first row (header)
-			SetTitle("Result").
-			SetBorder(true)
-
-		dataTable.SetBorders(true).SetBorderColor(tcell.ColorWhite)
+		dataTable.
+			SetBorders(true).
+			SetSelectable(true, false).
+			SetFixed(1, 0).
+			SetTitle(" 📊 Result Data Grid [white](Ctrl+N: Next | Ctrl+P: Prev | Ctrl+E: Export | F3: Schema) ").
+			SetTitleAlign(tview.AlignLeft).
+			SetBorder(true).
+			SetBorderColor(tcell.ColorDarkCyan)
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
@@ -2523,17 +2456,21 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetRoot(layout, true)
 				return nil
 			}
-
 			if event.Key() == tcell.KeyF11 {
 				app.SetRoot(dataTable, true)
+				return nil
 			}
-
+			if event.Key() == tcell.KeyCtrlE {
+				ShowExportWizardModal(app, db, dbName)
+				return nil
+			}
 			return event
 		})
 
 		searchInput := tview.NewInputField()
-		searchInput.SetFieldBackgroundColor(tcell.ColorBlack).
-			SetLabel("Search: ").
+		searchInput.SetFieldBackgroundColor(tcell.Color234).
+			SetLabel(" 🔍 Filter: ").
+			SetPlaceholder("Type to search objects...").
 			SetFieldWidth(30)
 		searchInput.
 			SetChangedFunc(func(text string) {
@@ -2558,6 +2495,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
+		tableList.
+			SetBorder(true).
+			SetTitle(" 📋 Schema Objects ").
+			SetTitleAlign(tview.AlignLeft).
+			SetBorderColor(tcell.ColorDarkCyan)
+
 		tableList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
 				app.SetFocus(dataBaseList)
@@ -2567,9 +2510,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetFocus(searchInput)
 				return nil
 			}
-
 			return event
 		})
+
+		dataBaseList.
+			SetBorder(true).
+			SetTitle(" 🗂️ Databases ").
+			SetTitleAlign(tview.AlignLeft).
+			SetBorderColor(tcell.ColorDarkCyan)
+
 		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
 				app.SetFocus(queryBox)
@@ -2597,34 +2546,61 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 }
 
-// Get primary key column name dynamically
-func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
+// Get primary key column names dynamically
+func GetPrimaryKeyColumns(db *sql.DB, dbName, tableName string) ([]string, error) {
 	query := `
 	SELECT COLUMN_NAME
 	FROM INFORMATION_SCHEMA.COLUMNS
 	WHERE TABLE_SCHEMA = ?
 	  AND TABLE_NAME = ?
 	  AND COLUMN_KEY = 'PRI'
-	LIMIT 1
+	ORDER BY ORDINAL_POSITION
 	`
-	var primaryKey string
-	err := db.QueryRow(query, dbName, tableName).Scan(&primaryKey)
-
+	rows, err := db.Query(query, dbName, tableName)
 	if err != nil {
-		util.SaveLog(" KEYS error Error getting primary key column: " + err.Error())
-		util.SaveLog("dbName: " + dbName)
-		util.SaveLog("tableName: " + tableName)
-		util.SaveLog("Query: " + query)
-		util.SaveLog("PrimaryKey: " + primaryKey)
-		util.SaveLog("Error: " + err.Error())
-		return "", err
-
+		return nil, err
 	}
-	return primaryKey, nil
+	defer rows.Close()
+
+	var cols []string
+	for rows.Next() {
+		var col string
+		if err := rows.Scan(&col); err == nil {
+			cols = append(cols, col)
+		}
+	}
+	return cols, nil
 }
 
-// Fetch data and show in table
+func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
+	cols, err := GetPrimaryKeyColumns(db, dbName, tableName)
+	if err != nil || len(cols) == 0 {
+		return "", err
+	}
+	return cols[0], nil
+}
+
+// Fetch data and show in table with query timing, pagination, and keybindings
 func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
+	startTime := time.Now()
+	activeGridQuery = query
+	activeGridDB = db
+
+	cleanQ := strings.TrimSpace(strings.ToUpper(query))
+	isMutation := strings.HasPrefix(cleanQ, "INSERT") ||
+		strings.HasPrefix(cleanQ, "UPDATE") ||
+		strings.HasPrefix(cleanQ, "DELETE") ||
+		strings.HasPrefix(cleanQ, "DROP") ||
+		strings.HasPrefix(cleanQ, "TRUNCATE") ||
+		strings.HasPrefix(cleanQ, "ALTER") ||
+		strings.HasPrefix(cleanQ, "REPLACE") ||
+		strings.HasPrefix(cleanQ, "CREATE")
+
+	if isMutation && ActiveReadOnly {
+		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.")
+		return fmt.Errorf("read-only mode enabled")
+	}
+
 	rows, err := db.Query(query)
 	if err != nil {
 		table.Clear()
@@ -2653,23 +2629,28 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 				SetSelectable(false))
 	}
 
-	values := make([]sql.RawBytes, len(columns))
-	scanArgs := make([]interface{}, len(values))
-	for i := range values {
-		scanArgs[i] = &values[i]
+	scanValues := make([]interface{}, len(columns))
+	rawValues := make([]sql.RawBytes, len(columns))
+	for i := range rawValues {
+		scanValues[i] = &rawValues[i]
 	}
 
 	rowIndex := 1
 	for rows.Next() {
-		err := rows.Scan(scanArgs...)
+		err := rows.Scan(scanValues...)
 		if err != nil {
 			continue
 		}
 
-		for i, col := range values {
-			text := string(col)
-			if text == "" {
+		for i, col := range rawValues {
+			var text string
+			if col == nil {
 				text = "[gray]NULL"
+			} else {
+				text = string(col) // Make a string copy of the raw byte slice
+				if text == "" {
+					text = "[gray]EMPTY"
+				}
 			}
 
 			color := tcell.ColorWhite
@@ -2686,98 +2667,129 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 		rowIndex++
 	}
 
-	// Add a title row (optional)
-	table.SetTitle(" [::b]Query Result ").SetTitleAlign(tview.AlignLeft).SetBorder(true)
+	duration := time.Since(startTime)
+	rowCount := rowIndex - 1
+
+	envTagStr := "[green::b]DEV[-::-]"
+	if ActiveEnv == "PROD" {
+		envTagStr = "[red::b]PROD[-::-]"
+	} else if ActiveEnv == "STAGING" {
+		envTagStr = "[yellow::b]STAGING[-::-]"
+	}
+
+	titleStr := fmt.Sprintf(" [::b]Query Result [%s] [white](%d rows, %s) | Pg %d | [yellow]Ctrl+N/P[::-]:Pg [yellow]Ctrl+E[::-]:Export [yellow]F3[::-]:Schema [yellow]F4[::-]:Top [yellow]F5[::-]:Plan ",
+		envTagStr, rowCount, duration.Round(time.Microsecond), currentGridPage+1)
+	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
+
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch {
+		case event.Key() == tcell.KeyTab:
+			app.SetFocus(tableList)
+			return nil
+
+		case event.Key() == tcell.KeyEscape:
+			app.SetFocus(tableList)
+			layout := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(layout, true)
+			return nil
+
+		case event.Key() == tcell.KeyCtrlE:
+			if activeGridDB != nil && activeGridDBName != "" {
+				ShowExportWizardModal(app, activeGridDB, activeGridDBName)
+			} else {
+				showExportResultsModal(app, table)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF4:
+			if activeGridDB != nil {
+				ShowProcessListModal(app, activeGridDB)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF5:
+			if activeGridDB != nil && activeGridQuery != "" {
+				showExplainModal(app, activeGridDB, activeGridQuery)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF3 || event.Key() == tcell.KeyCtrlK:
+			if activeGridObject != "" && activeGridDBName != "" {
+				showSchemaInspectorModal(app, activeGridDB, activeGridDBName, activeGridObject)
+			} else {
+				showHelpModal(app)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyF1 || (event.Key() == tcell.KeyRune && event.Rune() == '?'):
+			showHelpModal(app)
+			return nil
+
+		case event.Key() == tcell.KeyCtrlN:
+			// Next Page
+			if activeGridObjectType == "TABLE" || activeGridObjectType == "VIEW" {
+				currentGridPage++
+				offset := currentGridPage * gridPageSize
+				pageQuery := fmt.Sprintf("SELECT * FROM %s.%s LIMIT %d OFFSET %d",
+					util.QuoteIdentifier(activeGridDBName),
+					util.QuoteIdentifier(activeGridObject),
+					gridPageSize, offset)
+				ExecuteQuery(app, activeGridDB, pageQuery, table)
+			}
+			return nil
+
+		case event.Key() == tcell.KeyCtrlP:
+			// Previous Page
+			if currentGridPage > 0 && (activeGridObjectType == "TABLE" || activeGridObjectType == "VIEW") {
+				currentGridPage--
+				offset := currentGridPage * gridPageSize
+				pageQuery := fmt.Sprintf("SELECT * FROM %s.%s LIMIT %d OFFSET %d",
+					util.QuoteIdentifier(activeGridDBName),
+					util.QuoteIdentifier(activeGridObject),
+					gridPageSize, offset)
+				ExecuteQuery(app, activeGridDB, pageQuery, table)
+			}
+			return nil
+		}
+
+		return event
+	})
 
 	return nil
 }
 
-// func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
-// 	rows, err := db.Query(query)
-// 	if err != nil {
-// 		table.Clear()
-// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-// 		return err
-// 	}
-// 	defer rows.Close()
-
-// 	columns, err := rows.Columns()
-// 	if err != nil {
-// 		table.Clear()
-// 		table.SetCell(0, 0, tview.NewTableCell("Error: "+err.Error()).SetTextColor(tcell.ColorRed))
-// 		return err
-// 	}
-
-// 	table.Clear()
-
-// 	// Set headers
-// 	for i, col := range columns {
-// 		table.SetCell(0, i, tview.NewTableCell(fmt.Sprintf("[::b]%s", col)).SetAlign(tview.AlignCenter))
-// 	}
-
-// 	values := make([]sql.RawBytes, len(columns))
-// 	scanArgs := make([]interface{}, len(values))
-// 	for i := range values {
-// 		scanArgs[i] = &values[i]
-// 	}
-
-// 	rowIndex := 1
-// 	for rows.Next() {
-// 		err := rows.Scan(scanArgs...)
-// 		if err != nil {
-// 			continue
-// 		}
-// 		for i, col := range values {
-// 			table.SetCell(rowIndex, i, tview.NewTableCell(string(col)).SetAlign(tview.AlignLeft))
-// 		}
-// 		rowIndex++
-// 	}
-// 	return nil
-// }
-
-// Enable editing and database update
+// Enable editing and database update with support for composite keys and keyless tables
 func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, dbName, tableName string) error {
-	primaryKeyColumn, err := GetPrimaryKeyColumn(db, dbName, tableName)
+	pkCols, err := GetPrimaryKeyColumns(db, dbName, tableName)
 	if err != nil {
-		util.SaveLog("tableName: " + tableName)
-		util.SaveLog("dbName: " + dbName)
-		util.SaveLog("Error getting primary key column: " + err.Error())
-		return err
+		util.SaveLog("Error getting primary key columns: " + err.Error())
 	}
 
 	table.SetSelectable(true, true)
-	// table.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorLightYellow).Foreground(tcell.ColorBlack))
 	table.SetSelectedStyle(tcell.StyleDefault.
 		Background(tcell.ColorWhite).
 		Foreground(tcell.ColorBlack))
+
 	table.SetSelectedFunc(func(row int, column int) {
 		if row == 0 {
 			return // Skip header row
 		}
 
+		if ActiveReadOnly {
+			showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode. Inline cell editing is disabled.")
+			return
+		}
+
 		cell := table.GetCell(row, column)
 		currentValue := cell.Text
 
-		// Get column name from header
 		headerCell := table.GetCell(0, column)
 		columnName := util.StripFormatting(headerCell.Text)
-		// columnName = util.StripFormatting(columnName)
-		// Now don't assume primary key is always 0 column
-		var primaryKeyValue string
-		for col := 0; col < table.GetColumnCount(); col++ {
-			colHeader := util.StripFormatting(table.GetCell(0, col).Text)
-			if colHeader == primaryKeyColumn {
-				primaryKeyValue = table.GetCell(row, col).Text
-				break
-			}
-		}
 
-		// Use TextArea now
 		textArea := tview.NewTextArea()
 		textArea.
 			SetBorder(true).
 			SetTitle(fmt.Sprintf("Edit %s (Enter=Save, Esc=Cancel)", columnName))
-
 		textArea.SetText(string(currentValue), true)
 
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -2797,19 +2809,57 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 
 				newValue := textArea.GetText()
 
-				// Update cell visually
-				cell.SetText(newValue)
+				var updateQuery string
+				var queryArgs []interface{}
+				queryArgs = append(queryArgs, newValue)
 
-				columnName = util.StripFormatting(columnName)
-				// Update database
-				query := fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s = ?", tableName, columnName, primaryKeyColumn)
-				_, err := db.Exec(query, newValue, primaryKeyValue)
-				if err != nil {
-					fmt.Println("Update error:", err)
+				if len(pkCols) > 0 {
+					var whereClauses []string
+					for _, pkCol := range pkCols {
+						for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
+							colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
+							if colHeader == pkCol {
+								val := table.GetCell(row, colIdx).Text
+								whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(pkCol)))
+								queryArgs = append(queryArgs, val)
+								break
+							}
+						}
+					}
+					updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s",
+						util.QuoteIdentifier(tableName),
+						util.QuoteIdentifier(columnName),
+						strings.Join(whereClauses, " AND "))
+				} else {
+					var whereClauses []string
+					for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
+						colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
+						val := table.GetCell(row, colIdx).Text
+						if val == "[gray]NULL" || val == "" {
+							whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(colHeader)))
+						} else {
+							whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(colHeader)))
+							queryArgs = append(queryArgs, val)
+						}
+					}
+					updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s LIMIT 1",
+						util.QuoteIdentifier(tableName),
+						util.QuoteIdentifier(columnName),
+						strings.Join(whereClauses, " AND "))
 				}
-				fullQuery := phhistory.ReplacePlaceholders(query, newValue, primaryKeyValue)
+
+				_, execErr := db.Exec(updateQuery, queryArgs...)
+				if execErr != nil {
+					util.SaveLog("Update error: " + execErr.Error())
+					showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
+					return nil
+				}
+
+				cell.SetText(newValue)
+				fullQuery := phhistory.ReplacePlaceholders(updateQuery, queryArgs...)
 				phhistory.SaveQuery(fullQuery, dbName)
 				util.SaveLog(fullQuery)
+
 				app.SetRoot(mainFlex, true)
 				util.SetFocusWithBorder(app, table)
 				return nil
@@ -2831,6 +2881,285 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 
 	return nil
 }
+
+func showExportResultsModal(app *tview.Application, table *tview.Table) {
+	if table.GetRowCount() <= 1 {
+		showErrorModal(app, mainFlex, "No data rows available to export.")
+		return
+	}
+
+	form := tview.NewForm()
+	filePathInput := tview.NewInputField().
+		SetLabel("File Path: ").
+		SetText("export_result.csv").
+		SetFieldWidth(30)
+
+	formatDropdown := tview.NewDropDown().
+		SetLabel("Format: ").
+		SetOptions([]string{"Full Database SQL Dump (.sql)", "Result Grid CSV (.csv)", "Result Grid JSON (.json)"}, nil).
+		SetCurrentOption(0)
+
+	form.AddFormItem(filePathInput)
+	form.AddFormItem(formatDropdown)
+
+	form.AddButton("Export", func() {
+		filePath := filePathInput.GetText()
+		_, formatOpt := formatDropdown.GetCurrentOption()
+
+		if strings.Contains(formatOpt, "SQL") {
+			if activeGridDB != nil && activeGridDBName != "" {
+				ShowExportWizardModal(app, activeGridDB, activeGridDBName)
+			} else {
+				showErrorModal(app, mainFlex, "No active database connection found for SQL export.")
+			}
+			return
+		}
+
+		if filePath == "" {
+			showErrorModal(app, mainFlex, "File path cannot be empty.")
+			return
+		}
+
+		cols := table.GetColumnCount()
+		rows := table.GetRowCount()
+
+		f, err := os.Create(filePath)
+		if err != nil {
+			showErrorModal(app, mainFlex, "Failed to create file: "+err.Error())
+			return
+		}
+		defer f.Close()
+
+		if formatOpt == "CSV" {
+			var lines []string
+			var headers []string
+			for c := 0; c < cols; c++ {
+				headers = append(headers, fmt.Sprintf("%q", util.StripFormatting(table.GetCell(0, c).Text)))
+			}
+			lines = append(lines, strings.Join(headers, ","))
+
+			for r := 1; r < rows; r++ {
+				var rowVals []string
+				for c := 0; c < cols; c++ {
+					val := table.GetCell(r, c).Text
+					if val == "[gray]NULL" {
+						val = ""
+					}
+					rowVals = append(rowVals, fmt.Sprintf("%q", val))
+				}
+				lines = append(lines, strings.Join(rowVals, ","))
+			}
+			f.WriteString(strings.Join(lines, "\n") + "\n")
+		} else {
+			var jsonRows []map[string]string
+			for r := 1; r < rows; r++ {
+				rowMap := make(map[string]string)
+				for c := 0; c < cols; c++ {
+					header := util.StripFormatting(table.GetCell(0, c).Text)
+					val := table.GetCell(r, c).Text
+					if val == "[gray]NULL" {
+						val = "NULL"
+					}
+					rowMap[header] = val
+				}
+				jsonRows = append(jsonRows, rowMap)
+			}
+			data, _ := json.MarshalIndent(jsonRows, "", "  ")
+			f.Write(data)
+		}
+
+		modal := tview.NewModal().
+			SetText(fmt.Sprintf("Exported %d rows to %s successfully!", rows-1, filePath)).
+			AddButtons([]string{"OK"}).
+			SetDoneFunc(func(i int, label string) {
+				app.SetRoot(mainFlex, true)
+				util.SetFocusWithBorder(app, table)
+			})
+		app.SetRoot(modal, true)
+	})
+
+	form.AddButton("Cancel", func() {
+		app.SetRoot(mainFlex, true)
+		util.SetFocusWithBorder(app, table)
+	})
+
+	form.SetBorder(true).SetTitle(" Export Grid Data ").SetTitleAlign(tview.AlignCenter)
+
+	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(form, 11, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	app.SetRoot(flex, true).SetFocus(form)
+}
+
+func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableName string) {
+	colTable := tview.NewTable().SetBorders(true)
+	colTable.SetTitle(fmt.Sprintf(" 📋 Columns of `%s` ", tableName)).SetBorder(true)
+
+	colQuery := fmt.Sprintf("SHOW COLUMNS FROM %s.%s", util.QuoteIdentifier(dbName), util.QuoteIdentifier(tableName))
+	rows, err := db.Query(colQuery)
+	if err != nil {
+		showErrorModal(app, mainFlex, "Failed to inspect columns: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	headers := []string{"Field", "Type", "Null", "Key", "Default", "Extra"}
+	for i, h := range headers {
+		colTable.SetCell(0, i, tview.NewTableCell("[::b]"+h).SetTextColor(tcell.ColorYellow).SetAlign(tview.AlignCenter))
+	}
+
+	rIdx := 1
+	for rows.Next() {
+		var field, typ, nullStr, keyStr, extraStr sql.NullString
+		var defStr sql.NullString
+		if err := rows.Scan(&field, &typ, &nullStr, &keyStr, &defStr, &extraStr); err == nil {
+			colTable.SetCell(rIdx, 0, tview.NewTableCell(field.String).SetTextColor(tcell.ColorGreen))
+			colTable.SetCell(rIdx, 1, tview.NewTableCell(typ.String).SetTextColor(tcell.ColorWhite))
+			colTable.SetCell(rIdx, 2, tview.NewTableCell(nullStr.String).SetTextColor(tcell.ColorLightGray))
+			colTable.SetCell(rIdx, 3, tview.NewTableCell(keyStr.String).SetTextColor(tcell.ColorAqua))
+			colTable.SetCell(rIdx, 4, tview.NewTableCell(defStr.String).SetTextColor(tcell.ColorLightGray))
+			colTable.SetCell(rIdx, 5, tview.NewTableCell(extraStr.String).SetTextColor(tcell.ColorGray))
+			rIdx++
+		}
+	}
+
+	idxTable := tview.NewTable().SetBorders(true)
+	idxTable.SetTitle(fmt.Sprintf(" 🔑 Indexes of `%s` ", tableName)).SetBorder(true)
+
+	idxQuery := fmt.Sprintf("SHOW INDEX FROM %s.%s", util.QuoteIdentifier(dbName), util.QuoteIdentifier(tableName))
+	idxRows, err := db.Query(idxQuery)
+	if err == nil {
+		defer idxRows.Close()
+		idxHeaders := []string{"Key_name", "Column_name", "Non_unique", "Index_type"}
+		for i, h := range idxHeaders {
+			idxTable.SetCell(0, i, tview.NewTableCell("[::b]"+h).SetTextColor(tcell.ColorYellow).SetAlign(tview.AlignCenter))
+		}
+		irIdx := 1
+		for idxRows.Next() {
+			cols, _ := idxRows.Columns()
+			scanVals := make([]interface{}, len(cols))
+			for i := range scanVals {
+				scanVals[i] = new(sql.NullString)
+			}
+			if scanErr := idxRows.Scan(scanVals...); scanErr == nil {
+				kName := scanVals[2].(*sql.NullString).String
+				cName := scanVals[4].(*sql.NullString).String
+				nuName := scanVals[1].(*sql.NullString).String
+				iType := scanVals[10].(*sql.NullString).String
+
+				idxTable.SetCell(irIdx, 0, tview.NewTableCell(kName).SetTextColor(tcell.ColorAqua))
+				idxTable.SetCell(irIdx, 1, tview.NewTableCell(cName).SetTextColor(tcell.ColorGreen))
+				idxTable.SetCell(irIdx, 2, tview.NewTableCell(nuName).SetTextColor(tcell.ColorWhite))
+				idxTable.SetCell(irIdx, 3, tview.NewTableCell(iType).SetTextColor(tcell.ColorLightGray))
+				irIdx++
+			}
+		}
+	}
+
+	colTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyTab {
+			app.SetFocus(idxTable)
+			return nil
+		}
+		return event
+	})
+
+	idxTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyTab {
+			app.SetFocus(colTable)
+			return nil
+		}
+		return event
+	})
+
+	hintView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter).
+		SetText("[yellow]Press [white::b]ESC[::-][yellow] or [white::b]ENTER[::-][yellow] to close inspector | [white::b]TAB[::-][yellow] to switch between Columns & Indexes")
+
+	layout := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(colTable, 0, 2, true).
+		AddItem(idxTable, 0, 1, false).
+		AddItem(hintView, 1, 0, false)
+
+	layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+			app.SetRoot(mainFlex, true)
+			if dataTable != nil {
+				util.SetFocusWithBorder(app, dataTable)
+			} else {
+				app.SetFocus(tableList)
+			}
+			return nil
+		}
+		return event
+	})
+
+	app.SetRoot(layout, true).SetFocus(colTable)
+}
+
+func showHelpModal(app *tview.Application) {
+	helpText := `
+ [lime::b]PHERI KEYBOARD SHORTCUTS REFERENCE[::-]
+
+ [yellow::b]General Shortcuts[::-]
+   [green]F1 / ?[-]        Show this Help Legend
+   [green]Tab[-]           Switch Focus between Panes
+   [green]Esc[-]           Return Focus / Close Dialogs
+   [green]Ctrl+Q[-]        Quit Application
+
+ [yellow::b]Search & Navigation[::-]
+   [green]table:kw[-]      Filter Tables
+   [green]view:kw[-]       Filter Views
+   [green]procedure:kw[-]  Filter Stored Procedures
+   [green]function:kw[-]   Filter Functions
+   [green]db:kw[-]         Filter Databases
+
+ [yellow::b]Query Editor Shortcuts[::-]
+   [green]Ctrl+R[-]        Execute Query
+   [green]Ctrl+F11[-]      Full Screen Editor
+   [green]Ctrl+T[-]        Insert Tables List
+   [green]Ctrl+S[-]        SQL Keywords Popup
+   [green]Ctrl+_[-]        SQL Templates Popup
+
+ [yellow::b]Data Grid Shortcuts[::-]
+   [green]Enter[-]         Edit Selected Cell
+   [green]Ctrl+N[-]        Next Page (100 Rows)
+   [green]Ctrl+P[-]        Previous Page (100 Rows)
+   [green]Ctrl+E[-]        Export Results (CSV / JSON)
+   [green]F3 / Ctrl+K[-]   Table Schema & Index Inspector
+   [green]Ctrl+X[-]        Copy DDL & Inserts to Clipboard
+
+ [yellow::b]Backup Tools[::-]
+   [green]Ctrl+Y[-]        Export Full Database (Gzip)
+   [gray]Ctrl+I[-]        Import Database Dump (Disabled)
+
+ [white]Press ESC or ENTER to close this window.
+`
+
+	modal := tview.NewTextView().
+		SetDynamicColors(true).
+		SetText(helpText)
+	modal.SetBorder(true).SetTitle(" ❓ Keyboard Shortcuts ").SetTitleAlign(tview.AlignCenter)
+
+	flex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(modal, 26, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+			app.SetRoot(mainFlex, true)
+			return nil
+		}
+		return event
+	})
+
+	app.SetRoot(flex, true).SetFocus(modal)
+}
+
 
 // Remove formatting codes like [::b]
 func stripFormatting(s string) string {
@@ -2918,11 +3247,6 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 		}
 	}
 
-	list.SetDoneFunc(func() {
-		app.SetRoot(returnTo, true)
-		app.SetFocus(button2)
-	})
-
 	// Footer: current directory
 	statusBar := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
@@ -2936,4 +3260,96 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 
 	app.SetRoot(layout, true)
 	app.SetFocus(list)
+}
+
+func showExplainModal(app *tview.Application, db *sql.DB, query string) {
+	if db == nil || strings.TrimSpace(query) == "" {
+		showErrorModal(app, mainFlex, "No active database connection or query available to explain.")
+		return
+	}
+
+	cleanQ := strings.TrimRight(strings.TrimSpace(query), ";")
+	explainQuery := "EXPLAIN " + cleanQ
+	rows, err := db.Query(explainQuery)
+	if err != nil {
+		showErrorModal(app, mainFlex, "EXPLAIN execution failed: "+err.Error())
+		return
+	}
+	defer rows.Close()
+
+	columns, err := rows.Columns()
+	if err != nil {
+		showErrorModal(app, mainFlex, "Failed to fetch EXPLAIN column metadata: "+err.Error())
+		return
+	}
+
+	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
+	table.SetBorder(true).
+		SetTitle(" 🔍 Query Execution Plan (EXPLAIN ANALYZE) ").
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderColor(tcell.ColorYellow)
+
+	table.SetBackgroundColor(tcell.ColorBlack)
+
+	headerStyle := tcell.StyleDefault.
+		Foreground(tcell.ColorBlack).
+		Background(tcell.ColorYellow).
+		Bold(true)
+
+	for i, col := range columns {
+		table.SetCell(0, i, tview.NewTableCell(" "+col+" ").SetStyle(headerStyle).SetSelectable(false))
+	}
+
+	scanVals := make([]interface{}, len(columns))
+	rawVals := make([]sql.RawBytes, len(columns))
+	for i := range rawVals {
+		scanVals[i] = &rawVals[i]
+	}
+
+	rIdx := 1
+	for rows.Next() {
+		if err := rows.Scan(scanVals...); err == nil {
+			for c, rByte := range rawVals {
+				valStr := string(rByte)
+				if rByte == nil {
+					valStr = "NULL"
+				}
+				table.SetCell(rIdx, c, tview.NewTableCell(" "+valStr+" ").SetTextColor(tcell.ColorWhite))
+			}
+			rIdx++
+		}
+	}
+
+	if rIdx == 1 {
+		table.SetCell(1, 0, tview.NewTableCell(" No execution plan returned ").SetTextColor(tcell.ColorYellow))
+	} else {
+		table.Select(1, 0)
+	}
+
+	statusBar := tview.NewTextView().
+		SetText("[yellow]ESC / ENTER[-] Close Execution Plan Window").
+		SetTextAlign(tview.AlignCenter).
+		SetDynamicColors(true).
+		SetBackgroundColor(tcell.ColorBlack)
+
+	layout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(table, 0, 1, true).
+		AddItem(statusBar, 1, 0, false)
+
+	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+			if tableList != nil {
+				util.SetFocusWithBorder(app, tableList)
+			}
+			return nil
+		}
+		return event
+	})
+
+	fullLayout := CreateLayoutWithFooter(app, layout)
+	app.SetRoot(fullLayout, true)
+	app.SetFocus(table)
 }
