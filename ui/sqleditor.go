@@ -33,7 +33,7 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 		SetRegions(true).
 		SetScrollable(true).
 		SetBorder(true).
-		SetTitle(" 📝 HeidiSQL Code Editor [white](Ctrl+R: Run | F11: Fullscreen | Tab: Switch) ")
+		SetTitle(" 📝 Pheri Code Editor [white](Ctrl+R: Run | F11: Fullscreen | Tab: Switch) ")
 
 	editor.SetWrap(false)
 	editor.SetChangedFunc(func() {
@@ -278,7 +278,7 @@ func (s *SQLEditor) updateText() {
 	}
 
 	s.Editor.SetText(content.String())
-	title := fmt.Sprintf(" 📝 HeidiSQL Code Editor [white]| Ln %d, Col %d | %d chars [lime](Ctrl+R: Run | Ctrl+S: Snippets) ",
+	title := fmt.Sprintf(" 📝 Pheri Code Editor [white]| Ln %d, Col %d | %d chars [lime](Ctrl+R: Run | Ctrl+S: Snippets) ",
 		s.CursorRow+1, s.CursorCol+1, len(s.Text))
 	s.Editor.SetTitle(title)
 	s.Editor.ScrollTo(0, s.topRow)

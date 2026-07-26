@@ -2039,7 +2039,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		queryBox.
 			SetPlaceholder("Enter SQL query here...").
 			SetBorder(true).
-			SetTitle(" 📝 [::b]HeidiSQL Query Editor[::-] [white]([green]Ctrl+R:[-]Run  [green]F11:[-]Fullscreen  [green]Tab:[-]Next) ").
+			SetTitle(" 📝 [::b]SQL Query Editor[::-] [white]([green]Ctrl+R:[-]Run  [green]F11:[-]Fullscreen  [green]Tab:[-]Next) ").
 			SetTitleAlign(tview.AlignLeft).
 			SetBorderColor(tcell.ColorLightCyan).
 			SetTitleColor(tcell.ColorAqua)

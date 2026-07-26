@@ -90,7 +90,7 @@ func ShowExportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items []ExportItem) {
 	list := tview.NewList().ShowSecondaryText(true)
 	list.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 📦 HeidiSQL Export Picker: %s (%d objects) ", dbName, len(items))).
+		SetTitle(fmt.Sprintf(" 📦 Database Object Export Picker: %s (%d objects) ", dbName, len(items))).
 		SetTitleAlign(tview.AlignCenter).
 		SetBorderColor(tcell.ColorDarkCyan)
 
