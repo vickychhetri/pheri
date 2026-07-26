@@ -3165,6 +3165,7 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 
 	cleanQ := strings.TrimRight(strings.TrimSpace(query), ";")
 	explainQuery := "EXPLAIN " + cleanQ
+
 	rows, err := db.Query(explainQuery)
 	if err != nil {
 		showErrorModal(app, mainFlex, "EXPLAIN execution failed: "+err.Error())
@@ -3178,9 +3179,14 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		return
 	}
 
+	warningBar := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter)
+	warningBar.SetBackgroundColor(tcell.ColorDarkRed)
+
 	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
 	table.SetBorder(true).
-		SetTitle(" 🔍 Query Execution Plan (EXPLAIN ANALYZE) ").
+		SetTitle(" 🔍 Query Execution Plan & AI Bottleneck Analyzer ").
 		SetTitleAlign(tview.AlignCenter).
 		SetBorderColor(tcell.ColorYellow)
 
@@ -3201,6 +3207,12 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		scanVals[i] = &rawVals[i]
 	}
 
+	var warnings []string
+	hasFullTableScan := false
+	hasFilesort := false
+	hasTempTable := false
+	usedKeys := []string{}
+
 	rIdx := 1
 	for rows.Next() {
 		if err := rows.Scan(scanVals...); err == nil {
@@ -3209,10 +3221,54 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 				if rByte == nil {
 					valStr = "NULL"
 				}
-				table.SetCell(rIdx, c, tview.NewTableCell(" "+valStr+" ").SetTextColor(tcell.ColorWhite))
+
+				colName := strings.ToLower(columns[c])
+				if colName == "type" && strings.EqualFold(valStr, "ALL") {
+					hasFullTableScan = true
+				}
+				if colName == "extra" {
+					if strings.Contains(strings.ToLower(valStr), "using filesort") {
+						hasFilesort = true
+					}
+					if strings.Contains(strings.ToLower(valStr), "using temporary") {
+						hasTempTable = true
+					}
+				}
+				if colName == "key" && valStr != "NULL" && valStr != "" {
+					usedKeys = append(usedKeys, valStr)
+				}
+
+				cellStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
+				if colName == "type" && strings.EqualFold(valStr, "ALL") {
+					cellStyle = cellStyle.Foreground(tcell.ColorRed).Bold(true)
+				} else if colName == "key" && valStr != "NULL" {
+					cellStyle = cellStyle.Foreground(tcell.ColorGreen).Bold(true)
+				}
+
+				table.SetCell(rIdx, c, tview.NewTableCell(" "+valStr+" ").SetStyle(cellStyle))
 			}
 			rIdx++
 		}
+	}
+
+	if hasFullTableScan {
+		warnings = append(warnings, "[red::b]⚠️ CRITICAL: Full Table Scan (type=ALL)[-]")
+	}
+	if hasFilesort {
+		warnings = append(warnings, "[yellow::b]⚠️ WARNING: Using filesort[-] ")
+	}
+	if hasTempTable {
+		warnings = append(warnings, "[yellow::b]⚠️ WARNING: Using temporary table[-] ")
+	}
+	if len(usedKeys) > 0 {
+		warnings = append(warnings, fmt.Sprintf("[lime::b]✅ Index Used: %s[-]", strings.Join(usedKeys, ", ")))
+	}
+
+	if len(warnings) == 0 {
+		warningBar.SetText(" [lime::b]✅ Query execution plan looks optimal. No major bottlenecks detected. ")
+		warningBar.SetBackgroundColor(tcell.ColorDarkGreen)
+	} else {
+		warningBar.SetText(" " + strings.Join(warnings, " | ") + " ")
 	}
 
 	if rIdx == 1 {
@@ -3222,13 +3278,14 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 	}
 
 	statusBar := tview.NewTextView().
-		SetText("[yellow]ESC / ENTER[-] Close Execution Plan Window").
+		SetText("[yellow]ESC / ENTER[-] Close  |  [cyan]f[-] Toggle EXPLAIN JSON  |  [lime]c[-] Copy Plan to Clipboard").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
 		SetBackgroundColor(tcell.ColorBlack)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
+		AddItem(warningBar, 1, 0, false).
 		AddItem(table, 0, 1, true).
 		AddItem(statusBar, 1, 0, false)
 
@@ -3240,6 +3297,46 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 				util.SetFocusWithBorder(app, tableList)
 			}
 			return nil
+		}
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'c' || event.Rune() == 'C') {
+			util.SetClipboardText(explainQuery)
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'f' || event.Rune() == 'F') {
+			// EXPLAIN FORMAT=JSON
+			jsonRows, jErr := db.Query("EXPLAIN FORMAT=JSON " + cleanQ)
+			if jErr == nil {
+				defer jsonRows.Close()
+				if jsonRows.Next() {
+					var jsonOutput string
+					if err := jsonRows.Scan(&jsonOutput); err == nil {
+						jsonView := tview.NewTextView().
+							SetDynamicColors(true).
+							SetText(jsonOutput).
+							SetScrollable(true)
+						jsonView.SetBorder(true).SetTitle(" 🔍 EXPLAIN FORMAT=JSON Output ")
+						jsonLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+							AddItem(jsonView, 0, 1, true).
+							AddItem(tview.NewTextView().SetText("[yellow]ESC / ENTER[-] Return to Table EXPLAIN  |  [lime]C[-] Copy JSON").SetTextAlign(tview.AlignCenter).SetDynamicColors(true), 1, 0, false)
+
+						jsonView.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+							if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+								fullL := CreateLayoutWithFooter(app, layout)
+								app.SetRoot(fullL, true)
+								app.SetFocus(table)
+								return nil
+							}
+							if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
+								util.SetClipboardText(jsonOutput)
+							}
+							return e
+						})
+
+						app.SetRoot(jsonLayout, true).SetFocus(jsonView)
+						return nil
+					}
+				}
+			}
 		}
 		return event
 	})

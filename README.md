@@ -12,8 +12,8 @@ Latest Release: v3.0.0 (https://github.com/vickychhetri/pheri/releases/tag/v3.0.
 - Table Name Auto-Completion (Ctrl+T): Instant schema table name suggestions while writing queries.
 - SQL Snippets and Templates (Ctrl+S / Ctrl+Space): Boilerplate query generation for SELECT, INSERT, UPDATE, DELETE, JOINs, and DDL statements.
 - Super-Fast Concurrent Database Export (Ctrl+Y): Multi-threaded parallel export (130 worker pool) dumping tables, views, procedures, functions, triggers, and events to compressed .gz archives.
-- Live Process Manager (F4 / :process): Real-time monitor for active database threads with query termination capabilities (KILL query_id).
-- EXPLAIN Execution Plan Analyzer (F5 / :explain): Inspect execution paths, key usage, row counts, and query performance bottlenecks.
+- Live Process Manager (F4 / :process): Real-time MySQL process monitor displaying active threads (ID, User, Host, DB, Command, Execution Time, State, and Query Info) with instant query termination capabilities (KILL query_id).
+- EXPLAIN Execution Plan Analyzer (F5 / :explain): One-key query execution plan analyzer providing deep insight into join types, index key utilization, scanned row counts, filtered percentages, and execution bottlenecks (detects missing indexes and full table scans).
 - Active Panel Focus Highlighting: Visual border indicator denoting active keyboard focus across the query editor, schema list, database browser, and result grid.
 - Environment Tags & Read-Only Guard: Tag connections as PROD, STAGING, or DEV with optional read-only enforcement to prevent accidental database mutations.
 - Selective Export Wizard (Ctrl+E): Export selected schema objects into raw SQL, CSV, or JSON formats.

@@ -25,6 +25,10 @@ func GetClipboardText() string {
 	return text
 }
 
+func SetClipboardText(text string) error {
+	return clipboard.WriteAll(text)
+}
+
 // QuoteIdentifier safely wraps a MySQL identifier (database, table, or column name) in backticks
 func QuoteIdentifier(name string) string {
 	escaped := strings.ReplaceAll(name, "`", "``")
