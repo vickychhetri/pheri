@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"regexp"
+	"strings"
 
 	"github.com/atotto/clipboard"
 	"github.com/gdamore/tcell/v2"
@@ -21,6 +23,12 @@ func StripFormatting(text string) string {
 func GetClipboardText() string {
 	text, _ := clipboard.ReadAll()
 	return text
+}
+
+// QuoteIdentifier safely wraps a MySQL identifier (database, table, or column name) in backticks
+func QuoteIdentifier(name string) string {
+	escaped := strings.ReplaceAll(name, "`", "``")
+	return "`" + escaped + "`"
 }
 
 func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error) {
@@ -218,6 +226,14 @@ func SaveLog(message string) {
 }
 
 func SetFocusWithBorder(app *tview.Application, primitive tview.Primitive) {
+	if app == nil || primitive == nil {
+		return
+	}
+	val := reflect.ValueOf(primitive)
+	if val.Kind() == reflect.Ptr && val.IsNil() {
+		return
+	}
+
 	// Try to set green border if the primitive supports it
 	if borderable, ok := primitive.(interface {
 		SetBorder(bool) tview.Primitive

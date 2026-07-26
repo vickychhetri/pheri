@@ -3528,3 +3528,952 @@
 2026/03/25 20:37:08 [blue]Processed 5000 statements for tables...
 2026/03/25 20:43:50 [blue]Processed 7000 statements for tables...
 2026/03/25 20:57:21 [blue]Processed 9000 statements for tables...
+2026/07/26 20:25:11 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 20:25:12 TABLE,VIEW: SELECT * FROM `tensor_money1`.`audit_logs` LIMIT 100
+2026/07/26 20:25:21 UPDATE `audit_logs` SET `action` = 'VIEW_HOME' WHERE `id` = '2'
+2026/07/26 20:25:31 Starting import...
+
+2026/07/26 20:25:31 === IMPORT STARTED ===
+2026/07/26 20:25:31 Importing database: tensor_money1
+2026/07/26 20:25:31 findLatestExportFolder: Starting search
+2026/07/26 20:25:31 Looking for export folder at: export
+2026/07/26 20:25:31 ERROR: Export folder not found at export
+2026/07/26 20:25:31 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:33 Starting import...
+
+2026/07/26 20:25:33 === IMPORT STARTED ===
+2026/07/26 20:25:33 Importing database: tensor_money1
+2026/07/26 20:25:33 findLatestExportFolder: Starting search
+2026/07/26 20:25:33 Looking for export folder at: export
+2026/07/26 20:25:33 ERROR: Export folder not found at export
+2026/07/26 20:25:33 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:41 Starting import...
+
+2026/07/26 20:25:41 === IMPORT STARTED ===
+2026/07/26 20:25:41 Importing database: tensor_money1
+2026/07/26 20:25:41 findLatestExportFolder: Starting search
+2026/07/26 20:25:41 Looking for export folder at: export
+2026/07/26 20:25:41 ERROR: Export folder not found at export
+2026/07/26 20:25:41 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:43 TABLE,VIEW: SELECT * FROM `tensor_money1`.`cache` LIMIT 100
+2026/07/26 20:25:45 Starting import...
+
+2026/07/26 20:25:45 === IMPORT STARTED ===
+2026/07/26 20:25:45 Importing database: tensor_money1
+2026/07/26 20:25:45 findLatestExportFolder: Starting search
+2026/07/26 20:25:45 Looking for export folder at: export
+2026/07/26 20:25:45 ERROR: Export folder not found at export
+2026/07/26 20:25:45 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:57 Starting import...
+
+2026/07/26 20:25:57 === IMPORT STARTED ===
+2026/07/26 20:25:57 Importing database: tensor_money1
+2026/07/26 20:25:57 findLatestExportFolder: Starting search
+2026/07/26 20:25:57 Looking for export folder at: export
+2026/07/26 20:25:57 ERROR: Export folder not found at export
+2026/07/26 20:25:57 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:58 Starting import...
+
+2026/07/26 20:25:58 === IMPORT STARTED ===
+2026/07/26 20:25:58 Importing database: tensor_money1
+2026/07/26 20:25:58 findLatestExportFolder: Starting search
+2026/07/26 20:25:58 Looking for export folder at: export
+2026/07/26 20:25:58 ERROR: Export folder not found at export
+2026/07/26 20:25:58 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:25:58 Starting import...
+
+2026/07/26 20:25:58 === IMPORT STARTED ===
+2026/07/26 20:25:58 Importing database: tensor_money1
+2026/07/26 20:25:58 findLatestExportFolder: Starting search
+2026/07/26 20:25:58 Looking for export folder at: export
+2026/07/26 20:25:58 ERROR: Export folder not found at export
+2026/07/26 20:25:58 [red]Failed to find export folder: export folder not found at export
+2026/07/26 20:28:27 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 20:28:28 TABLE,VIEW: SELECT * FROM `tensor_money`.`admins` LIMIT 100
+2026/07/26 20:28:52 UPDATE `admins` SET `updated_at` = '2026-07-18 08:07:27' WHERE `id` = '1'
+2026/07/26 20:29:15 UPDATE `admins` SET `updated_at` = '2026-07-18 08:07:27' WHERE `id` = '1'
+2026/07/26 20:31:34 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 20:31:36 TABLE,VIEW: SELECT * FROM `tensor_money`.`blogs` LIMIT 100
+2026/07/26 20:31:40 TABLE,VIEW: SELECT * FROM `tensor_money`.`documents` LIMIT 100
+2026/07/26 20:31:45 TABLE,VIEW: SELECT * FROM `tensor_money`.`failed_jobs` LIMIT 100
+2026/07/26 20:31:49 TABLE,VIEW: SELECT * FROM `tensor_money`.`import_jobs` LIMIT 100
+2026/07/26 20:31:53 TABLE,VIEW: SELECT * FROM `tensor_money`.`audit_logs` LIMIT 100
+2026/07/26 20:32:18 UPDATE `audit_logs` SET `new_values` = '{"url": "/goals", "method": "POST", "status": 200}' WHERE `id` = '9'
+2026/07/26 20:32:26 Update error: Error 1366 (HY000): Incorrect integer value: '[gray]NULL' for column 'model_id' at row 1
+2026/07/26 20:32:28 TABLE,VIEW: SELECT * FROM `tensor_money`.`audit_logs` LIMIT 100
+2026/07/26 20:32:33 UPDATE `audit_logs` SET `user_id` = '1' WHERE `id` = '9'
+2026/07/26 20:32:36 TABLE,VIEW: SELECT * FROM `tensor_money`.`documents` LIMIT 100
+2026/07/26 20:32:57 TABLE,VIEW: SELECT * FROM `tensor_money`.`blogs` LIMIT 100
+2026/07/26 20:33:56 matches: [telescope_entries telescope_entries_tags telescope_monitoring]
+2026/07/26 20:43:09 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 20:43:10 TABLE,VIEW: SELECT * FROM `tensor_money`.`admins` LIMIT 100
+2026/07/26 20:43:16 TABLE,VIEW: SELECT * FROM `tensor_money`.`email_schedulers` LIMIT 100
+2026/07/26 20:45:04 TABLE,VIEW: SELECT * FROM `tensor_money`.`email_schedulers` LIMIT 100
+2026/07/26 20:45:44 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 20:45:45 TABLE,VIEW: SELECT * FROM `tensor_money`.`amcs` LIMIT 100
+2026/07/26 20:45:53 TABLE,VIEW: SELECT * FROM `tensor_money`.`amcs` LIMIT 100
+2026/07/26 20:50:44 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'pheri_test_db'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'pheri_test_db';
+2026/07/26 20:50:45 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 20:51:30 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 20:51:37 UPDATE `users` SET `username` = 'bob' WHERE `id` = '2'
+2026/07/26 20:51:39 UPDATE `users` SET `username` = 'bob1' WHERE `id` = '2'
+2026/07/26 20:51:41 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 20:55:34 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 20:55:36 TABLE,VIEW: SELECT * FROM `tensor_money`.`amcs` LIMIT 100
+2026/07/26 20:55:51 TABLE,VIEW: SELECT * FROM `tensor_money`.`fund_managers` LIMIT 100
+2026/07/26 20:55:54 Exporting 50 objects...
+
+2026/07/26 20:55:54 [green]Exported TABLE     : cache_locks                    [2.0%] (ETA 2s)
+2026/07/26 20:55:54 [green]Exported TABLE     : watchlists                     [6.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : migrations                     [10.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : telescope_monitoring           [12.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : settings                       [14.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : fund_manager_mutual_fund       [16.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : contacts                       [18.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : personal_access_tokens         [20.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : transactions                   [24.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : kyc_requests                   [26.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : watchlist_mutual_fund          [28.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : roles                          [30.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : reviews                        [32.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : faqs                           [34.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : cache                          [36.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : email_schedulers               [40.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : portfolios                     [42.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : job_batches                    [44.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : risk_metrics                   [46.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : permission_role                [48.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : telescope_entries_tags         [50.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : fund_managers                  [52.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : portfolio_items                [54.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : fund_holdings                  [56.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : documents                      [58.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : blogs                          [60.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : sessions                       [62.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : admins                         [66.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : support_tickets                [68.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : sectors                        [70.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : users                          [72.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : fund_categories                [74.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : fund_returns                   [76.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : permissions                    [78.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : jobs                           [80.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : role_user                      [82.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : audit_logs                     [84.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : orders                         [88.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : sip_orders                     [90.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : system_configurations          [94.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : telescope_entries              [96.0%] (ETA 0s)
+2026/07/26 20:55:54 [green]Exported TABLE     : nav_history                    [98.0%] (ETA 0s)
+2026/07/26 20:55:57 TABLE,VIEW: SELECT * FROM `tensor_money`.`import_jobs` LIMIT 100
+2026/07/26 20:56:02 TABLE,VIEW: SELECT * FROM `tensor_money`.`jobs` LIMIT 100
+2026/07/26 20:56:08 TABLE,VIEW: SELECT * FROM `tensor_money`.`mutual_funds` LIMIT 100
+2026/07/26 20:56:15 TABLE,VIEW: SELECT * FROM `tensor_money`.`nav_history` LIMIT 100
+2026/07/26 20:56:20 UPDATE `nav_history` SET `nav` = '107.04901' WHERE `id` = '3'
+2026/07/26 20:56:22 UPDATE `nav_history` SET `nav` = '108.1685' WHERE `id` = '6'
+2026/07/26 20:56:38 UPDATE `amcs` SET `name` = 'Bajaj Finserv Mutual Fund1' WHERE `id` = '6'
+2026/07/26 21:31:51 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money';
+2026/07/26 21:31:52 TABLE,VIEW: SELECT * FROM `tensor_money`.`amcs` LIMIT 100
+2026/07/26 21:32:00 TABLE,VIEW: SELECT * FROM `tensor_money`.`blogs` LIMIT 100
+2026/07/26 21:32:09 TABLE,VIEW: SELECT * FROM `tensor_money`.`cache_locks` LIMIT 100
+2026/07/26 21:32:11 TABLE,VIEW: SELECT * FROM `tensor_money`.`documents` LIMIT 100
+2026/07/26 21:32:17 TABLE,VIEW: SELECT * FROM `tensor_money`.`faqs` LIMIT 100
+2026/07/26 21:32:22 TABLE,VIEW: SELECT * FROM `tensor_money`.`fund_managers` LIMIT 100
+2026/07/26 21:32:31 TABLE,VIEW: SELECT * FROM `tensor_money`.`goals` LIMIT 100
+2026/07/26 21:35:22 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'pheri_test_db'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'pheri_test_db';
+2026/07/26 21:35:23 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 21:36:07 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 21:36:16 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 21:40:50 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'heritagefloor' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'heritagefloor' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'heritagefloor' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'heritagefloor' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'heritagefloor'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'heritagefloor';
+2026/07/26 21:40:50 TABLE,VIEW: SELECT * FROM `heritagefloor`.`addresses` LIMIT 100
+2026/07/26 21:46:10 TABLE,VIEW: SELECT * FROM `heritagefloor`.`attributes` LIMIT 100
+2026/07/26 21:47:28 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 21:47:30 TABLE,VIEW: SELECT * FROM `tensor_money1`.`blogs` LIMIT 100
+2026/07/26 21:47:37 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'pheri_test_db'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'pheri_test_db';
+2026/07/26 21:47:38 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 21:47:57 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'todo_app' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'todo_app' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'todo_app' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'todo_app' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'todo_app'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'todo_app';
+2026/07/26 21:47:58 TABLE,VIEW: SELECT * FROM `todo_app`.`todos` LIMIT 100
+2026/07/26 21:48:02 TABLE,VIEW: SELECT * FROM `todo_app`.`users` LIMIT 100
+2026/07/26 21:48:06 UPDATE `users` SET `password` = '12345678234567898765432' WHERE `id` = '2'
+2026/07/26 21:48:08 UPDATE `users` SET `password` = 'newpass123' WHERE `id` = '3'
+2026/07/26 21:48:17 TABLE,VIEW: SELECT * FROM `todo_app`.`users` LIMIT 100
+2026/07/26 21:49:01 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'performance_schema' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'performance_schema' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'performance_schema' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'performance_schema' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'performance_schema'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'performance_schema';
+2026/07/26 21:49:02 TABLE,VIEW: SELECT * FROM `performance_schema`.`accounts` LIMIT 100
+2026/07/26 21:49:14 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'ecom_db' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'ecom_db' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'ecom_db' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'ecom_db' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'ecom_db'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'ecom_db';
+2026/07/26 21:49:17 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'heritagefloor' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'heritagefloor' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'heritagefloor' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'heritagefloor' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'heritagefloor'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'heritagefloor';
+2026/07/26 21:49:22 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 21:49:23 TABLE,VIEW: SELECT * FROM `tensor_money1`.`admins` LIMIT 100
+2026/07/26 21:50:40 TABLE,VIEW: SELECT * FROM `tensor_money1`.`amcs` LIMIT 100
+2026/07/26 21:50:55 UPDATE `amcs` SET `code` = 'DSP' WHERE `id` = '9'
+2026/07/26 21:51:05 Exporting 76 objects...
+
+2026/07/26 21:51:05 [green]Exported TABLE     : fund_holdings                  [1.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : settings                       [3.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : faqs                           [5.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : failed_jobs                    [6.6%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : sync_progress                  [9.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : orders                         [10.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : fund_manager_mutual_fund       [11.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : fund_returns                   [13.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : portal_selected_funds          [14.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_system_settings             [15.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : goals                          [17.1%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : password_reset_tokens          [18.4%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : cache                          [19.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : sessions                       [22.4%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : contacts                       [23.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : fund_managers                  [25.0%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : support_tickets                [26.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : system_configurations          [27.6%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : reviews                        [30.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : admins                         [32.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : telescope_monitoring           [34.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : migrations                     [35.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : order_items                    [36.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : permission_role                [38.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_sync_jobs                   [39.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : watchlist_mutual_fund          [40.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : import_jobs                    [42.1%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : job_batches                    [43.4%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : roles                          [44.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : fund_categories                [46.1%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : watchlists                     [47.4%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_returns_cache               [48.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : cache_locks                    [51.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_change_history              [52.6%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_scheme_documents            [53.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_downloaded_files            [55.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_audit_logs                  [56.6%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_fund_manager_history        [57.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : sectors                        [60.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : amcs                           [61.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : personal_access_tokens         [64.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_market_cap_allocations      [65.8%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : audit_logs                     [68.4%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_sources                     [69.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_fund_history                [71.1%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_aum_history                 [73.7%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : users                          [76.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_validation_errors           [77.6%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : email_schedulers               [78.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : sip_orders                     [80.3%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : permissions                    [82.9%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_raw_documents               [84.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : portfolio_items                [85.5%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : blogs                          [88.2%] (ETA 0s)
+2026/07/26 21:51:05 [green]Exported TABLE     : td_factsheets                  [89.5%] (ETA 0s)
+2026/07/26 21:51:06 [green]Exported TABLE     : td_nav_history                 [92.1%] (ETA 0s)
+2026/07/26 21:51:06 [green]Exported TABLE     : mutual_funds                   [94.7%] (ETA 0s)
+2026/07/26 21:51:06 [green]Exported TABLE     : telescope_entries_tags         [97.4%] (ETA 0s)
+2026/07/26 21:51:08 [green]Exported TABLE     : telescope_entries              [100.0%] (ETA 0s)
+2026/07/26 22:01:49 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 22:01:50 TABLE,VIEW: SELECT * FROM `tensor_money1`.`admins` LIMIT 100
+2026/07/26 22:01:52 TABLE,VIEW: SELECT * FROM `tensor_money1`.`amcs` LIMIT 100
+2026/07/26 22:01:59 TABLE,VIEW: SELECT * FROM `tensor_money1`.`amcs` LIMIT 100
+2026/07/26 22:02:04 UPDATE `amcs` SET `id` = '1' WHERE `id` = '1'
+2026/07/26 22:03:55 TABLE,VIEW: SELECT * FROM `tensor_money1`.`blogs` LIMIT 100
+2026/07/26 22:03:57 TABLE,VIEW: SELECT * FROM `tensor_money1`.`audit_logs` LIMIT 100
+2026/07/26 22:05:43 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'pheri_test_db' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'pheri_test_db' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'pheri_test_db'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'pheri_test_db';
+2026/07/26 22:05:43 TABLE,VIEW: SELECT * FROM `pheri_test_db`.`users` LIMIT 100
+2026/07/26 22:06:57 Exporting 1 objects...
+
+2026/07/26 22:06:57 [green]Exported TABLE     : users                          [100.0%] (ETA 0s)
+2026/07/26 22:17:53 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 22:17:54 TABLE,VIEW: SELECT * FROM `tensor_money1`.`amcs` LIMIT 100
+2026/07/26 22:18:55 TABLE,VIEW: SELECT * FROM `tensor_money1`.`personal_access_tokens` LIMIT 100
+2026/07/26 22:18:55 Update error: Error 1292 (22007): Truncated incorrect INTEGER value: ''
+2026/07/26 22:18:59 queryAllStructure: 
+						SELECT table_name AS name, 'TABLE' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'BASE TABLE'
+
+						UNION ALL
+
+						SELECT table_name AS name, 'VIEW' AS type 
+						FROM information_schema.tables 
+						WHERE table_schema = 'tensor_money1' AND table_type = 'VIEW'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'PROCEDURE' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'PROCEDURE'
+
+						UNION ALL
+
+						SELECT routine_name AS name, 'FUNCTION' AS type 
+						FROM information_schema.routines 
+						WHERE routine_schema = 'tensor_money1' AND routine_type = 'FUNCTION'
+
+						UNION ALL
+
+						SELECT trigger_name AS name, 'TRIGGER' AS type 
+						FROM information_schema.triggers 
+						WHERE trigger_schema = 'tensor_money1'
+
+						UNION ALL
+
+						SELECT event_name AS name, 'EVENT' AS type 
+						FROM information_schema.events 
+						WHERE event_schema = 'tensor_money1';
+2026/07/26 22:19:06 TABLE,VIEW: SELECT * FROM `tensor_money1`.`amcs` LIMIT 100
