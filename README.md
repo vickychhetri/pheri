@@ -1,204 +1,139 @@
-﻿# Pheri
+# Pheri
 
-**Pheri** is a terminal-based user interface for MySQL. It allows you to connect to your MySQL databases and interact with them directly from your terminal — with a clean, minimal UI designed for productivity.
-## Features
+Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL. It provides a developer-friendly SQL environment with real-time tokenized syntax highlighting, live process management, query execution analysis, interactive inline cell editing, and selective database exporting directly inside your terminal.
 
-- **Fast and Lightweight** — Optimized for speed and responsiveness
-- **Navigate Tables** — Explore your database schema easily
-- **Run Queries** — Write and execute SQL queries directly
-- **View Results** — Display result sets in a readable tabular format
-- **Keyboard Shortcuts** — Perform common tasks with ease
-- **Cross-Platform** — Works on Linux, macOS, and Windows
-
-**Terminals:**  Cmd Prompt, PowerShell, Windows Terminal, WSL, Bash, Zsh, Fish, Dash, Ksh, Tcsh, Terminal.app, iTerm2, Termux, BusyBox, Alacritty, Kitty, Tilda, Guake, Yakuake, Xonsh
-
-# Pheri - User Guide
-
-## Search & Filter Functionality
-
-The **Search & Filter** feature in **Pheri** enables users to quickly locate and interact with database objects such as tables, views, stored procedures, functions, and even entire databases.
+Release Tag: v3.0.0 (https://github.com/vickychhetri/pheri/releases/tag/v3.0.0)
 
 ---
 
-## How to Use
+## Key Features
 
-Start typing into the search bar or command input area. The system supports filtered and unfiltered searches:
+- **Tokenized SQL Syntax Highlighting**: Real-time syntax coloring for SQL keywords, functions, data types, strings, identifiers, numbers, comments, and operators.
+- **Table Name Auto-Completion (Ctrl+T)**: Instant schema table name suggestions while typing SQL queries.
+- **SQL Snippets & Templates (Ctrl+S / Ctrl+Space)**: Quick boilerplate injection for SELECT, INSERT, UPDATE, DELETE, JOINs, and DDL templates.
+- **Active Panel Focus Highlighting**: Clear visual feedback on the active pane (SQL Editor, Object Browser, Databases, or Data Grid) with high-visibility borders.
+- **Environment Tags & Read-Only Guard**: Assign connections to PROD, STAGING, or DEV environments. Enforce read-only mode to prevent accidental mutations on production servers.
+- **Live Process Manager (F4 / :process)**: Monitor active threads, view query execution states, and kill stuck connections or slow queries.
+- **EXPLAIN Query Analyzer (F5 / :explain)**: Inspect query execution plans, index utilization, and performance bottlenecks.
+- **Super-Fast Concurrent Database Export (Ctrl+Y)**: Parallel multi-threaded dump (130 workers) of all tables, views, stored procedures, functions, triggers, and events into compressed `.gz` archives.
+- **Schema Inspector (F3)**: View table column definitions, primary keys, data types, and index layouts.
+- **Smart Object Search & Filters**: Search across databases, tables, views, procedures, and functions with typed prefixes (table:, view:, procedure:, function:, db:).
+- **Inline Cell Editing**: Modify database values directly inside the result grid.
+- **Saved Connection Profiles**: Securely store database configurations locally for quick login.
 
-### Basic Search
+---
 
-Typing a keyword without a filter prefix searches across all supported object types:
+## Installation & Setup
 
+### Download Pre-Built Binary (v3.0.0)
+Download the binary for your operating system directly from the GitHub Releases page:
+https://github.com/vickychhetri/pheri/releases/tag/v3.0.0
+
+### Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/vickychhetri/pheri.git
+cd pheri
+
+# Build executable
+go build -o pheri main.go
+
+# Run Pheri
+./pheri
 ```
-customer
+
+### Install via Go
+```bash
+go install github.com/vickychhetri/pheri@latest
 ```
 
-This will return all tables, views, procedures, and functions that include the word `customer`.
+---
 
-### Filtered Search
+## Quick Start & CLI Flags
 
-Use the following format to filter by type:
+### Direct CLI Connection
+Connect to a database server directly from your command line:
+
+```bash
+./pheri -u root -p YourPassword -host 127.0.0.1 -port 3306 -db my_database
+```
+
+### Command Line Options
+
+| Flag | Description | Default |
+| :--- | :--- | :--- |
+| `-u` | MySQL Username | `root` |
+| `-p` | MySQL Password | `""` |
+| `-host` | Host address | `127.0.0.1` |
+| `-port` | MySQL Port | `3306` |
+| `-db` | Default database name | `""` |
+| `-env` | Environment tag (`PROD`, `STAGING`, `DEV`) | `DEV` |
+| `-readonly` | Enable read-only mode protection (`true`/`false`) | `false` |
+
+---
+
+## Keyboard Shortcuts
+
+### Editor & Navigation
+
+| Shortcut | Action |
+| :--- | :--- |
+| `Ctrl+R` | Execute SQL Query |
+| `Ctrl+T` | Auto-complete Table Name suggestions |
+| `Ctrl+S` / `Ctrl+Space` | Insert SQL Snippets / Templates |
+| `Ctrl+P` | Paste system clipboard content |
+| `F4` | Open Live Process Manager & Query Killer (`SHOW FULL PROCESSLIST`) |
+| `F5` | Open EXPLAIN Query Plan Analyzer |
+| `F11` | Toggle Fullscreen Mode for Editor or Data Grid |
+| `F3` | Open Schema Inspector (Columns, Types, Keys) |
+| `Ctrl+E` | Open Selective Database Export Wizard |
+| `Ctrl+X` | Copy CREATE TABLE / VIEW definition to clipboard |
+| `Tab` | Navigate focus forward between panels and buttons |
+| `Esc` | Return focus to Schema Objects list |
+
+---
+
+## Search & Filter System
+
+Pheri allows filtering database objects directly from the search bar using type-specific prefixes:
 
 ```
 <type>:<search-term>
 ```
 
-#### Examples
+### Supported Filter Prefixes
 
-* `table:customer` → Finds all **tables** with names containing `customer`.
-* `view:active` → Filters **views** with `active` in the name.
-* `procedure:invoice` → Searches **stored procedures** with `invoice`.
-* `function:calc` → Searches **user-defined functions** with `calc`.
-* `db:sales` → Lists databases that include `sales` in the name.
+| Prefix | Description | Example |
+| :--- | :--- | :--- |
+| `table:` | Filter database tables | `table:user` |
+| `view:` | Filter views | `view:active` |
+| `procedure:` | Filter stored procedures | `procedure:get` |
+| `function:` | Filter user-defined functions | `function:calc` |
+| `db:` | Filter available databases | `db:sales` |
 
----
-
-## Supported Type Filters
-
-| Prefix      | Description                    |
-| ----------- | ------------------------------ |
-| `table`     | Filters only database tables   |
-| `view`      | Filters only views             |
-| `procedure` | Filters stored procedures      |
-| `function`  | Filters user-defined functions |
-| `db`        | Filters available databases    |
+### Search Behavior
+- **Global Search**: Type any keyword (e.g. `customer`) without a prefix to search across all tables, views, procedures, and functions.
+- **Table / View Selection**: Pressing Enter runs `SELECT * FROM table LIMIT 100` and displays the dataset in the grid with inline cell editing support.
+- **Procedure / Function Selection**: Pressing Enter displays the routine definition inside the query viewer.
+- **Database Selection**: Pressing Enter switches the active database context.
 
 ---
 
-## On Selection Behavior
+## Screenshots
 
-Once you select a result from the filtered list:
-
-### TABLE or VIEW
-
-* Automatically runs:
-
-  ```sql
-  SELECT * FROM <name> LIMIT 100
-  ```
-* Displays results in a data grid.
-* For **tables**, **inline editing** is enabled.
-
-### PROCEDURE or FUNCTION
-
-* Shows the definition using:
-
-  ```sql
-  SELECT routine_definition FROM INFORMATION_SCHEMA.ROUTINES ...
-  ```
-* Displays the output in a read-only query area.
-
-### DATABASE
-
-* Switches to the selected database as the active working database.
+- Login Interface: https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b
+- Workspace Dashboard: https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62
+- Database Explorer: https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8
 
 ---
 
-## Smart Filtering Logic
+## Supported Terminals
 
-* Case-insensitive search.
-* Detects and separates the filter type and search keyword automatically.
-* Dynamically updates the list view in real-time.
+Windows Terminal, Command Prompt, PowerShell, WSL, macOS Terminal, iTerm2, Alacritty, Kitty, Bash, Zsh, Fish, Termux.
 
 ---
 
-## Error Handling
+## License
 
-* If an error occurs during selection (e.g. query fails), a modal will be shown with the error message.
-* Errors in table editing or fetching routine definitions are also handled and shown via dialog pop-ups.
- 
-
-This module provides an interactive Terminal User Interface (TUI) for exploring and interacting with MySQL databases.
-
-## Features
-
-- Select and switch between databases
-- Browse tables, views, stored procedures, and functions
-- View data from tables/views with a LIMIT of 100 rows
-- Execute SQL queries with a query editor
-- Edit table data (if supported)
-- Maintain query history for reuse
-- Keyboard shortcuts for navigation and execution
-
-## UI Layout
-
-| Panel              | Description                                                  |
-|--------------------|--------------------------------------------------------------|
-| Databases List     | Shows all available databases on the connected server        |
-| Tables List        | Lists tables, views, procedures, and functions               |
-| Query Editor       | Text area to write and execute SQL queries                   |
-| Data Viewer        | Displays query results or contents of a table/view           |
-| Control Buttons    | Run query, Save, Load query, Exit                            |
-
-## How to Use
-
-### 1. Launch and Select a Database
-
-- Start the application.
-- Use arrow keys to select a database from the list.
-- Press `Enter` to activate the selected database.
-- Errors (e.g., permission issues) are shown in a modal window.
-
-### 2. Explore Tables, Views, Procedures, and Functions
-
-- Navigate using arrow keys.
-- Press `Enter`:
-  - On a table/view: Displays the first 100 rows.
-  - On a procedure/function: Shows the routine definition.
-
-### 3. Execute Queries
-
-- Write SQL statements in the query editor.
-- Press `Ctrl+R` to execute.
-- Results are shown in the Data Viewer.
-
-### 4. Keyboard Shortcuts (Edit Query Time)
-
-| Key Combination | Action                           |
-|-----------------|----------------------------------|
-| Ctrl+R          | Run the query                    |
-| Ctrl+F11        | Full-screen query editor         |
-| Ctrl+T          | Show tables (custom action)      |
-| Ctrl+S          | SQL keywords (custom action)     |
-| Ctrl+_          | SQL templates (custom action)    |
-| Esc             | Return focus to the tables list  |
-| Tab             | Navigate to the Run button       |
-
-## Editing Table Data
-
-- Editing is supported only for tables, not views.
-- Select a table, view its data, and enter edit mode.
-- Edited values are committed back to the database.
-
-## Query History
-
-- Each successful query is stored in a per-database history.
-- Queries can be reloaded and reused later.
-
-## Error Handling
-
-- All errors (database access, SQL issues, etc.) appear in a modal popup.
-- Press the "OK" or "Back" button to continue.
-
-## Code Reference
-
-Primary function: `UseDatabase(app *tview.Application, db *sql.DB, dbName string)`
-
-- Switches database using `USE dbName`
-- Fetches metadata via:
-  - `SHOW DATABASES`
-  - `information_schema.tables`
-  - `information_schema.routines`
-- Core components:
-  - `tview.List` for databases/tables
-  - `tview.TextArea` for query editing
-  - `tview.Table` for displaying results
-- Uses helper functions like `ExeQueryToData()`, `ExecuteQuery()`, `EnableCellEditing()`
-
-**Screenshot**
-![image](https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8)
-
-**Direct Command:**
-.\pheri -u root -p 12345678 -host 127.0.0.1 -port 3306
-
-**Optional**
--host 127.0.0.1 -port 3306
+MIT License - see LICENSE file for details.
