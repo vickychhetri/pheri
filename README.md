@@ -1,213 +1,133 @@
 # Pheri
 
-<<<<<<< HEAD
-Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL. It provides a developer-friendly SQL environment with real-time tokenized syntax highlighting, live process management, query execution analysis, interactive inline cell editing, and selective database exporting directly inside your terminal.
+Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL in Go. It offers developers an interactive environment with real-time SQL syntax highlighting, live process management, query execution plan analysis, interactive cell editing, and super-fast multi-threaded database exporting directly from the command line.
 
-Release Tag: v3.0.0 (https://github.com/vickychhetri/pheri/releases/tag/v3.0.0)
-
----
-
-## Key Features
-
-- **Tokenized SQL Syntax Highlighting**: Real-time syntax coloring for SQL keywords, functions, data types, strings, identifiers, numbers, comments, and operators.
-- **Table Name Auto-Completion (Ctrl+T)**: Instant schema table name suggestions while typing SQL queries.
-- **SQL Snippets & Templates (Ctrl+S / Ctrl+Space)**: Quick boilerplate injection for SELECT, INSERT, UPDATE, DELETE, JOINs, and DDL templates.
-- **Active Panel Focus Highlighting**: Clear visual feedback on the active pane (SQL Editor, Object Browser, Databases, or Data Grid) with high-visibility borders.
-- **Environment Tags & Read-Only Guard**: Assign connections to PROD, STAGING, or DEV environments. Enforce read-only mode to prevent accidental mutations on production servers.
-- **Live Process Manager (F4 / :process)**: Monitor active threads, view query execution states, and kill stuck connections or slow queries.
-- **EXPLAIN Query Analyzer (F5 / :explain)**: Inspect query execution plans, index utilization, and performance bottlenecks.
-- **Super-Fast Concurrent Database Export (Ctrl+Y)**: Parallel multi-threaded dump (130 workers) of all tables, views, stored procedures, functions, triggers, and events into compressed `.gz` archives.
-- **Schema Inspector (F3)**: View table column definitions, primary keys, data types, and index layouts.
-- **Smart Object Search & Filters**: Search across databases, tables, views, procedures, and functions with typed prefixes (table:, view:, procedure:, function:, db:).
-- **Inline Cell Editing**: Modify database values directly inside the result grid.
-- **Saved Connection Profiles**: Securely store database configurations locally for quick login.
-
----
-
-## Installation & Setup
-
-### Download Pre-Built Binary (v3.0.0)
-Download the binary for your operating system directly from the GitHub Releases page:
-https://github.com/vickychhetri/pheri/releases/tag/v3.0.0
-
-### Build from Source
-
-```bash
-# Clone the repository
-=======
-Pheri is a fast, terminal-based client for MySQL. It provides a modern TUI to manage databases, execute queries with syntax highlighting, inspect schemas, monitor live processes, and export objects directly from your terminal.
+Latest Release: v3.0.0 (https://github.com/vickychhetri/pheri/releases/tag/v3.0.0)
 
 ---
 
 ## Features
 
-- **Environment Tags & Read-Only Guard** - Label connections as `[PROD]`, `[STAGING]`, or `[DEV]` with built-in Read-Only protection against accidental database mutations.
-- **Live Process Manager (`F4` / `:process`)** - Monitor active database threads and kill stuck queries or connections (`KILL <id>`).
-- **EXPLAIN Query Analyzer (`F5` / `:explain`)** - View query execution plans, index usage, and performance bottlenecks.
-- **Saved Connection Profiles** - Save credentials locally for instant 1-click logins.
-- **SQL Query Editor** - Code editor with syntax highlighting, line numbers, snippets, and fullscreen mode (`F11`).
-- **Selective Database Export** - Interactively export tables, views, procedures, functions, triggers, and events to SQL dumps (`.sql`), JSON, or CSV.
-- **Fast Object Search & Filters** - Filter objects easily by type (`table:`, `view:`, `procedure:`, `function:`, `db:`).
-- **Schema Inspector** - Inspect table column structures, types, keys, and indexes (`F3`).
-- **Developer Command Launcher** - Global command bar for quick actions (`:process`, `:explain`, `:export`, `:clear`, `:quit`, `:help`).
+- Tokenized SQL Syntax Highlighting: Real-time syntax coloring for SQL keywords, functions, data types, strings, identifiers, numbers, comments, and operators.
+- Table Name Auto-Completion (Ctrl+T): Instant schema table name suggestions while writing queries.
+- SQL Snippets and Templates (Ctrl+S / Ctrl+Space): Boilerplate query generation for SELECT, INSERT, UPDATE, DELETE, JOINs, and DDL statements.
+- Super-Fast Concurrent Database Export (Ctrl+Y): Multi-threaded parallel export (130 worker pool) dumping tables, views, procedures, functions, triggers, and events to compressed .gz archives.
+- Live Process Manager (F4 / :process): Real-time monitor for active database threads with query termination capabilities (KILL query_id).
+- EXPLAIN Execution Plan Analyzer (F5 / :explain): Inspect execution paths, key usage, row counts, and query performance bottlenecks.
+- Active Panel Focus Highlighting: Visual border indicator denoting active keyboard focus across the query editor, schema list, database browser, and result grid.
+- Environment Tags & Read-Only Guard: Tag connections as PROD, STAGING, or DEV with optional read-only enforcement to prevent accidental database mutations.
+- Selective Export Wizard (Ctrl+E): Export selected schema objects into raw SQL, CSV, or JSON formats.
+- Schema Inspector (F3): Detailed structural view of table column definitions, primary keys, data types, and index configurations.
+- Smart Object Search & Filters: Search objects across schemas using prefix queries (table:, view:, procedure:, function:, db:).
+- Inline Cell Editing: Directly edit table row data inside the terminal grid.
+- Saved Connection Profiles: Local storage for saved database credentials (~/.pheri_connections.json).
 
 ---
 
-## Quick Start
+## Installation
 
-### Installation & Build
+### Pre-Built Binaries
+Download ready-to-run binaries for Linux, macOS, and Windows from the official GitHub Release page:
+https://github.com/vickychhetri/pheri/releases/tag/v3.0.0
+
+### Build from Source
+
+Requirements: Go 1.18 or higher.
 
 ```bash
-# Clone repository
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
 git clone https://github.com/vickychhetri/pheri.git
 cd pheri
-
-# Build executable
 go build -o pheri main.go
-
-# Run Pheri
 ./pheri
 ```
 
-<<<<<<< HEAD
-### Install via Go
+### Install via Go CLI
+
 ```bash
 go install github.com/vickychhetri/pheri@latest
 ```
 
 ---
 
-## Quick Start & CLI Flags
+## CLI Flags & Usage
 
-### Direct CLI Connection
-Connect to a database server directly from your command line:
+Launch Pheri directly with command line flags to bypass the connection screen:
 
 ```bash
-./pheri -u root -p YourPassword -host 127.0.0.1 -port 3306 -db my_database
+./pheri -u root -p mypassword -host 127.0.0.1 -port 3306 -db sales_db -env PROD -readonly
 ```
 
-### Command Line Options
+### Available Command Line Options
 
 | Flag | Description | Default |
 | :--- | :--- | :--- |
-| `-u` | MySQL Username | `root` |
-| `-p` | MySQL Password | `""` |
-| `-host` | Host address | `127.0.0.1` |
-| `-port` | MySQL Port | `3306` |
-| `-db` | Default database name | `""` |
-| `-env` | Environment tag (`PROD`, `STAGING`, `DEV`) | `DEV` |
-| `-readonly` | Enable read-only mode protection (`true`/`false`) | `false` |
+| `-u` | MySQL username | `root` |
+| `-p` | MySQL password | `""` |
+| `-host` | Server host address | `127.0.0.1` |
+| `-port` | Server port | `3306` |
+| `-db` | Default database | `""` |
+| `-env` | Environment tag (PROD, STAGING, DEV) | `DEV` |
+| `-readonly` | Enable read-only safeguard (`true`/`false`) | `false` |
 
 ---
 
 ## Keyboard Shortcuts
 
-### Editor & Navigation
-=======
-### Direct CLI Connection
-```bash
-./pheri -u root -p YourPassword -host 127.0.0.1 -port 3306
-```
-
----
-
-## Essential Keyboard Shortcuts
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
-
-| Shortcut | Action |
+| Key | Action |
 | :--- | :--- |
-| `Ctrl+R` | Execute SQL Query |
-<<<<<<< HEAD
-| `Ctrl+T` | Auto-complete Table Name suggestions |
-| `Ctrl+S` / `Ctrl+Space` | Insert SQL Snippets / Templates |
-| `Ctrl+P` | Paste system clipboard content |
-| `F4` | Open Live Process Manager & Query Killer (`SHOW FULL PROCESSLIST`) |
-| `F5` | Open EXPLAIN Query Plan Analyzer |
-| `F11` | Toggle Fullscreen Mode for Editor or Data Grid |
-| `F3` | Open Schema Inspector (Columns, Types, Keys) |
+| `Ctrl+R` | Run SQL Query |
+| `Ctrl+T` | Table Name Auto-Completion |
+| `Ctrl+S` / `Ctrl+Space` | Insert SQL Snippets and Templates |
+| `Ctrl+Y` | Super-Fast Concurrent Database Export (130 Parallel Workers) |
+| `Ctrl+P` | Paste Clipboard Content |
+| `F4` | Open Live Process Manager and Query Killer |
+| `F5` | Open EXPLAIN Query Execution Plan Analyzer |
+| `F11` | Toggle Fullscreen Mode for Editor or Data Viewer |
+| `F3` | Open Schema Inspector (Column Types, Keys, Indexes) |
 | `Ctrl+E` | Open Selective Database Export Wizard |
-| `Ctrl+X` | Copy CREATE TABLE / VIEW definition to clipboard |
-| `Tab` | Navigate focus forward between panels and buttons |
-| `Esc` | Return focus to Schema Objects list |
+| `Ctrl+X` | Copy Table / View DDL to Clipboard |
+| `Tab` | Cycle Keyboard Focus |
+| `Esc` | Return Focus to Schema Objects Sidebar |
 
 ---
 
-## Search & Filter System
+## Object Search and Filter System
 
-Pheri allows filtering database objects directly from the search bar using type-specific prefixes:
+Use the search bar in the sidebar to isolate specific database objects using structured prefix queries:
 
 ```
-<type>:<search-term>
+<prefix>:<keyword>
 ```
 
-### Supported Filter Prefixes
+### Filter Examples
 
-| Prefix | Description | Example |
+| Prefix | Target | Example |
 | :--- | :--- | :--- |
-| `table:` | Filter database tables | `table:user` |
-| `view:` | Filter views | `view:active` |
-| `procedure:` | Filter stored procedures | `procedure:get` |
-| `function:` | Filter user-defined functions | `function:calc` |
-| `db:` | Filter available databases | `db:sales` |
+| `table:` | Database Tables | `table:orders` |
+| `view:` | Database Views | `view:active_users` |
+| `procedure:` | Stored Procedures | `procedure:generate_invoice` |
+| `function:` | User Functions | `function:calculate_tax` |
+| `db:` | Databases | `db:production` |
 
-### Search Behavior
-- **Global Search**: Type any keyword (e.g. `customer`) without a prefix to search across all tables, views, procedures, and functions.
-- **Table / View Selection**: Pressing Enter runs `SELECT * FROM table LIMIT 100` and displays the dataset in the grid with inline cell editing support.
-- **Procedure / Function Selection**: Pressing Enter displays the routine definition inside the query viewer.
-- **Database Selection**: Pressing Enter switches the active database context.
-=======
-| `F4` | Open Live Process Manager & Query Killer (`SHOW FULL PROCESSLIST`) |
-| `F5` | Inspect Query Execution Plan (`EXPLAIN ANALYZE`) |
-| `F11` | Toggle Fullscreen Code Editor |
-| `F3` | Open Schema Inspector (Columns & Indexes) |
-| `Ctrl+E` | Launch Selective Database Export Wizard |
-| `Ctrl+S` / `Ctrl+T` | Open SQL Snippets & Templates |
-| `Tab` / `Shift+Tab` | Cycle Focus (Sidebar <-> Editor <-> Data Grid) |
-| `:` | Open Command Launcher (`:process`, `:explain`, `:export`, `:quit`) |
-
----
-
-## Object Search & Filter Shortcuts
-
-Type prefix in the sidebar filter to isolate specific objects:
-
-- `table:user` - Filter tables matching `user`
-- `view:active` - Filter views matching `active`
-- `procedure:get` - Filter procedures matching `get`
-- `function:calc` - Filter functions matching `calc`
-- `db:sales` - Filter databases matching `sales`
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
+- Unprefixed Search: Typing a keyword directly (e.g. `customer`) searches across all tables, views, procedures, and functions.
+- Selection Action: Pressing Enter on a table or view runs `SELECT * FROM table LIMIT 100` and activates inline editing. Pressing Enter on a procedure or function displays its DDL definition.
 
 ---
 
 ## Screenshots
 
-<<<<<<< HEAD
-- Login Interface: https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b
-- Workspace Dashboard: https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62
-- Database Explorer: https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8
-=======
-<img width="1920" alt="Pheri Login Screen" src="https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b" />
-<img width="1920" alt="Pheri Workspace" src="https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62" />
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
+- Connection Manager: https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b
+- Main Workspace: https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62
+- Schema Explorer: https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8
 
 ---
 
 ## Supported Terminals
-<<<<<<< HEAD
 
-Windows Terminal, Command Prompt, PowerShell, WSL, macOS Terminal, iTerm2, Alacritty, Kitty, Bash, Zsh, Fish, Termux.
-=======
-Linux, macOS, Windows Terminal, WSL, iTerm2, Alacritty, Kitty, PowerShell, Termux, Zsh, Bash.
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
+Linux Terminal, macOS Terminal.app, iTerm2, Windows Terminal, PowerShell, Command Prompt, WSL, Alacritty, Kitty, Termux, Zsh, Bash, Fish.
 
 ---
 
 ## License
-<<<<<<< HEAD
 
-MIT License - see LICENSE file for details.
-=======
-MIT License
->>>>>>> 13056f2e4934244d2b9e87bfede38bbfeedde629
+MIT License. See LICENSE for details.
