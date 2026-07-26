@@ -195,7 +195,9 @@ Primary function: `UseDatabase(app *tview.Application, db *sql.DB, dbName string
 - Uses helper functions like `ExeQueryToData()`, `ExecuteQuery()`, `EnableCellEditing()`
 
 **Screenshot**
-![image](https://github.com/user-attachments/assets/6cd265c8-c9bf-4abd-9aec-a7eca5efbef8)
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b" />
+<img width="1920" height="1200" alt="image" src="https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62" />
+
 
 **Direct Command:**
 .\pheri -u root -p 12345678 -host 127.0.0.1 -port 3306
