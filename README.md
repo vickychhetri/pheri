@@ -128,6 +128,19 @@ Linux Terminal, macOS Terminal.app, iTerm2, Windows Terminal, PowerShell, Comman
 
 ---
 
+## Contributing & Open Source Vision
+
+Pheri is an open-source initiative dedicated to simplifying database management inside SSH and server terminal environments with an ultra-low memory footprint.
+
+We welcome contributions from developers worldwide! Future roadmap items include:
+- Multi-database engine support (PostgreSQL, SQLite, MariaDB).
+- Advanced column-level AST auto-completion.
+- Enhanced TUI themes and custom key bindings.
+
+Feel free to submit Pull Requests, report issues, or suggest new features on [GitHub](https://github.com/vickychhetri/pheri).
+
+---
+
 ## License
 
 MIT License. See LICENSE for details.
