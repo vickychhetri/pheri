@@ -312,8 +312,12 @@ func filterTableList(
 							return
 						}
 
-						queryBox.SetText(routineDefinition, true)
-						app.SetFocus(queryBox)
+						setEditorText(queryBox, routineDefinition)
+						if activeSQLEditor != nil {
+							app.SetFocus(activeSQLEditor.Editor)
+						} else {
+							app.SetFocus(queryBox)
+						}
 					case "FUNCTION":
 						query := `SELECT   routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
 					FROM INFORMATION_SCHEMA.ROUTINES
@@ -333,8 +337,12 @@ func filterTableList(
 							return
 						}
 
-						queryBox.SetText(routineDefinition, true)
-						app.SetFocus(queryBox)
+						setEditorText(queryBox, routineDefinition)
+						if activeSQLEditor != nil {
+							app.SetFocus(activeSQLEditor.Editor)
+						} else {
+							app.SetFocus(queryBox)
+						}
 					}
 				})
 			}
@@ -1442,7 +1450,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	dataBaseList.SetBorder(true).
 		SetTitle(" 🗂️  Databases ").
 		SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorGreen)
+		SetBorderColor(tcell.ColorDarkGray).
+		SetTitleColor(tcell.ColorGray)
+
+	dataBaseList.SetFocusFunc(func() {
+		dataBaseList.SetBorderColor(tcell.ColorYellow).
+			SetTitleColor(tcell.ColorYellow)
+	})
+	dataBaseList.SetBlurFunc(func() {
+		dataBaseList.SetBorderColor(tcell.ColorDarkGray).
+			SetTitleColor(tcell.ColorGray)
+	})
 
 	queryAllDB := `SHOW DATABASES;`
 
@@ -1475,9 +1493,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 	tableList.
 		SetBorder(true).
-		SetTitle(" 🧮 Tables ").
+		SetTitle(" 🧮 Database Objects ").
 		SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorYellow)
+		SetBorderColor(tcell.ColorYellow).
+		SetTitleColor(tcell.ColorYellow)
+
+	tableList.SetFocusFunc(func() {
+		tableList.SetBorderColor(tcell.ColorYellow).
+			SetTitleColor(tcell.ColorYellow)
+	})
+	tableList.SetBlurFunc(func() {
+		tableList.SetBorderColor(tcell.ColorDarkGray).
+			SetTitleColor(tcell.ColorGray)
+	})
 
 	queryAllStructure := `
 						SELECT table_name AS name, 'TABLE' AS type 
@@ -2062,8 +2090,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			}
 			app.SetFocus(dataTable)
 		}
+		activeSQLEditor.OnNextFocus = func() {
+			app.SetFocus(runButton)
+		}
+		activeSQLEditor.OnExit = func() {
+			layout := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(layout, true)
+			app.SetFocus(tableList)
+		}
+		activeSQLEditor.OnFullscreen = func() {
+			app.SetRoot(activeSQLEditor.Container, true)
+		}
 
-		queryBox.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		activeSQLEditor.Editor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
 			case tcell.KeyTab:
 				app.SetFocus(runButton)
@@ -2074,10 +2113,10 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetFocus(tableList)
 				return nil
 			case tcell.KeyF11:
-				app.SetRoot(queryBox, true)
+				app.SetRoot(activeSQLEditor.Container, true)
 				return nil
 			case tcell.KeyCtrlR:
-				query := queryBox.GetText()
+				query := activeSQLEditor.GetText()
 				err := ExecuteQuery(app, db, query, dataTable)
 				phhistory.SaveQuery(query, dbName)
 				isEditingEnabled = false
@@ -2098,189 +2137,20 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 			case tcell.KeyCtrlP:
 				clipboardText := util.GetClipboardText()
-				queryBox.SetText(clipboardText, false)
-				app.SetFocus(queryBox)
-				return nil
-			case tcell.KeyCtrlUnderscore:
-				// Get current word at cursor
-				row, col, _, _ := queryBox.GetCursor()
-				text := queryBox.GetText()
-				lines := strings.Split(text, "\n")
-
-				if row >= len(lines) {
-					return nil
-				}
-				currentLine := lines[row]
-
-				prefix := currentLine[:col]
-				words := strings.Fields(prefix)
-				if len(words) == 0 {
-					return nil
-				}
-				currentWord := words[len(words)-1]
-				matches := []string{}
-				for _, kw := range sqlTemplates {
-					if strings.HasPrefix(strings.ToUpper(kw), strings.ToUpper(currentWord)) {
-						matches = append(matches, kw)
-					}
-				}
-				if len(matches) == 0 {
-					return nil
-				}
-
-				util.SaveLog("matches: " + fmt.Sprint(matches))
-				suggestionList := tview.NewList()
-				suggestionList.ShowSecondaryText(false).
-					SetBorder(true).SetTitle("Suggestions")
-				for _, match := range matches {
-					kw := match
-					suggestionList.AddItem(kw, "", 0, func() {
-						before := currentLine[:col]
-						after := currentLine[col:]
-						idx := strings.LastIndex(before, currentWord)
-						newLine := before[:idx] + kw + after
-						lines[row] = newLine
-						linesText := strings.Join(lines, "\n")
-
-						queryBox.SetText(linesText, true)
-
-						app.SetRoot(queryBox, true).SetFocus(queryBox)
-					})
-				}
-				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+				setEditorText(queryBox, clipboardText)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 
 			case tcell.KeyCtrlT:
-				// Get current word at cursor
-				row, col, _, _ := queryBox.GetCursor()
-				text := queryBox.GetText()
-				lines := strings.Split(text, "\n")
-
-				if row >= len(lines) {
-					return nil
-				}
-				currentLine := lines[row]
-
-				prefix := currentLine[:col]
-				words := strings.Fields(prefix)
-				if len(words) == 0 {
-					return nil
-				}
-				currentWord := words[len(words)-1]
-
-				// Find suggestions
-				matches := []string{}
-
-				for _, table := range allTables {
-					if strings.HasPrefix(strings.ToUpper(table.Name), strings.ToUpper(currentWord)) {
-						matches = append(matches, table.Name)
-					}
-				}
-				if len(matches) == 0 {
-					return nil
-				}
-
-				util.SaveLog("matches: " + fmt.Sprint(matches))
-				// Show suggestions
-				suggestionList := tview.NewList()
-				suggestionList.ShowSecondaryText(false).
-					SetBorder(true).SetTitle("Suggestions")
-				for _, match := range matches {
-					kw := match
-					suggestionList.AddItem(kw, "", 0, func() {
-						// Replace current word with selection
-						before := currentLine[:col]
-						after := currentLine[col:]
-
-						// Replace last word in 'before' with selected keyword
-						idx := strings.LastIndex(before, currentWord)
-						newLine := before[:idx] + kw + after
-						lines[row] = newLine
-						linesText := strings.Join(lines, "\n")
-
-						queryBox.SetText(linesText, true)
-
-						app.SetRoot(queryBox, true).SetFocus(queryBox)
-					})
-				}
-				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+				activeSQLEditor.ShowTableSuggestionsModal()
 				return nil
 
-			case tcell.KeyCtrlF:
-				searchInput := tview.NewInputField()
-				searchInput.
-					SetLabel("Search: ").
-					SetFieldWidth(30).
-					SetDoneFunc(func(key tcell.Key) {
-						searchTerm := searchInput.GetText()
-						text := queryBox.GetText()
-
-						// Highlight all matches (simplified: uppercase the matches)
-						highlighted := strings.ReplaceAll(text, searchTerm, "[yellow::b]"+searchTerm+"[::-]")
-						queryBox.SetText(highlighted, true)
-
-						app.SetRoot(queryBox, true).SetFocus(queryBox)
-					})
-				searchInput.SetBorder(true).SetTitle("Search").SetTitleAlign(tview.AlignLeft)
-				app.SetRoot(searchInput, true).SetFocus(searchInput)
-				return nil
-
-			case tcell.KeyCtrlS:
-				// Get current word at cursor
-				row, col, _, _ := queryBox.GetCursor()
-				text := queryBox.GetText()
-				lines := strings.Split(text, "\n")
-
-				if row >= len(lines) {
-					return nil
-				}
-				currentLine := lines[row]
-
-				prefix := currentLine[:col]
-				words := strings.Fields(prefix)
-				if len(words) == 0 {
-					return nil
-				}
-				currentWord := words[len(words)-1]
-
-				// Find suggestions
-				matches := []string{}
-				for _, kw := range sqlKeywords {
-					if strings.HasPrefix(strings.ToUpper(kw), strings.ToUpper(currentWord)) {
-						matches = append(matches, kw)
-					}
-				}
-				if len(matches) == 0 {
-					return nil
-				}
-
-				util.SaveLog("matches: " + fmt.Sprint(matches))
-				// Show suggestions
-				suggestionList := tview.NewList()
-				suggestionList.ShowSecondaryText(false).
-					SetBorder(true).SetTitle("Suggestions")
-				for _, match := range matches {
-					kw := match
-					suggestionList.AddItem(kw, "", 0, func() {
-						// Replace current word with selection
-						before := currentLine[:col]
-						after := currentLine[col:]
-
-						// Replace last word in 'before' with selected keyword
-						idx := strings.LastIndex(before, currentWord)
-						newLine := before[:idx] + kw + after
-						lines[row] = newLine
-						linesText := strings.Join(lines, "\n")
-
-						queryBox.SetText(linesText, true)
-
-						app.SetRoot(queryBox, true).SetFocus(queryBox)
-					})
-				}
-				app.SetRoot(suggestionList, true).SetFocus(suggestionList)
+			case tcell.KeyCtrlS, tcell.KeyCtrlSpace:
+				activeSQLEditor.ShowSnippetsModal()
 				return nil
 			}
-			return event
+
+			return activeSQLEditor.handleInput(event)
 		})
 
 		button1 := tview.NewButton(saveIcon)
@@ -2295,7 +2165,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					SetDoneFunc(func(key tcell.Key) {
 						if key == tcell.KeyEnter {
 							fileName := fileNameInput.GetText()
-							query := queryBox.GetText()
+							query := activeSQLEditor.GetText()
 
 							if fileName == "" {
 								fileName = "query.sql"
@@ -2306,7 +2176,9 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 									SetText("Failed to save file: " + err.Error()).
 									AddButtons([]string{"OK"}).
 									SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-										app.SetRoot(queryBox, true)
+										layout := CreateLayoutWithFooter(app, mainFlex)
+										app.SetRoot(layout, true)
+										app.SetFocus(activeSQLEditor.Editor)
 									})
 								app.SetRoot(modal, true)
 								return
@@ -2372,7 +2244,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(queryBox)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -2384,7 +2256,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		button1.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(queryBox)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -2395,7 +2267,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 		button2.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(queryBox)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -2417,7 +2289,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		exitButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(queryBox)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -2428,7 +2300,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(queryBox, 6, 1, true).
+			AddItem(activeSQLEditor.Container, 6, 1, true).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
 				AddItem(buttonBox, 0, 1, false).
 				AddItem(saveButtonBox, 0, 1, false).
@@ -2443,7 +2315,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetTitle(" 📊 Result Data Grid [white](Ctrl+N: Next | Ctrl+P: Prev | Ctrl+E: Export | F3: Schema) ").
 			SetTitleAlign(tview.AlignLeft).
 			SetBorder(true).
-			SetBorderColor(tcell.ColorDarkCyan)
+			SetBorderColor(tcell.ColorDarkGray).
+			SetTitleColor(tcell.ColorGray)
+
+		dataTable.SetFocusFunc(func() {
+			dataTable.SetBorderColor(tcell.ColorYellow).
+				SetTitleColor(tcell.ColorYellow)
+		})
+		dataTable.SetBlurFunc(func() {
+			dataTable.SetBorderColor(tcell.ColorDarkGray).
+				SetTitleColor(tcell.ColorGray)
+		})
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
@@ -2472,6 +2354,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetLabel(" 🔍 Filter: ").
 			SetPlaceholder("Type to search objects...").
 			SetFieldWidth(30)
+
+		searchInput.SetFocusFunc(func() {
+			searchInput.SetBorder(true).
+				SetBorderColor(tcell.ColorYellow).
+				SetTitleColor(tcell.ColorYellow)
+		})
+		searchInput.SetBlurFunc(func() {
+			searchInput.SetBorder(false)
+		})
 		searchInput.
 			SetChangedFunc(func(text string) {
 				searchFiltertext = text
@@ -2521,7 +2412,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(queryBox)
+				app.SetFocus(activeSQLEditor.Editor)
 				return nil
 			}
 			return event
@@ -3238,8 +3129,12 @@ func fileBrowser(button2 *tview.Button, currentDir string, app *tview.Applicatio
 					if err != nil {
 						log.Printf("Failed to read file: %v", err)
 					} else {
-						queryBox.SetText(string(content), true)
-						app.SetFocus(queryBox)
+						setEditorText(queryBox, string(content))
+						if activeSQLEditor != nil {
+							app.SetFocus(activeSQLEditor.Editor)
+						} else {
+							app.SetFocus(queryBox)
+						}
 					}
 					app.SetRoot(returnTo, true)
 				}
