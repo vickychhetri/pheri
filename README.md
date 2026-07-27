@@ -25,10 +25,6 @@ Pheri is a fast, terminal-based database management Terminal User Interface buil
 
 ## Installation
 
-### Pre-Built Binaries
-Download ready-to-run binaries for Linux, macOS, and Windows from the official GitHub Release page:
-https://github.com/vickychhetri/pheri/releases/tag/v3.0.0
-
 ### Build from Source
 
 Requirements: Go 1.18 or higher.
