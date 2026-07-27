@@ -1,6 +1,6 @@
 # Pheri
 
-Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL in Go. It offers developers an interactive environment with real-time SQL syntax highlighting, live process management, query execution plan analysis, interactive cell editing, and super-fast multi-threaded database exporting directly from the command line.
+Pheri is a fast, terminal-based database management Terminal User Interface built for MySQL in Go. It offers developers an interactive environment with real-time SQL syntax highlighting, live process management, query execution plan analysis, interactive cell editing, and super-fast multi-threaded database exporting directly from the command line.
 
 
 ---
