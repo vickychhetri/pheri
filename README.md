@@ -2,7 +2,6 @@
 
 Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL in Go. It offers developers an interactive environment with real-time SQL syntax highlighting, live process management, query execution plan analysis, interactive cell editing, and super-fast multi-threaded database exporting directly from the command line.
 
-Latest Release: v3.0.0 (https://github.com/vickychhetri/pheri/releases/tag/v3.0.0)
 
 ---
 
@@ -78,7 +77,7 @@ Launch Pheri directly with command line flags to bypass the connection screen:
 | `Ctrl+R` | Run SQL Query |
 | `Ctrl+T` | Table Name Auto-Completion |
 | `Ctrl+S` / `Ctrl+Space` | Insert SQL Snippets and Templates |
-| `Ctrl+Y` | Super-Fast Concurrent Database Export (130 Parallel Workers) |
+| `Ctrl+Y` | Super-Fast Concurrent Database Export (Parallel Workers) |
 | `Ctrl+P` | Paste Clipboard Content |
 | `F4` | Open Live Process Manager and Query Killer |
 | `F5` | Open EXPLAIN Query Execution Plan Analyzer |
