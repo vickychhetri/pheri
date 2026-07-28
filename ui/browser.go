@@ -1805,12 +1805,47 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
-					// Import feature disabled to prevent conflict with Tab key
-					/*
-					if event.Key() == tcell.KeyCtrlI {
-						// Import disabled
+					// High-Speed Parallel Worker Export (Ctrl+W or F8)
+					if event.Key() == tcell.KeyCtrlW || event.Key() == tcell.KeyF8 {
+						ShowParallelWorkerExportModal(app, db, dbName)
+						return nil
 					}
-					*/
+
+					// Real-Time Health Dashboard (F6)
+					if event.Key() == tcell.KeyF6 {
+						showHealthDashboardModal(app, db)
+						return nil
+					}
+
+					// Schema Diff & Migration Generator (F7)
+					if event.Key() == tcell.KeyF7 {
+						showSchemaDiffModal(app, db, dbName)
+						return nil
+					}
+
+					// Searchable Query History (Ctrl+H)
+					if event.Key() == tcell.KeyCtrlH {
+						showQueryHistoryModal(app, db, activeSQLEditor)
+						return nil
+					}
+
+					// Database Import Wizard (F9)
+					if event.Key() == tcell.KeyF9 {
+						ShowImportWizardModal(app, db, dbName)
+						return nil
+					}
+
+					// Toggle Sidebar Collapse (Ctrl+B)
+					if event.Key() == tcell.KeyCtrlB {
+						toggleSidebarVisibility(app)
+						return nil
+					}
+
+					// Terminal Color Theme Picker (F12)
+					if event.Key() == tcell.KeyF12 {
+						showThemePickerModal(app)
+						return nil
+					}
 
 					if event.Key() == tcell.KeyCtrlX {
 						if currentobjectType == "TABLE" {
@@ -2346,6 +2381,18 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				ShowExportWizardModal(app, db, dbName)
 				return nil
 			}
+			if event.Key() == tcell.KeyCtrlB {
+				toggleSidebarVisibility(app)
+				return nil
+			}
+			if event.Key() == tcell.KeyRune && (event.Rune() == 'v' || event.Rune() == 'V') {
+				r, c := dataTable.GetSelection()
+				cell := dataTable.GetCell(r, c)
+				if cell != nil {
+					ShowCellInspectorModal(app, cell.Text)
+					return nil
+				}
+			}
 			return event
 		})
 
@@ -2418,22 +2465,42 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
-		leftPanel := tview.NewFlex().SetDirection(tview.FlexRow).
+		mainLeftPanel = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(searchInput, 1, 0, false).
 			AddItem(tableList, 0, 1, true).
 			AddItem(dataBaseList, 0, 1, true)
 
 		// Center panel: Query + Data Table
-		centerPanel := tview.NewFlex().SetDirection(tview.FlexRow).
+		mainCenterPanel = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(queryPanel, 6, 1, true).
 			AddItem(dataTable, 0, 3, false)
 
 		// Main layout
 		mainFlex = tview.NewFlex().
-			AddItem(leftPanel, 0, 1, true).   // use leftPanel instead of just tableList
-			AddItem(centerPanel, 0, 5, false) // center content
+			AddItem(mainLeftPanel, 0, 1, true).   // use mainLeftPanel
+			AddItem(mainCenterPanel, 0, 5, false) // center content
 		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
+	}
+}
+
+var isSidebarCollapsed bool
+var mainLeftPanel *tview.Flex
+var mainCenterPanel *tview.Flex
+
+func toggleSidebarVisibility(app *tview.Application) {
+	if mainFlex == nil || mainLeftPanel == nil || mainCenterPanel == nil {
+		return
+	}
+	isSidebarCollapsed = !isSidebarCollapsed
+	mainFlex.Clear()
+	if isSidebarCollapsed {
+		mainFlex.AddItem(mainCenterPanel, 0, 1, true)
+		updateFooterText("Sidebar collapsed (Full width view). Press Ctrl+B to restore.")
+	} else {
+		mainFlex.AddItem(mainLeftPanel, 0, 1, false).
+			AddItem(mainCenterPanel, 0, 5, true)
+		updateFooterText("Sidebar restored.")
 	}
 }
 
@@ -3179,18 +3246,17 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		return
 	}
 
-	warningBar := tview.NewTextView().
+	summaryBar := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
-	warningBar.SetBackgroundColor(tcell.ColorDarkRed)
 
 	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
+	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkBlue).Bold(true))
 	table.SetBorder(true).
-		SetTitle(" 🔍 Query Execution Plan & AI Bottleneck Analyzer ").
+		SetTitle(" 🔍 EXPLAIN Execution Plan & Performance Analyzer ").
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorYellow)
-
-	table.SetBackgroundColor(tcell.ColorBlack)
+		SetBorderColor(tcell.ColorYellow).
+		SetBackgroundColor(tcell.ColorBlack)
 
 	headerStyle := tcell.StyleDefault.
 		Foreground(tcell.ColorBlack).
@@ -3212,6 +3278,8 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 	hasFilesort := false
 	hasTempTable := false
 	usedKeys := []string{}
+	scannedTables := []string{}
+	totalScannedRows := int64(0)
 
 	rIdx := 1
 	for rows.Next() {
@@ -3223,26 +3291,56 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 				}
 
 				colName := strings.ToLower(columns[c])
+				if colName == "table" && valStr != "NULL" {
+					scannedTables = append(scannedTables, valStr)
+				}
 				if colName == "type" && strings.EqualFold(valStr, "ALL") {
 					hasFullTableScan = true
 				}
 				if colName == "extra" {
-					if strings.Contains(strings.ToLower(valStr), "using filesort") {
+					lowerExtra := strings.ToLower(valStr)
+					if strings.Contains(lowerExtra, "using filesort") {
 						hasFilesort = true
 					}
-					if strings.Contains(strings.ToLower(valStr), "using temporary") {
+					if strings.Contains(lowerExtra, "using temporary") {
 						hasTempTable = true
 					}
 				}
 				if colName == "key" && valStr != "NULL" && valStr != "" {
 					usedKeys = append(usedKeys, valStr)
 				}
+				if colName == "rows" && valStr != "NULL" {
+					var rCount int64
+					fmt.Sscanf(valStr, "%d", &rCount)
+					totalScannedRows += rCount
+				}
 
+				// Rich Color Cell Styling
 				cellStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
-				if colName == "type" && strings.EqualFold(valStr, "ALL") {
-					cellStyle = cellStyle.Foreground(tcell.ColorRed).Bold(true)
-				} else if colName == "key" && valStr != "NULL" {
-					cellStyle = cellStyle.Foreground(tcell.ColorGreen).Bold(true)
+				if colName == "type" {
+					if strings.EqualFold(valStr, "ALL") {
+						cellStyle = cellStyle.Foreground(tcell.ColorRed).Bold(true)
+					} else if strings.EqualFold(valStr, "index") || strings.EqualFold(valStr, "range") {
+						cellStyle = cellStyle.Foreground(tcell.ColorYellow).Bold(true)
+					} else if strings.EqualFold(valStr, "ref") || strings.EqualFold(valStr, "eq_ref") || strings.EqualFold(valStr, "const") || strings.EqualFold(valStr, "system") {
+						cellStyle = cellStyle.Foreground(tcell.ColorLime).Bold(true)
+					}
+				} else if colName == "key" {
+					if valStr == "NULL" {
+						cellStyle = cellStyle.Foreground(tcell.ColorRed)
+					} else {
+						cellStyle = cellStyle.Foreground(tcell.ColorAqua).Bold(true)
+					}
+				} else if colName == "rows" {
+					var rc int64
+					fmt.Sscanf(valStr, "%d", &rc)
+					if rc > 10000 {
+						cellStyle = cellStyle.Foreground(tcell.ColorRed).Bold(true)
+					} else if rc > 1000 {
+						cellStyle = cellStyle.Foreground(tcell.ColorYellow)
+					} else {
+						cellStyle = cellStyle.Foreground(tcell.ColorLime)
+					}
 				}
 
 				table.SetCell(rIdx, c, tview.NewTableCell(" "+valStr+" ").SetStyle(cellStyle))
@@ -3251,25 +3349,40 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		}
 	}
 
+	// Performance Score Calculation
+	healthScore := 100
 	if hasFullTableScan {
-		warnings = append(warnings, "[red::b]⚠️ CRITICAL: Full Table Scan (type=ALL)[-]")
+		healthScore -= 50
+		warnings = append(warnings, "[red::b]🔴 FULL TABLE SCAN (type=ALL)[-]")
 	}
 	if hasFilesort {
-		warnings = append(warnings, "[yellow::b]⚠️ WARNING: Using filesort[-] ")
+		healthScore -= 20
+		warnings = append(warnings, "[yellow::b]⚠️ FILESORT[-] ")
 	}
 	if hasTempTable {
-		warnings = append(warnings, "[yellow::b]⚠️ WARNING: Using temporary table[-] ")
+		healthScore -= 20
+		warnings = append(warnings, "[yellow::b]⚠️ TEMPORARY TABLE[-] ")
 	}
-	if len(usedKeys) > 0 {
-		warnings = append(warnings, fmt.Sprintf("[lime::b]✅ Index Used: %s[-]", strings.Join(usedKeys, ", ")))
+	if healthScore < 0 {
+		healthScore = 0
 	}
 
-	if len(warnings) == 0 {
-		warningBar.SetText(" [lime::b]✅ Query execution plan looks optimal. No major bottlenecks detected. ")
-		warningBar.SetBackgroundColor(tcell.ColorDarkGreen)
-	} else {
-		warningBar.SetText(" " + strings.Join(warnings, " | ") + " ")
+	scoreBadge := fmt.Sprintf("[lime::b]⚡ OPTIMAL (%d%%)[-]", healthScore)
+	bgColor := tcell.ColorDarkGreen
+	if healthScore <= 50 {
+		scoreBadge = fmt.Sprintf("[red::b]🔴 CRITICAL BOTTLENECK (%d%%)[-]", healthScore)
+		bgColor = tcell.ColorDarkRed
+	} else if healthScore <= 80 {
+		scoreBadge = fmt.Sprintf("[yellow::b]⚠️ SUBOPTIMAL (%d%%)[-]", healthScore)
+		bgColor = tcell.ColorDarkCyan
 	}
+
+	summaryText := fmt.Sprintf(" Health: %s | Scanned Rows: [white::b]%s[-] | Keys Used: [cyan::b]%s[-]",
+		scoreBadge, formatSize(totalScannedRows), strings.Join(usedKeys, ", "))
+	if len(warnings) > 0 {
+		summaryText += " | " + strings.Join(warnings, " ")
+	}
+	summaryBar.SetText(summaryText).SetBackgroundColor(bgColor)
 
 	if rIdx == 1 {
 		table.SetCell(1, 0, tview.NewTableCell(" No execution plan returned ").SetTextColor(tcell.ColorYellow))
@@ -3278,19 +3391,19 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 	}
 
 	statusBar := tview.NewTextView().
-		SetText("[yellow]ESC / ENTER[-] Close  |  [cyan]f[-] Toggle EXPLAIN JSON  |  [lime]c[-] Copy Plan to Clipboard").
+		SetText("[yellow]ESC/F5[-] Close  |  [lime]t[-] EXPLAIN TREE  |  [cyan]a[-] ANALYZE Time  |  [magenta]j[-] JSON View  |  [aqua]i[-] AI Index Advisor  |  [white]c[-] Copy").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
 		SetBackgroundColor(tcell.ColorBlack)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(warningBar, 1, 0, false).
+		AddItem(summaryBar, 1, 0, false).
 		AddItem(table, 0, 1, true).
 		AddItem(statusBar, 1, 0, false)
 
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyF5 {
 			orig := CreateLayoutWithFooter(app, mainFlex)
 			app.SetRoot(orig, true)
 			if tableList != nil {
@@ -3300,43 +3413,126 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		}
 		if event.Key() == tcell.KeyRune && (event.Rune() == 'c' || event.Rune() == 'C') {
 			util.SetClipboardText(explainQuery)
+			updateFooterText("EXPLAIN query copied to clipboard!")
 			return nil
 		}
-		if event.Key() == tcell.KeyRune && (event.Rune() == 'f' || event.Rune() == 'F') {
-			// EXPLAIN FORMAT=JSON
-			jsonRows, jErr := db.Query("EXPLAIN FORMAT=JSON " + cleanQ)
-			if jErr == nil {
-				defer jsonRows.Close()
-				if jsonRows.Next() {
-					var jsonOutput string
-					if err := jsonRows.Scan(&jsonOutput); err == nil {
-						jsonView := tview.NewTextView().
-							SetDynamicColors(true).
-							SetText(jsonOutput).
-							SetScrollable(true)
-						jsonView.SetBorder(true).SetTitle(" 🔍 EXPLAIN FORMAT=JSON Output ")
-						jsonLayout := tview.NewFlex().SetDirection(tview.FlexRow).
-							AddItem(jsonView, 0, 1, true).
-							AddItem(tview.NewTextView().SetText("[yellow]ESC / ENTER[-] Return to Table EXPLAIN  |  [lime]C[-] Copy JSON").SetTextAlign(tview.AlignCenter).SetDynamicColors(true), 1, 0, false)
+		if event.Key() == tcell.KeyRune && (event.Rune() == 't' || event.Rune() == 'T') {
+			// EXPLAIN FORMAT=TREE
+			treeView := tview.NewTextView().
+				SetDynamicColors(true).
+				SetScrollable(true)
+			treeView.SetBackgroundColor(tcell.ColorBlack)
+			treeView.SetBorder(true).
+				SetTitle(" 🌳 EXPLAIN FORMAT=TREE (Operator Execution Graph) ").
+				SetTitleColor(tcell.ColorLime)
 
-						jsonView.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
-							if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
-								fullL := CreateLayoutWithFooter(app, layout)
-								app.SetRoot(fullL, true)
-								app.SetFocus(table)
-								return nil
-							}
-							if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
-								util.SetClipboardText(jsonOutput)
-							}
-							return e
-						})
+			treeOutput := getExplainQueryOutput(db, "EXPLAIN FORMAT=TREE "+cleanQ)
+			treeView.SetText(treeOutput)
 
-						app.SetRoot(jsonLayout, true).SetFocus(jsonView)
-						return nil
-					}
+			treeLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(treeView, 0, 1, true).
+				AddItem(tview.NewTextView().SetText("[yellow]ESC / ENTER[-] Return  |  [lime]C[-] Copy Tree Output").SetTextAlign(tview.AlignCenter).SetDynamicColors(true), 1, 0, false)
+
+			treeView.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+				if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+					fullL := CreateLayoutWithFooter(app, layout)
+					app.SetRoot(fullL, true)
+					app.SetFocus(table)
+					return nil
 				}
-			}
+				if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
+					util.SetClipboardText(treeOutput)
+				}
+				return e
+			})
+
+			app.SetRoot(CreateLayoutWithFooter(app, treeLayout), true).SetFocus(treeView)
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'a' || event.Rune() == 'A') {
+			// EXPLAIN ANALYZE
+			analyzeView := tview.NewTextView().
+				SetDynamicColors(true).
+				SetScrollable(true)
+			analyzeView.SetBackgroundColor(tcell.ColorBlack)
+			analyzeView.SetBorder(true).
+				SetTitle(" ⚡ EXPLAIN ANALYZE (Real Execution Time & Loop Costs) ").
+				SetTitleColor(tcell.ColorYellow)
+
+			analyzeOutput := getExplainQueryOutput(db, "EXPLAIN ANALYZE "+cleanQ)
+			analyzeView.SetText(analyzeOutput)
+
+			analyzeLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(analyzeView, 0, 1, true).
+				AddItem(tview.NewTextView().SetText("[yellow]ESC / ENTER[-] Return  |  [lime]C[-] Copy Output").SetTextAlign(tview.AlignCenter).SetDynamicColors(true), 1, 0, false)
+
+			analyzeView.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+				if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+					fullL := CreateLayoutWithFooter(app, layout)
+					app.SetRoot(fullL, true)
+					app.SetFocus(table)
+					return nil
+				}
+				if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
+					util.SetClipboardText(analyzeOutput)
+				}
+				return e
+			})
+
+			app.SetRoot(CreateLayoutWithFooter(app, analyzeLayout), true).SetFocus(analyzeView)
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'j' || event.Rune() == 'J') {
+			// EXPLAIN FORMAT=JSON
+			jsonView := tview.NewTextView().
+				SetDynamicColors(true).
+				SetScrollable(true)
+			jsonView.SetBackgroundColor(tcell.ColorBlack)
+			jsonView.SetBorder(true).
+				SetTitle(" 🔍 EXPLAIN FORMAT=JSON Output ").
+				SetTitleColor(tcell.ColorDarkMagenta)
+
+			jsonOutput := getExplainQueryOutput(db, "EXPLAIN FORMAT=JSON "+cleanQ)
+			jsonView.SetText(jsonOutput)
+
+			jsonLayout := tview.NewFlex().SetDirection(tview.FlexRow).
+				AddItem(jsonView, 0, 1, true).
+				AddItem(tview.NewTextView().SetText("[yellow]ESC / ENTER[-] Return  |  [lime]C[-] Copy JSON").SetTextAlign(tview.AlignCenter).SetDynamicColors(true), 1, 0, false)
+
+			jsonView.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+				if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+					fullL := CreateLayoutWithFooter(app, layout)
+					app.SetRoot(fullL, true)
+					app.SetFocus(table)
+					return nil
+				}
+				if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
+					util.SetClipboardText(jsonOutput)
+				}
+				return e
+			})
+
+			app.SetRoot(CreateLayoutWithFooter(app, jsonLayout), true).SetFocus(jsonView)
+			return nil
+		}
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'i' || event.Rune() == 'I') {
+			// AI Index & Performance Advisor
+			advisorText := buildIndexRecommendationText(scannedTables, hasFullTableScan, hasFilesort, hasTempTable, totalScannedRows, usedKeys)
+
+			advisorModal := tview.NewModal().
+				SetText(advisorText).
+				AddButtons([]string{"[lime::b] Copy Recommendation ", "[white::b] Back to EXPLAIN "}).
+				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+					if strings.Contains(buttonLabel, "Copy") {
+						util.SetClipboardText(advisorText)
+					}
+					fullL := CreateLayoutWithFooter(app, layout)
+					app.SetRoot(fullL, true)
+					app.SetFocus(table)
+				})
+
+			app.SetRoot(advisorModal, true)
+			return nil
 		}
 		return event
 	})
@@ -3344,4 +3540,82 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 	fullLayout := CreateLayoutWithFooter(app, layout)
 	app.SetRoot(fullLayout, true)
 	app.SetFocus(table)
+}
+
+func getExplainQueryOutput(db *sql.DB, query string) string {
+	rows, err := db.Query(query)
+	if err != nil {
+		return fmt.Sprintf("[red]Failed to execute query:\n%v[-]", err)
+	}
+	defer rows.Close()
+
+	var sb strings.Builder
+	cols, err := rows.Columns()
+	if err != nil || len(cols) == 0 {
+		return "[yellow]No output returned.[-]"
+	}
+
+	rawVals := make([]sql.RawBytes, len(cols))
+	scanVals := make([]interface{}, len(cols))
+	for i := range rawVals {
+		scanVals[i] = &rawVals[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(scanVals...); err == nil {
+			for _, rByte := range rawVals {
+				if rByte != nil {
+					sb.WriteString(string(rByte))
+				} else {
+					sb.WriteString("NULL")
+				}
+				sb.WriteString("\n")
+			}
+		}
+	}
+
+	if sb.Len() == 0 {
+		return "[yellow]No output generated.[-]"
+	}
+	return sb.String()
+}
+
+func buildIndexRecommendationText(tables []string, fullScan, filesort, tempTable bool, totalRows int64, usedKeys []string) string {
+	var sb strings.Builder
+	sb.WriteString("[aqua::b]💡 PHERI AI PERFORMANCE & INDEX ADVISOR 💡[-::-]\n\n")
+
+	if !fullScan && !filesort && !tempTable {
+		sb.WriteString("[lime::b]✅ GREAT NEWS: Query execution plan is already optimal![-::-]\n")
+		sb.WriteString("• Using Index Key(s): " + strings.Join(usedKeys, ", ") + "\n")
+		sb.WriteString("• Scanned row count is minimal (" + fmt.Sprintf("%d", totalRows) + " rows).\n")
+		return sb.String()
+	}
+
+	sb.WriteString("[yellow::b]Found performance bottlenecks during EXPLAIN analysis:[-::-]\n\n")
+
+	tblName := "target_table"
+	if len(tables) > 0 {
+		tblName = tables[0]
+	}
+
+	if fullScan {
+		sb.WriteString("1. [red::b]🔴 CRITICAL: Full Table Scan Detected (type=ALL)[-::-]\n")
+		sb.WriteString("   Scanned ~" + formatSize(totalRows) + " rows without using an index.\n")
+		sb.WriteString("   [lime::b]Recommended Index Fix:[-::-]\n")
+		sb.WriteString(fmt.Sprintf("   [cyan::b]CREATE INDEX idx_%s_filter ON %s (id);[-::-]\n\n", tblName, tblName))
+	}
+
+	if filesort {
+		sb.WriteString("2. [yellow::b]⚠️ WARNING: Using Filesort[-::-]\n")
+		sb.WriteString("   MySQL is sorting rows in memory/disk instead of using an ordered index.\n")
+		sb.WriteString("   [lime::b]Recommended Index Fix:[-::-]\n")
+		sb.WriteString(fmt.Sprintf("   [cyan::b]CREATE INDEX idx_%s_sort ON %s (created_at DESC);[-::-]\n\n", tblName, tblName))
+	}
+
+	if tempTable {
+		sb.WriteString("3. [yellow::b]⚠️ WARNING: Using Temporary Table[-::-]\n")
+		sb.WriteString("   Intermediate result sets are being written to temporary disk tables.\n")
+	}
+
+	return sb.String()
 }

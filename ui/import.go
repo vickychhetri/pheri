@@ -12,6 +12,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/gdamore/tcell/v2"
+	"github.com/rivo/tview"
 )
 
 // getFileSize returns the size of a file in bytes
@@ -58,18 +61,7 @@ func importAllObjects(progressChan chan string, dbName string) {
 	db.SetConnMaxLifetime(time.Minute * 30)
 
 	// Set session variables for import
-	_, err = db.Exec(`
-		SET FOREIGN_KEY_CHECKS=0;
-		SET UNIQUE_CHECKS=0;
-		SET AUTOCOMMIT=0;
-		SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO';
-		SET SESSION collation_connection = 'utf8mb4_unicode_ci';
-		SET SESSION wait_timeout = 28800;
-		SET SESSION interactive_timeout = 28800;
-		SET SESSION net_read_timeout = 28800;
-		SET SESSION net_write_timeout = 28800;
-	`)
-	if err != nil {
+	if err := setImportSessionVariables(db); err != nil {
 		progressChan <- fmt.Sprintf("[red]Failed to set session variables: %v", err)
 		close(progressChan)
 		return
@@ -97,13 +89,13 @@ func importAllObjects(progressChan chan string, dbName string) {
 		pattern string
 		name    string
 	}{
-		{"*_table.sql.gz", "tables"},
-		{"*_viewddl.sql.gz", "view structures"},
-		{"*_view.sql.gz", "views"},
-		{"*_procedure.sql.gz", "procedures"},
-		{"*_function.sql.gz", "functions"},
-		{"*_trigger.sql.gz", "triggers"},
-		{"*_event.sql.gz", "events"},
+		{"*_table.sql*", "tables"},
+		{"*_viewddl.sql*", "view structures"},
+		{"*_view.sql*", "views"},
+		{"*_procedure.sql*", "procedures"},
+		{"*_function.sql*", "functions"},
+		{"*_trigger.sql*", "triggers"},
+		{"*_event.sql*", "events"},
 	}
 
 	totalSteps := len(importFiles)
@@ -156,14 +148,7 @@ func importAllObjects(progressChan chan string, dbName string) {
 	}
 
 	// Restore session variables
-	_, err = db.Exec(`
-		SET FOREIGN_KEY_CHECKS=1;
-		SET UNIQUE_CHECKS=1;
-		SET AUTOCOMMIT=1;
-	`)
-	if err != nil {
-		progressChan <- fmt.Sprintf("[yellow]Warning: Failed to restore session variables: %v", err)
-	}
+	restoreImportSessionVariables(db)
 
 	progressChan <- "[green]Import completed successfully!"
 	close(progressChan)
@@ -205,8 +190,8 @@ func findLatestExportFolder(dbName string) (string, error) {
 		if _, err := os.Stat(dbFolderPath); err == nil {
 			util.SaveLog(fmt.Sprintf("  Found database folder: %s", dbFolderPath))
 
-			// Check if there are any .sql.gz files
-			files, _ := filepath.Glob(filepath.Join(dbFolderPath, "*.sql.gz"))
+			// Check if there are any SQL files (.sql or .sql.gz)
+			files, _ := filepath.Glob(filepath.Join(dbFolderPath, "*.sql*"))
 			util.SaveLog(fmt.Sprintf("  Found %d SQL files", len(files)))
 
 			if len(files) > 0 {
@@ -237,9 +222,9 @@ func findLatestExportFolder(dbName string) (string, error) {
 	return latestFolder, nil
 }
 
-// readGzippedFile reads and decompresses a gzipped file
+// readGzippedFile reads and decompresses a gzipped or plain text SQL file
 func readGzippedFile(filename string) (string, error) {
-	util.SaveLog(fmt.Sprintf("Reading gzipped file: %s", filename))
+	util.SaveLog(fmt.Sprintf("Reading SQL file: %s", filename))
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -248,16 +233,24 @@ func readGzippedFile(filename string) (string, error) {
 	}
 	defer file.Close()
 
-	gzReader, err := gzip.NewReader(file)
-	if err != nil {
-		util.SaveLog(fmt.Sprintf("ERROR: Failed to create gzip reader: %v", err))
-		return "", err
-	}
-	defer gzReader.Close()
+	header := make([]byte, 2)
+	n, readErr := file.Read(header)
+	_, _ = file.Seek(0, io.SeekStart)
 
-	content, err := io.ReadAll(gzReader)
+	var reader io.Reader = file
+	if readErr == nil && n >= 2 && header[0] == 0x1f && header[1] == 0x8b {
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			util.SaveLog(fmt.Sprintf("ERROR: Failed to create gzip reader: %v", err))
+			return "", err
+		}
+		defer gzReader.Close()
+		reader = gzReader
+	}
+
+	content, err := io.ReadAll(reader)
 	if err != nil {
-		util.SaveLog(fmt.Sprintf("ERROR: Failed to read gzipped content: %v", err))
+		util.SaveLog(fmt.Sprintf("ERROR: Failed to read file content: %v", err))
 		return "", err
 	}
 
@@ -331,25 +324,34 @@ func splitSQLStatements(sql string) []string {
 	return statements
 }
 
-// processSQLFileStream processes SQL file in chunks without loading entire file into memory
-func processSQLFileStream(gzFile string, progressChan chan string, db *sql.DB, fileType string) (int, int, error) {
+// processSQLFileStream processes SQL file in chunks without loading entire file into memory (supports both .sql and .sql.gz)
+func processSQLFileStream(filePath string, progressChan chan string, db *sql.DB, fileType string) (int, int, error) {
 	util.SaveLog(fmt.Sprintf("Processing %s with streaming...", fileType))
 
-	// Open gzipped file
-	file, err := os.Open(gzFile)
+	file, err := os.Open(filePath)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to open file: %v", err)
 	}
 	defer file.Close()
 
-	gzReader, err := gzip.NewReader(file)
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to create gzip reader: %v", err)
+	var reader io.Reader = file
+
+	// Inspect header for Gzip magic bytes (0x1f 0x8b)
+	header := make([]byte, 2)
+	n, readErr := file.Read(header)
+	_, _ = file.Seek(0, io.SeekStart)
+
+	if readErr == nil && n >= 2 && header[0] == 0x1f && header[1] == 0x8b {
+		gzReader, err := gzip.NewReader(file)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to create gzip reader: %v", err)
+		}
+		defer gzReader.Close()
+		reader = gzReader
 	}
-	defer gzReader.Close()
 
 	// Create buffered reader for efficient streaming
-	bufReader := bufio.NewReaderSize(gzReader, 1024*1024) // 1MB buffer
+	bufReader := bufio.NewReaderSize(reader, 1024*1024) // 1MB buffer
 
 	var stmt strings.Builder
 	inString := false
@@ -485,6 +487,247 @@ func processSQLFileStream(gzFile string, progressChan chan string, db *sql.DB, f
 	}
 
 	return successCount, errorCount, nil
+}
+
+func setImportSessionVariables(db *sql.DB) error {
+	sessionQueries := []string{
+		"SET FOREIGN_KEY_CHECKS=0",
+		"SET UNIQUE_CHECKS=0",
+		"SET AUTOCOMMIT=0",
+		"SET SQL_MODE='NO_AUTO_VALUE_ON_ZERO'",
+		"SET SESSION collation_connection = 'utf8mb4_unicode_ci'",
+		"SET SESSION wait_timeout = 28800",
+		"SET SESSION interactive_timeout = 28800",
+		"SET SESSION net_read_timeout = 28800",
+		"SET SESSION net_write_timeout = 28800",
+	}
+
+	for _, query := range sessionQueries {
+		if _, err := db.Exec(query); err != nil {
+			if !strings.Contains(query, "timeout") && !strings.Contains(query, "collation") {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func restoreImportSessionVariables(db *sql.DB) {
+	restoreQueries := []string{
+		"COMMIT",
+		"SET FOREIGN_KEY_CHECKS=1",
+		"SET UNIQUE_CHECKS=1",
+		"SET AUTOCOMMIT=1",
+	}
+	for _, query := range restoreQueries {
+		_, _ = db.Exec(query)
+	}
+}
+
+// ShowImportWizardModal displays the step-by-step import wizard with read-only safeguards, location picker, and danger confirmation.
+func ShowImportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
+	if ActiveReadOnly {
+		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.\nImporting database dumps is not allowed while Read-Only mode is enabled.")
+		return
+	}
+
+	if db == nil {
+		showErrorModal(app, mainFlex, "No active database connection available for import.")
+		return
+	}
+
+	// Determine initial default candidate path
+	defaultPath := "./export"
+	if entries, err := os.ReadDir("./export"); err == nil && len(entries) > 0 {
+		var latest string
+		var latestTime time.Time
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err == nil && info.ModTime().After(latestTime) {
+				latestTime = info.ModTime()
+				latest = filepath.Join("./export", entry.Name())
+			}
+		}
+		if latest != "" {
+			defaultPath = latest
+		}
+	}
+
+	// Step 1: Location & File Picker Modal
+	form := tview.NewForm()
+	form.SetBorder(true).
+		SetTitle(fmt.Sprintf(" 📥 Database Import Wizard (%s) ", dbName)).
+		SetTitleAlign(tview.AlignCenter).
+		SetBorderColor(tcell.ColorDarkCyan).
+		SetTitleColor(tcell.ColorAqua).
+		SetBorderPadding(1, 1, 3, 3)
+
+	form.AddInputField("Import File or Folder Path", defaultPath, 60, nil, nil)
+
+	form.AddButton("[lime::b] ▶ NEXT: CONFIRMATION ", func() {
+		targetPath := strings.TrimSpace(form.GetFormItem(0).(*tview.InputField).GetText())
+		if targetPath == "" {
+			showErrorModal(app, mainFlex, "Please specify a valid file or folder path to import.")
+			return
+		}
+
+		stat, err := os.Stat(targetPath)
+		if err != nil {
+			showErrorModal(app, mainFlex, fmt.Sprintf("Path error: %v", err))
+			return
+		}
+
+		// Step 2: High-Visibility Permission Confirmation Warning Modal
+		showImportConfirmationModal(app, db, dbName, targetPath, stat.IsDir())
+	})
+
+	form.AddButton("[red::b] ✖ CANCEL ", func() {
+		layout := CreateLayoutWithFooter(app, mainFlex)
+		app.SetRoot(layout, true)
+	})
+
+	layout := tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(form, 0, 1, true)
+
+	app.SetRoot(layout, true)
+}
+
+func showImportConfirmationModal(app *tview.Application, db *sql.DB, dbName, targetPath string, isDir bool) {
+	pathType := "Single Dump File"
+	if isDir {
+		pathType = "Directory Folder"
+	}
+
+	text := fmt.Sprintf(
+		"[red::b]⚠️ DANGEROUS / DESTRUCTIVE OPERATION![-::-]\n\n"+
+			"Target Database: [lime::b]%s[-::-]\n"+
+			"Import Source: [cyan::b]%s[-::-] (%s)\n\n"+
+			"[yellow::b]CRITICAL WARNING: Importing this source will execute DDL and DML statements which may DROP existing tables, OVERWRITE schema definitions, or REPLACE data inside database '%s'.[-::-]\n\n"+
+			"[white::b]Are you sure you want to proceed with this import?[-::-]",
+		dbName, targetPath, pathType, dbName,
+	)
+
+	modal := tview.NewModal().
+		SetText(text).
+		AddButtons([]string{"[red::b] ⚠️ YES, OVERWRITE & IMPORT ", "[yellow::b] ⬅ BACK ", "[white::b] CANCEL"}).
+		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			if strings.Contains(buttonLabel, "YES") {
+				executeInteractiveImport(app, db, dbName, targetPath, isDir)
+			} else if strings.Contains(buttonLabel, "BACK") {
+				ShowImportWizardModal(app, db, dbName)
+			} else {
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
+			}
+		})
+
+	app.SetRoot(modal, true)
+}
+
+func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, targetPath string, isDir bool) {
+	logView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetChangedFunc(func() {
+			app.Draw()
+		})
+	logView.SetBorder(true).
+		SetTitle(fmt.Sprintf(" 📥 Importing Data into '%s' ", dbName)).
+		SetTitleColor(tcell.ColorLime)
+
+	layout := CreateLayoutWithFooter(app, logView)
+	app.SetRoot(layout, true)
+
+	progressChan := make(chan string, 100)
+
+	// Stream logs to logView
+	go func() {
+		for msg := range progressChan {
+			app.QueueUpdateDraw(func() {
+				fmt.Fprintln(logView, msg)
+				logView.ScrollToEnd()
+			})
+		}
+	}()
+
+	// Execute import in background goroutine
+	go func() {
+		defer close(progressChan)
+
+		progressChan <- fmt.Sprintf("[cyan::b]🚀 Starting import into database '%s'...", dbName)
+		progressChan <- fmt.Sprintf("[white]Source path: %s", targetPath)
+		startTime := time.Now()
+
+		// Optimize session for fast streaming import
+		if err := setImportSessionVariables(db); err != nil {
+			progressChan <- fmt.Sprintf("[red::b]❌ Failed to set session variables: %v", err)
+			return
+		}
+
+		totalSuccess := 0
+		totalErrors := 0
+
+		if isDir {
+			// Find all SQL files (.sql / .sql.gz) in directory or subfolders
+			var files []string
+			err := filepath.Walk(targetPath, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return err
+				}
+				if !info.IsDir() && (strings.HasSuffix(strings.ToLower(path), ".sql") || strings.HasSuffix(strings.ToLower(path), ".sql.gz")) {
+					files = append(files, path)
+				}
+				return nil
+			})
+
+			if err != nil || len(files) == 0 {
+				progressChan <- fmt.Sprintf("[red::b]❌ No valid SQL files found in directory: %s", targetPath)
+				return
+			}
+
+			sort.Strings(files)
+			progressChan <- fmt.Sprintf("[blue]Found %d SQL file(s) to process...", len(files))
+
+			for i, file := range files {
+				progressChan <- fmt.Sprintf("\n[yellow]Processing [%d/%d]: %s...", i+1, len(files), filepath.Base(file))
+				succ, errs, err := processSQLFileStream(file, progressChan, db, filepath.Base(file))
+				totalSuccess += succ
+				totalErrors += errs
+				if err != nil {
+					progressChan <- fmt.Sprintf("[red]Error processing %s: %v", filepath.Base(file), err)
+				}
+			}
+		} else {
+			// Single file import
+			progressChan <- fmt.Sprintf("[yellow]Processing file stream: %s...", filepath.Base(targetPath))
+			succ, errs, err := processSQLFileStream(targetPath, progressChan, db, filepath.Base(targetPath))
+			totalSuccess += succ
+			totalErrors += errs
+			if err != nil {
+				progressChan <- fmt.Sprintf("[red::b]❌ Import Error: %v", err)
+			}
+		}
+
+		// Restore checks and commit
+		restoreImportSessionVariables(db)
+
+		elapsed := time.Since(startTime)
+		progressChan <- fmt.Sprintf("\n[lime::b]🎉 IMPORT COMPLETE! Duration: %v", elapsed.Round(time.Millisecond))
+		progressChan <- fmt.Sprintf("[green]Successfully executed %d statements (Errors: %d)", totalSuccess, totalErrors)
+		progressChan <- "[yellow::b]Press ESC or ENTER to return to workspace."
+
+		app.QueueUpdateDraw(func() {
+			logView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+				if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
+					layout := CreateLayoutWithFooter(app, mainFlex)
+					app.SetRoot(layout, true)
+					return nil
+				}
+				return event
+			})
+		})
+	}()
 }
 
 // processTableDataStream specifically optimized for large table data

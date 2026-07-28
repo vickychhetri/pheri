@@ -2,12 +2,16 @@
 package ui
 
 import (
+	"bufio"
+	"compress/gzip"
 	"database/sql"
 	"fmt"
 	"mysql-tui/util"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -175,7 +179,7 @@ func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items [
 }
 
 func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, items []ExportItem) {
-	defaultFileName := fmt.Sprintf("./export/pheri_%s_%s.sql", dbName, time.Now().Format("20060102_150405"))
+	defaultFileName := fmt.Sprintf("./export/pheri_%s_%s.sql.gz", dbName, time.Now().Format("20060102_150405"))
 
 	selectedCount := 0
 	for _, it := range items {
@@ -194,7 +198,7 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 
 	form.AddCheckbox("Include Table & Object DDL Schema", true, nil)
 	form.AddCheckbox("Include Table Data Rows (INSERT statements)", true, nil)
-	form.AddDropDown("Export Format", []string{"SQL Script (.sql)", "JSON (.json)", "CSV Folder (.csv)"}, 0, nil)
+	form.AddDropDown("Export Format", []string{"SQL Script Compressed (.sql.gz)", "SQL Script Plain (.sql)", "JSON (.json)", "CSV Folder (.csv)"}, 0, nil)
 	form.AddInputField("Output Target File/Path", defaultFileName, 50, nil, nil)
 
 	form.AddButton("[lime::b] ▶ START EXPORT ", func() {
@@ -214,6 +218,9 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 		}
 
 		opts.OutputPath = form.GetFormItem(3).(*tview.InputField).GetText()
+		if (strings.Contains(formatStr, "Compressed") || strings.HasSuffix(strings.ToLower(opts.OutputPath), ".gz")) && !strings.HasSuffix(strings.ToLower(opts.OutputPath), ".gz") {
+			opts.OutputPath += ".gz"
+		}
 
 		executeInteractiveExport(app, db, dbName, opts)
 	})
@@ -341,11 +348,263 @@ func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string,
 
 		summary.WriteString("SET FOREIGN_KEY_CHECKS=1;\n")
 
-		err := os.WriteFile(opts.OutputPath, []byte(summary.String()), 0644)
+		err := writeExportFile(opts.OutputPath, []byte(summary.String()))
 		if err != nil {
 			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Export Error: %v", err))
 		} else {
 			appendLog(logView, fmt.Sprintf("\n[lime::b]✅ Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
+				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
+				exportedCounts["Procedures"], exportedCounts["Functions"], exportedCounts["Triggers"], exportedCounts["Events"]))
+		}
+
+		appendLog(logView, "\n[yellow]Press ENTER or ESC to return to workspace.")
+
+		logView.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyEscape {
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
+				return nil
+			}
+			return event
+		})
+	}()
+}
+
+// --- NEW SEPARATE PARALLEL WORKER EXPORT FEATURE ---
+
+type ParallelExportResult struct {
+	Item     ExportItem
+	Content  string
+	RowCount int
+	Err      error
+}
+
+func processParallelExportItem(db *sql.DB, dbName string, item ExportItem, opts InteractiveExportOptions) ParallelExportResult {
+	var sb strings.Builder
+	rowCount := 0
+
+	switch item.Type {
+	case "TABLE":
+		if opts.IncludeSchema {
+			ddl, err := getTableDDL(db, dbName, item.Name)
+			if err != nil {
+				return ParallelExportResult{Item: item, Err: err}
+			}
+			sb.WriteString(fmt.Sprintf("-- Table structure for `%s`\nDROP TABLE IF EXISTS `%s`;\n%s;\n\n", item.Name, item.Name, ddl))
+		}
+		if opts.IncludeData {
+			dataSQL, count := getTableDataSQL(db, dbName, item.Name)
+			sb.WriteString(dataSQL + "\n\n")
+			rowCount = count
+		}
+
+	case "VIEW":
+		if opts.IncludeSchema {
+			ddl, err := getViewDDL(db, dbName, item.Name)
+			if err != nil {
+				return ParallelExportResult{Item: item, Err: err}
+			}
+			sb.WriteString(fmt.Sprintf("-- View structure for `%s`\nDROP VIEW IF EXISTS `%s`;\n%s;\n\n", item.Name, item.Name, ddl))
+		}
+
+	case "PROCEDURE":
+		ddl, err := GetProcedureDDL(db, dbName, item.Name)
+		if err != nil {
+			return ParallelExportResult{Item: item, Err: err}
+		}
+		sb.WriteString(fmt.Sprintf("-- Procedure `%s`\nDROP PROCEDURE IF EXISTS `%s`;\nDELIMITER $$\n%s $$\nDELIMITER ;\n\n", item.Name, item.Name, ddl))
+
+	case "FUNCTION":
+		ddl, err := GetFunctionDDL(db, dbName, item.Name)
+		if err != nil {
+			return ParallelExportResult{Item: item, Err: err}
+		}
+		sb.WriteString(fmt.Sprintf("-- Function `%s`\nDROP FUNCTION IF EXISTS `%s`;\nDELIMITER $$\n%s $$\nDELIMITER ;\n\n", item.Name, item.Name, ddl))
+
+	case "TRIGGER":
+		ddl, err := GetTriggerDDL(db, dbName, item.Name)
+		if err != nil {
+			return ParallelExportResult{Item: item, Err: err}
+		}
+		sb.WriteString(fmt.Sprintf("-- Trigger `%s`\nDROP TRIGGER IF EXISTS `%s`;\nDELIMITER $$\n%s $$\nDELIMITER ;\n\n", item.Name, item.Name, ddl))
+
+	case "EVENT":
+		ddl, err := GetEventDDL(db, dbName, item.Name)
+		if err != nil {
+			return ParallelExportResult{Item: item, Err: err}
+		}
+		sb.WriteString(fmt.Sprintf("-- Event `%s`\nDROP EVENT IF EXISTS `%s`;\nDELIMITER $$\n%s $$\nDELIMITER ;\n\n", item.Name, item.Name, ddl))
+	}
+
+	return ParallelExportResult{
+		Item:     item,
+		Content:  sb.String(),
+		RowCount: rowCount,
+	}
+}
+
+// ShowParallelWorkerExportModal launches the separate concurrent worker pool export feature (Ctrl+W)
+func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName string) {
+	logView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetChangedFunc(func() {
+			app.Draw()
+		})
+
+	logView.SetBorder(true).
+		SetTitle(" ⚡ High-Speed Parallel Worker Export: " + dbName + " ").
+		SetBorderColor(tcell.ColorYellow)
+
+	app.SetRoot(logView, true)
+
+	go func() {
+		appendLog(logView, "[yellow::b]⚡ Launching Parallel Go Goroutine Worker Pool Export...\n\n")
+
+		// 1. Fetch items to export
+		var items []ExportItem
+
+		tRows, err := db.Query("SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = ?", dbName)
+		if err == nil {
+			defer tRows.Close()
+			for tRows.Next() {
+				var name, tType string
+				if err := tRows.Scan(&name, &tType); err == nil {
+					kind := "TABLE"
+					if strings.Contains(tType, "VIEW") {
+						kind = "VIEW"
+					}
+					items = append(items, ExportItem{Name: name, Type: kind, Selected: true})
+				}
+			}
+		}
+
+		rRows, err := db.Query("SELECT routine_name, routine_type FROM information_schema.routines WHERE routine_schema = ?", dbName)
+		if err == nil {
+			defer rRows.Close()
+			for rRows.Next() {
+				var name, rType string
+				if err := rRows.Scan(&name, &rType); err == nil {
+					items = append(items, ExportItem{Name: name, Type: strings.ToUpper(rType), Selected: true})
+				}
+			}
+		}
+
+		trRows, err := db.Query("SELECT trigger_name FROM information_schema.triggers WHERE trigger_schema = ?", dbName)
+		if err == nil {
+			defer trRows.Close()
+			for trRows.Next() {
+				var name string
+				if err := trRows.Scan(&name); err == nil {
+					items = append(items, ExportItem{Name: name, Type: "TRIGGER", Selected: true})
+				}
+			}
+		}
+
+		evRows, err := db.Query("SELECT event_name FROM information_schema.events WHERE event_schema = ?", dbName)
+		if err == nil {
+			defer evRows.Close()
+			for evRows.Next() {
+				var name string
+				if err := evRows.Scan(&name); err == nil {
+					items = append(items, ExportItem{Name: name, Type: "EVENT", Selected: true})
+				}
+			}
+		}
+
+		if len(items) == 0 {
+			appendLog(logView, "[red]No exportable objects found in database.")
+			return
+		}
+
+		opts := InteractiveExportOptions{
+			SelectedItems: items,
+			IncludeSchema: true,
+			IncludeData:   true,
+			OutputPath:    fmt.Sprintf("./export/parallel_%s_%s.sql.gz", dbName, time.Now().Format("20060102_150405")),
+		}
+
+		dir := filepath.Dir(opts.OutputPath)
+		if dir != "." && dir != "" {
+			_ = os.MkdirAll(dir, 0755)
+		}
+
+		numWorkers := runtime.NumCPU() * 2
+		if numWorkers > 16 {
+			numWorkers = 16
+		}
+		if numWorkers > len(items) {
+			numWorkers = len(items)
+		}
+
+		appendLog(logView, fmt.Sprintf("  [white]Spawning [lime]%d parallel worker goroutines[white]...\n\n", numWorkers))
+
+		jobs := make(chan ExportItem, len(items))
+		results := make(chan ParallelExportResult, len(items))
+
+		var wg sync.WaitGroup
+
+		for w := 1; w <= numWorkers; w++ {
+			wg.Add(1)
+			go func(workerID int) {
+				defer wg.Done()
+				for item := range jobs {
+					res := processParallelExportItem(db, dbName, item, opts)
+					results <- res
+				}
+			}(w)
+		}
+
+		for _, item := range items {
+			jobs <- item
+		}
+		close(jobs)
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		var summary strings.Builder
+		summary.WriteString(fmt.Sprintf("-- Pheri MySQL Parallel Export Dump\n-- Database: %s\n-- Timestamp: %s\n\n",
+			dbName, time.Now().Format(time.RFC3339)))
+		summary.WriteString("SET FOREIGN_KEY_CHECKS=0;\nSET SQL_MODE=\"NO_AUTO_VALUE_ON_ZERO\";\n\n")
+
+		exportedCounts := map[string]int{}
+
+		for res := range results {
+			if res.Err != nil {
+				appendLog(logView, fmt.Sprintf("  [red]❌ Failed [%s] %s: %v", res.Item.Type, res.Item.Name, res.Err))
+				continue
+			}
+
+			appendLog(logView, fmt.Sprintf("  [green]• Parallel Exported [%s]: [white]%s", res.Item.Type, res.Item.Name))
+			summary.WriteString(res.Content + "\n\n")
+
+			switch res.Item.Type {
+			case "TABLE":
+				exportedCounts["Tables"]++
+				exportedCounts["Rows"] += res.RowCount
+			case "VIEW":
+				exportedCounts["Views"]++
+			case "PROCEDURE":
+				exportedCounts["Procedures"]++
+			case "FUNCTION":
+				exportedCounts["Functions"]++
+			case "TRIGGER":
+				exportedCounts["Triggers"]++
+			case "EVENT":
+				exportedCounts["Events"]++
+			}
+		}
+
+		summary.WriteString("SET FOREIGN_KEY_CHECKS=1;\n")
+
+		err = writeExportFile(opts.OutputPath, []byte(summary.String()))
+		if err != nil {
+			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Parallel Export Error: %v", err))
+		} else {
+			appendLog(logView, fmt.Sprintf("\n[lime::b]⚡ Parallel Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
 				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
 				exportedCounts["Procedures"], exportedCounts["Functions"], exportedCounts["Triggers"], exportedCounts["Events"]))
 		}
@@ -456,4 +715,53 @@ func GetFunctionDDL(db *sql.DB, dbName, funcName string) (string, error) {
 	var fn, sqlMode, createStmt, charset, collation string
 	err := row.Scan(&fn, &sqlMode, &createStmt, &charset, &collation)
 	return createStmt, err
+}
+
+// writeExportFile writes content to outputPath. If outputPath ends with ".gz", it compresses the content using gzip.
+func writeExportFile(outputPath string, content []byte) error {
+	dir := filepath.Dir(outputPath)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return err
+		}
+	}
+
+	isGzip := strings.HasSuffix(strings.ToLower(outputPath), ".gz")
+
+	f, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if isGzip {
+		gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+		if err != nil {
+			return err
+		}
+
+		baseName := filepath.Base(outputPath)
+		if strings.HasSuffix(strings.ToLower(baseName), ".gz") {
+			baseName = baseName[:len(baseName)-3]
+		}
+		gz.Header.Name = baseName
+		gz.Header.ModTime = time.Now()
+
+		buf := bufio.NewWriter(gz)
+		if _, err := buf.Write(content); err != nil {
+			_ = gz.Close()
+			return err
+		}
+		if err := buf.Flush(); err != nil {
+			_ = gz.Close()
+			return err
+		}
+		return gz.Close()
+	}
+
+	buf := bufio.NewWriter(f)
+	if _, err := buf.Write(content); err != nil {
+		return err
+	}
+	return buf.Flush()
 }
