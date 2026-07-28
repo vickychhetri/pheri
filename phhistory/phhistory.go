@@ -176,3 +176,39 @@ func FetchHistory(days, months, years int, file string) error {
 	}
 	return nil
 }
+
+type HistoryRecord struct {
+	ID        int
+	QueryText string
+	DBName    string
+	HostIP    string
+	CreatedAt string
+}
+
+func GetRecentHistoryRecords(limit int) ([]HistoryRecord, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database not initialized")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := db.Query(`
+		SELECT id, query_text, db_name, host_ip, datetime(created_at, 'localtime')
+		FROM pheri_phhistory
+		ORDER BY id DESC
+		LIMIT ?
+	`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []HistoryRecord
+	for rows.Next() {
+		var rec HistoryRecord
+		if err := rows.Scan(&rec.ID, &rec.QueryText, &rec.DBName, &rec.HostIP, &rec.CreatedAt); err == nil {
+			records = append(records, rec)
+		}
+	}
+	return records, nil
+}

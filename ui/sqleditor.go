@@ -35,7 +35,7 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 		SetRegions(true).
 		SetScrollable(true).
 		SetBorder(true).
-		SetTitle(" 📝 Pheri Code Editor [white](Ctrl+R: Run | F11: Fullscreen | Tab: Switch) ")
+		SetTitle(" [black:lime:b] > SQL code ✖ [white:-:-]  📝 Pheri Code Editor [white](Ctrl+R: Run | Ctrl+S: Snippets | Tab: Switch) ")
 
 	editor.SetWrap(false)
 	editor.SetBorderColor(tcell.ColorYellow).
@@ -405,7 +405,7 @@ func (s *SQLEditor) updateText() {
 	for i, line := range lines {
 		isCurrentRow := i == s.CursorRow
 		if isCurrentRow {
-			content.WriteString("[lime::b]> [gray]")
+			content.WriteString("[lime::b]> [cyan]")
 		} else {
 			content.WriteString("  [gray]")
 		}
@@ -420,7 +420,7 @@ func (s *SQLEditor) updateText() {
 	}
 
 	s.Editor.SetText(content.String())
-	title := fmt.Sprintf(" 📝 Pheri Code Editor [white]| Ln %d, Col %d | %d chars [lime](Ctrl+R: Run | Ctrl+S: Snippets) ",
+	title := fmt.Sprintf(" [black:lime:b] > SQL code ✖ [white:-:-]  📝 Pheri Code Editor [white]| Ln %d, Col %d | %d chars [lime](Ctrl+R: Run | Ctrl+S: Snippets) ",
 		s.CursorRow+1, s.CursorCol+1, len(s.Text))
 	s.Editor.SetTitle(title)
 	s.Editor.ScrollTo(0, s.topRow)

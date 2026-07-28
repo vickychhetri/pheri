@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pheri Documentation - Terminal MySQL Database Management TUI</title>
+  <meta name="description" content="Complete documentation and user guide for Pheri - A fast, modern MySQL database management TUI built in Go.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-base: #060911;
+      --bg-surface: #0e1526;
+      --bg-surface-elevated: #162038;
+      --bg-glass: rgba(14, 21, 38, 0.75);
+      --border-color: rgba(255, 255, 255, 0.1);
+      --border-color-hover: rgba(56, 189, 248, 0.5);
+      
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.35);
+      --secondary: #a78bfa;
+      --accent: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --sidebar-width: 280px;
+      --header-height: 64px;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      color-scheme: dark;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #111d38 0%, var(--bg-base) 70%);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scrollbar Styling */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-base);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #26334d;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary);
+    }
+
+    /* Top Navigation Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--header-height);
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: var(--text-main);
+    }
+
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: #000;
+      box-shadow: 0 0 15px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(90deg, #fff, var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-tag {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--primary);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .search-box {
+      position: relative;
+      width: 260px;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 0.45rem 0.75rem 0.45rem 2.2rem;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+    }
+
+    .search-box input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 10px var(--primary-glow);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 0.75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      font-size: 0.875rem;
+      pointer-events: none;
+    }
+
+    .btn-github {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.9rem;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s ease;
+    }
+
+    .btn-github:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Layout Wrapper */
+    .app-container {
+      display: flex;
+      flex: 1;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Sidebar Navigation */
+    aside {
+      width: var(--sidebar-width);
+      position: sticky;
+      top: var(--header-height);
+      height: calc(100vh - var(--header-height));
+      overflow-y: auto;
+      border-right: 1px solid var(--border-color);
+      padding: 1.5rem 1rem;
+      flex-shrink: 0;
+    }
+
+    .nav-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .nav-group-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 0.6rem;
+      padding-left: 0.75rem;
+    }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.45rem 0.75rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .nav-link.active {
+      color: var(--primary);
+      background: rgba(56, 189, 248, 0.1);
+      font-weight: 600;
+    }
+
+    .nav-link svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.7;
+    }
+
+    .nav-link.active svg {
+      opacity: 1;
+      stroke: var(--primary);
+    }
+
+    /* Main Content Area */
+    main {
+      flex: 1;
+      padding: 2.5rem 3rem;
+      max-width: 1000px;
+    }
+
+    /* Typography & Sections */
+    section {
+      margin-bottom: 4rem;
+      scroll-margin-top: calc(var(--header-height) + 2rem);
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #ffffff 30%, var(--primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    h2 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-top: 1rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #fff;
+    }
+
+    h3 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-top: 1.5rem;
+      margin-bottom: 0.75rem;
+      color: var(--text-main);
+    }
+
+    p {
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    /* Badge Tags */
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--font-mono);
+    }
+    .badge-primary { background: rgba(56, 189, 248, 0.15); color: var(--primary); border: 1px solid rgba(56, 189, 248, 0.3); }
+    .badge-success { background: rgba(52, 211, 153, 0.15); color: var(--accent); border: 1px solid rgba(52, 211, 153, 0.3); }
+    .badge-warning { background: rgba(251, 191, 36, 0.15); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); }
+
+    /* Alert Boxes */
+    .alert {
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
+      margin: 1.25rem 0;
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+      font-size: 0.925rem;
+    }
+
+    .alert-icon {
+      font-size: 1.2rem;
+      line-height: 1;
+      margin-top: 0.1rem;
+    }
+
+    .alert-tip {
+      background: rgba(52, 211, 153, 0.08);
+      border: 1px solid rgba(52, 211, 153, 0.25);
+      color: #a7f3d0;
+    }
+
+    .alert-important {
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #bae6fd;
+    }
+
+    .alert-warning {
+      background: rgba(251, 191, 36, 0.08);
+      border: 1px solid rgba(251, 191, 36, 0.25);
+      color: #fde68a;
+    }
+
+    /* Cards Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.25rem;
+      margin: 1.5rem 0;
+    }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1.25rem;
+      transition: all 0.2s ease;
+    }
+
+    .card:hover {
+      border-color: var(--border-color-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .card-desc {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+
+    /* Code Blocks */
+    .code-wrapper {
+      position: relative;
+      margin: 1rem 0 1.5rem 0;
+    }
+
+    pre {
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.875rem;
+      color: #e5e7eb;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+    }
+
+    p code, li code, td code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      color: var(--primary);
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 0.6rem;
+      right: 0.6rem;
+      padding: 0.25rem 0.6rem;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: var(--primary);
+      color: #000;
+      font-weight: 600;
+    }
+
+    /* Shortcut Tables */
+    .table-wrapper {
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      background: var(--bg-surface);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: var(--bg-surface-elevated);
+      padding: 0.75rem 1rem;
+      color: var(--text-main);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text-main);
+    }
+
+    kbd {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #f3f4f6;
+      background: #252e42;
+      border: 1px solid #3b4866;
+      border-radius: 4px;
+      box-shadow: 0 2px 0 #131926;
+    }
+
+    /* Terminal Mock Visualizer */
+    .terminal-mock {
+      background: #090c12;
+      border: 1px solid #1f293d;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 1.5rem 0;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    }
+
+    .terminal-header {
+      background: #141b2b;
+      padding: 0.5rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1f293d;
+    }
+
+    .terminal-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+
+    .terminal-title {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .terminal-body {
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    .t-keyword { color: #f472b6; font-weight: 600; }
+    .t-func { color: #60a5fa; }
+    .t-string { color: #34d399; }
+    .t-num { color: #fbbf24; }
+    .t-comment { color: #6b7280; italic: true; }
+    .t-table { color: #a78bfa; }
+    .t-ok { color: #34d399; font-weight: 600; }
+    .t-warn { color: #fbbf24; font-weight: 600; }
+    .t-err { color: #f87171; font-weight: 600; }
+
+    /* Interactive Command Generator Widget */
+    .generator-box {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    .generator-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .form-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .form-group input, .form-group select {
+      padding: 0.5rem 0.75rem;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-main);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .checkbox-group label {
+      font-size: 0.85rem;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    /* Filter Buttons */
+    .filter-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 0.35rem 0.75rem;
+      background: var(--bg-surface-elevated);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .filter-btn:hover {
+      color: var(--text-main);
+      border-color: var(--border-color-hover);
+    }
+
+    .filter-btn.active {
+      background: var(--primary);
+      color: #000;
+      font-weight: 600;
+      border-color: var(--primary);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.875rem;
+      margin-top: auto;
+    }
+
+    @media (max-width: 900px) {
+      aside {
+        display: none;
+      }
+      main {
+        padding: 1.5rem;
+      }
+      .search-box {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <a href="#" class="brand">
+      <div class="brand-logo">P</div>
+      <span class="brand-title">Pheri</span>
+      <span class="brand-tag">v3.0.0 Docs</span>
+    </a>
+
+    <div class="header-actions">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="docSearch" placeholder="Search docs or shortcuts..." onkeyup="filterDocs()">
+      </div>
+      <a href="https://github.com/vickychhetri/pheri" target="_blank" class="btn-github">
+        <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </header>
+
+  <div class="app-container">
+    
+    <!-- Sidebar -->
+    <aside>
+      <div class="nav-group">
+        <div class="nav-group-title">Getting Started</div>
+        <a href="#overview" class="nav-link active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 2 0 00-2 2v16a2 2 2 0 002 2h12a2 2 2 0 002-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+          Overview & Highlights
+        </a>
+        <a href="#installation" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 2 0 01-2 2H5a2 2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          Installation Guide
+        </a>
+        <a href="#quickstart" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          Quickstart & CLI Generator
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-title">Core Features</div>
+        <a href="#shortcuts" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"></path></svg>
+          Keyboard Shortcuts
+        </a>
+        <a href="#sqleditor" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+          SQL Editor & Snippets
+        </a>
+        <a href="#processlist" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+          Live Process Manager (F4)
+        </a>
+        <a href="#explain" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          EXPLAIN Analyzer (F5)
+        </a>
+        <a href="#export" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 2 0 01-2 2H5a2 2 2 0 01-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Concurrent DB Export (Ctrl+Y)
+        </a>
+        <a href="#search" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+          Schema Object Search
+        </a>
+      </div>
+
+      <div class="nav-group">
+        <div class="nav-group-title">Configuration</div>
+        <a href="#environment" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          Environment Tags & Safeguards
+        </a>
+        <a href="#faq" class="nav-link">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          FAQ & Troubleshooting
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main>
+      
+      <!-- Section 1: Overview -->
+      <section id="overview" class="doc-section">
+        <h1>Pheri Documentation</h1>
+        <p class="lead" style="font-size: 1.15rem; color: #cbd5e1; margin-bottom: 1.5rem;">
+          Pheri is a fast, terminal-based database management TUI (Terminal User Interface) built for MySQL and MariaDB in Go. Designed for developers, database administrators, and DevOps engineers operating over SSH or in local command lines.
+        </p>
+
+        <div class="alert alert-important">
+          <span class="alert-icon">⚡</span>
+          <div>
+            <strong>Ultra-Fast Performance:</strong> Pheri compiles to a single native binary with zero runtime dependencies. It boots instantly, uses less than 20MB RAM, and handles multi-gigabyte queries effortlessly.
+          </div>
+        </div>
+
+        <h2>Key Capabilities</h2>
+        <div class="features-grid">
+          <div class="card">
+            <div class="card-title">🎨 Syntax Highlighting</div>
+            <div class="card-desc">Tokenized SQL syntax highlighting in real time for keywords, functions, data types, strings, comments, and numbers.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">⚡ High-Speed Compressed Export</div>
+            <div class="card-desc">Dump entire databases into lightweight, compressed .sql.gz archives compatible with any database GUI tool or CLI.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🔍 EXPLAIN Execution Analyzer</div>
+            <div class="card-desc">Press F5 to visually audit query plans, join types, scanned row estimates, and pinpoint missing indexes or full table scans.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🛡️ Live Process Manager</div>
+            <div class="card-desc">Monitor running MySQL threads in real-time with F4. Identify stuck queries and terminate rogue connections with a single keystroke.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🏷️ Read-Only & Env Tags</div>
+            <div class="card-desc">Tag connections as PROD, STAGING, or DEV. Enable strict read-only mode to prevent accidental data modifications on production servers.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">✏️ Inline Cell Editing</div>
+            <div class="card-desc">Directly edit data cells within the terminal grid and save changes directly back to your database tables.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Installation -->
+      <section id="installation" class="doc-section">
+        <h2>Installation Guide</h2>
+        <p>Choose your preferred installation method below:</p>
+
+        <h3>Method 1: Pre-Built Binaries (Recommended)</h3>
+        <p>Download cross-compiled static binaries for Linux (x86_64/ARM64), macOS (Intel/Apple Silicon), and Windows from GitHub Releases:</p>
+        
+        <div class="code-wrapper">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><code># Download latest Linux release
+curl -L -O https://github.com/vickychhetri/pheri/releases/download/v3.0.0/pheri_3.0.0_linux_amd64.tar.gz
+tar -xvf pheri_3.0.0_linux_amd64.tar.gz
+sudo mv pheri /usr/local/bin/</code></pre>
+        </div>
+
+        <h3>Method 2: Install via Go CLI</h3>
+        <p>If you have Go 1.18+ installed on your machine:</p>
+        <div class="code-wrapper">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><code>go install github.com/vickychhetri/pheri@latest</code></pre>
+        </div>
+
+        <h3>Method 3: Build from Source</h3>
+        <div class="code-wrapper">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><code>git clone https://github.com/vickychhetri/pheri.git
+cd pheri
+go build -o pheri main.go
+./pheri</code></pre>
+        </div>
+      </section>
+
+      <!-- Section 3: Quickstart & CLI Generator -->
+      <section id="quickstart" class="doc-section">
+        <h2>Quickstart & Command Line Generator</h2>
+        <p>You can start Pheri interactively or pass flags to immediately connect to a target MySQL database server.</p>
+
+        <div class="generator-box">
+          <h3 style="margin-top: 0;">Interactive Command Line Generator</h3>
+          <p style="font-size: 0.875rem;">Configure your connection details to generate an exact launch command:</p>
+
+          <div class="generator-grid">
+            <div class="form-group">
+              <label>Host Address (-host)</label>
+              <input type="text" id="genHost" value="127.0.0.1" oninput="updateCmd()">
+            </div>
+            <div class="form-group">
+              <label>Port (-port)</label>
+              <input type="text" id="genPort" value="3306" oninput="updateCmd()">
+            </div>
+            <div class="form-group">
+              <label>Username (-u)</label>
+              <input type="text" id="genUser" value="root" oninput="updateCmd()">
+            </div>
+            <div class="form-group">
+              <label>Password (-p)</label>
+              <input type="password" id="genPass" value="secret" oninput="updateCmd()">
+            </div>
+            <div class="form-group">
+              <label>Database (-db)</label>
+              <input type="text" id="genDb" value="production_db" oninput="updateCmd()">
+            </div>
+            <div class="form-group">
+              <label>Environment Tag (-env)</label>
+              <select id="genEnv" onchange="updateCmd()">
+                <option value="PROD">PROD (Production Safeguards)</option>
+                <option value="STAGING">STAGING</option>
+                <option value="DEV" selected>DEV</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="checkbox-group">
+            <input type="checkbox" id="genReadonly" onchange="updateCmd()">
+            <label for="genReadonly">Enable Read-Only Guard (-readonly)</label>
+          </div>
+
+          <div class="code-wrapper" style="margin-top: 1rem;">
+            <button class="copy-btn" onclick="copyCode(this)">Copy Command</button>
+            <pre><code id="generatedCmd">./pheri -u root -p secret -host 127.0.0.1 -port 3306 -db production_db -env DEV</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Keyboard Shortcuts -->
+      <section id="shortcuts" class="doc-section">
+        <h2>Keyboard Shortcuts Cheat Sheet</h2>
+        <p>Pheri is optimized for keyboard efficiency without requiring a mouse.</p>
+
+        <div class="filter-bar">
+          <button class="filter-btn active" onclick="filterShortcuts('all', this)">All Keys</button>
+          <button class="filter-btn" onclick="filterShortcuts('editor', this)">Query Editor</button>
+          <button class="filter-btn" onclick="filterShortcuts('diagnostics', this)">Diagnostics & Tools</button>
+          <button class="filter-btn" onclick="filterShortcuts('navigation', this)">Navigation</button>
+        </div>
+
+        <div class="table-wrapper">
+          <table id="shortcutTable">
+            <thead>
+              <tr>
+                <th>Shortcut Key</th>
+                <th>Category</th>
+                <th>Action & Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-cat="editor">
+                <td><kbd>Ctrl</kbd> + <kbd>R</kbd></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>Execute Query:</strong> Runs the current SQL snippet or active buffer contents against the connected database.</td>
+              </tr>
+              <tr data-cat="editor">
+                <td><kbd>Ctrl</kbd> + <kbd>T</kbd></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>Table Auto-Completion:</strong> Pops up intelligent table name autocompletion suggestions at cursor.</td>
+              </tr>
+              <tr data-cat="editor">
+                <td><kbd>Ctrl</kbd> + <kbd>S</kbd> / <kbd>Ctrl</kbd> + <kbd>Space</kbd></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>Insert Templates / Snippets:</strong> Opens boilerplate menu for SELECT, INSERT, UPDATE, DELETE, JOINs, DDL.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F4</kbd></td>
+                <td><span class="badge badge-warning">Diagnostics</span></td>
+                <td><strong>Live Process Manager:</strong> Real-time thread monitor. Select thread and press Enter/K to KILL queries.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F5</kbd></td>
+                <td><span class="badge badge-warning">Diagnostics</span></td>
+                <td><strong>EXPLAIN Execution Plan:</strong> Runs EXPLAIN on the active SQL query and displays full visual analysis.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F3</kbd></td>
+                <td><span class="badge badge-warning">Diagnostics</span></td>
+                <td><strong>Schema Inspector:</strong> View table column definitions, primary keys, data types, indexes, and constraints.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>Ctrl</kbd> + <kbd>Y</kbd></td>
+                <td><span class="badge badge-success">Export</span></td>
+                <td><strong>Standard Folder Export:</strong> Full database dump split by schema object into compressed <code>.sql.gz</code> files.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>Ctrl</kbd> + <kbd>W</kbd> / <kbd>F8</kbd></td>
+                <td><span class="badge badge-success">Export</span></td>
+                <td><strong>High-Speed Parallel Worker Export:</strong> Export the entire database into a single lightweight compressed <code>.sql.gz</code> file.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>Ctrl</kbd> + <kbd>E</kbd></td>
+                <td><span class="badge badge-success">Export</span></td>
+                <td><strong>Selective Export Wizard:</strong> Choose specific tables/objects to dump in Compressed <code>.sql.gz</code>, Plain <code>.sql</code>, <code>.csv</code>, or <code>.json</code> format.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F6</kbd> / <code>:health</code></td>
+                <td><span class="badge badge-warning">Diagnostics</span></td>
+                <td><strong>Real-Time Health & Metrics Dashboard:</strong> Monitor live QPS, connection thread count, InnoDB buffer pool hit ratio, and slow query stats.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F7</kbd> / <code>:diff</code></td>
+                <td><span class="badge badge-warning">Diagnostics</span></td>
+                <td><strong>Database Schema Diff & Migration Generator:</strong> Inspect active schema tables, verify primary keys/indexes, and auto-generate verification SQL scripts.</td>
+              </tr>
+              <tr data-cat="editor">
+                <td><kbd>Ctrl</kbd> + <kbd>H</kbd> / <code>:history</code></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>Searchable Execution History & Restorer:</strong> Search through past query executions and load selected SQL into editor.</td>
+              </tr>
+              <tr data-cat="editor">
+                <td><code>:format</code> / <code>:fmt</code></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>SQL Auto-Formatter:</strong> Capitalize SQL keywords and normalize major clauses on new lines.</td>
+              </tr>
+              <tr data-cat="diagnostics">
+                <td><kbd>F9</kbd></td>
+                <td><span class="badge badge-success">Import</span></td>
+                <td><strong>Database Import Wizard:</strong> Interactive step-by-step importer with location selection, explicit overwrite permission confirmation, and Read-Only protection.</td>
+              </tr>
+              <tr data-cat="navigation">
+                <td><kbd>Tab</kbd></td>
+                <td><span class="badge badge-primary">Navigation</span></td>
+                <td><strong>Cycle Panel Focus:</strong> Move keyboard focus between Query Editor, Results Grid, and Sidebar Tree.</td>
+              </tr>
+              <tr data-cat="navigation">
+                <td><kbd>Esc</kbd></td>
+                <td><span class="badge badge-primary">Navigation</span></td>
+                <td><strong>Return Focus:</strong> Reset keyboard focus back to the left Schema Sidebar.</td>
+              </tr>
+              <tr data-cat="navigation">
+                <td><kbd>F11</kbd></td>
+                <td><span class="badge badge-primary">Navigation</span></td>
+                <td><strong>Toggle Fullscreen:</strong> Maximize active SQL editor or query result view to full terminal window.</td>
+              </tr>
+              <tr data-cat="navigation">
+                <td><kbd>Ctrl</kbd> + <kbd>X</kbd></td>
+                <td><span class="badge badge-primary">Editor</span></td>
+                <td><strong>Copy DDL:</strong> Copies the CREATE TABLE / CREATE VIEW statement for selected object to clipboard.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 5: SQL Editor & Highlighting -->
+      <section id="sqleditor" class="doc-section">
+        <h2>SQL Editor & Syntax Highlighting</h2>
+        <p>Pheri features a built-in tokenizing parser that provides rich, low-latency syntax highlighting in the terminal window.</p>
+
+        <div class="terminal-mock">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <div class="dot dot-red"></div>
+              <div class="dot dot-yellow"></div>
+              <div class="dot dot-green"></div>
+            </div>
+            <div class="terminal-title">Pheri SQL Editor [PROD - ReadOnly]</div>
+          </div>
+          <div class="terminal-body">
+            <span class="t-comment">-- Fetch high-value orders with user details</span><br>
+            <span class="t-keyword">SELECT</span> o.id, o.order_number, u.email, o.total_amount<br>
+            <span class="t-keyword">FROM</span> <span class="t-table">orders</span> o<br>
+            <span class="t-keyword">INNER JOIN</span> <span class="t-table">users</span> u <span class="t-keyword">ON</span> o.user_id = u.id<br>
+            <span class="t-keyword">WHERE</span> o.status = <span class="t-string">'COMPLETED'</span> <span class="t-keyword">AND</span> o.total_amount > <span class="t-num">500.00</span><br>
+            <span class="t-keyword">ORDER BY</span> o.created_at <span class="t-keyword">DESC</span><br>
+            <span class="t-keyword">LIMIT</span> <span class="t-num">50</span>;
+          </div>
+        </div>
+
+        <h3>Boilerplate Templates (Ctrl+S / Ctrl+Space)</h3>
+        <p>Never type standard CRUD boilerplates by hand again. Press <kbd>Ctrl+S</kbd> inside the editor to choose from:</p>
+        <ul>
+          <li><code>SELECT * FROM table WHERE 1=1 LIMIT 100</code></li>
+          <li><code>INSERT INTO table (col1, col2) VALUES (val1, val2)</code></li>
+          <li><code>UPDATE table SET col1 = val1 WHERE id = 1</code></li>
+          <li><code>DELETE FROM table WHERE id = 1</code></li>
+          <li><code>SELECT ... INNER JOIN ... ON ...</code></li>
+        </ul>
+      </section>
+
+      <!-- Section 6: Live Process Manager -->
+      <section id="processlist" class="doc-section">
+        <h2>Live Process Manager (F4)</h2>
+        <p>Monitor active database connections, query runtimes, and thread states in real-time without running manual <code>SHOW PROCESSLIST</code> queries.</p>
+
+        <div class="terminal-mock">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <div class="dot dot-red"></div>
+              <div class="dot dot-yellow"></div>
+              <div class="dot dot-green"></div>
+            </div>
+            <div class="terminal-title">Live Process Manager (F4) - Press [K] to Kill</div>
+          </div>
+          <div class="terminal-body">
+            <table style="width: 100%; border: none; font-size: 0.8rem;">
+              <tr style="color: var(--primary);">
+                <th>ID</th><th>User</th><th>Host</th><th>DB</th><th>Command</th><th>Time</th><th>State</th><th>Query Info</th>
+              </tr>
+              <tr>
+                <td>1024</td><td>app_user</td><td>10.0.0.4</td><td>shop</td><td>Query</td><td><span class="t-ok">0s</span></td><td>executing</td><td>SELECT * FROM products</td>
+              </tr>
+              <tr style="background: rgba(248, 113, 113, 0.15);">
+                <td>1029</td><td>report_usr</td><td>10.0.0.12</td><td>analytics</td><td>Query</td><td><span class="t-err">342s</span></td><td>Sending data</td><td>SELECT COUNT(*), SUM(val) FROM logs...</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+
+        <div class="alert alert-warning">
+          <span class="alert-icon">⚠️</span>
+          <div>
+            <strong>Query Termination:</strong> Highlight any long-running or locked thread in the Process Manager window and press <kbd>Enter</kbd> or <kbd>K</kbd> to issue an instant <code>KILL &lt;thread_id&gt;</code> instruction.
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 7: EXPLAIN Execution Plan & Performance Analyzer -->
+      <section id="explain" class="doc-section">
+        <h2>EXPLAIN Execution Plan & Performance Analyzer (<kbd>F5</kbd> / <code>:explain</code>)</h2>
+        <p>Diagnose query performance bottlenecks before they hit production. Press <kbd>F5</kbd> or type <code>:explain</code> on any query to open the developer performance suite with visual health scoring, operator tree graphs, real-time cost analysis, and automated index recommendations.</p>
+
+        <div class="terminal-mock">
+          <div class="terminal-header">
+            <div class="terminal-dots">
+              <div class="dot dot-red"></div>
+              <div class="dot dot-yellow"></div>
+              <div class="dot dot-green"></div>
+            </div>
+            <div class="terminal-title">EXPLAIN Analyzer (F5) - Performance Health Dashboard</div>
+          </div>
+          <div class="terminal-body">
+            <div style="background: rgba(239, 68, 68, 0.2); padding: 0.5rem; border-radius: 6px; margin-bottom: 0.75rem; font-weight: bold;">
+              Health: <span class="t-err">🔴 CRITICAL BOTTLENECK (30%)</span> | Scanned Rows: <span style="color: #fff;">254.1 KB</span> | Keys Used: <span class="t-table">NULL</span> | <span class="t-err">🔴 FULL TABLE SCAN (type=ALL)</span> | <span class="t-warn">⚠️ FILESORT</span>
+            </div>
+            <table style="width: 100%; border: none; font-size: 0.8rem;">
+              <tr style="color: var(--primary);">
+                <th>id</th><th>select_type</th><th>table</th><th>type</th><th>possible_keys</th><th>key</th><th>rows</th><th>Extra</th>
+              </tr>
+              <tr>
+                <td>1</td><td>SIMPLE</td><td>orders</td><td><span class="t-err" style="font-weight:bold;">ALL</span></td><td>idx_status</td><td><span class="t-err">NULL</span></td><td><span class="t-err">254,120</span></td><td><span class="t-warn">Using filesort</span></td>
+              </tr>
+            </table>
+            <div style="margin-top: 0.75rem; text-align: center; color: #a1a1aa; font-size: 0.75rem;">
+              <kbd>ESC/F5</kbd> Close | <kbd>t</kbd> EXPLAIN TREE | <kbd>a</kbd> ANALYZE Time | <kbd>j</kbd> JSON View | <kbd>i</kbd> AI Index Advisor | <kbd>c</kbd> Copy
+            </div>
+          </div>
+        </div>
+
+        <h3>Developer Feature Highlights</h3>
+        <div class="features-grid">
+          <div class="card">
+            <div class="card-title">⚡ Performance Health Dashboard</div>
+            <div class="card-desc">Provides a visual 0-100% health score, color-coded join types (<span style="color: #ef4444; font-weight:bold;">ALL</span>, <span style="color: #f59e0b; font-weight:bold;">range</span>, <span style="color: #10b981; font-weight:bold;">ref/const</span>), scanned row volume metrics, and bottleneck alerts.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🌳 EXPLAIN TREE Graph (<kbd>t</kbd>)</div>
+            <div class="card-desc">Press <kbd>t</kbd> to inspect the indented operator execution tree (MySQL 8.0+), depicting physical scan order, nested loops, and hash join operators.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">⏱️ EXPLAIN ANALYZE Real Time (<kbd>a</kbd>)</div>
+            <div class="card-desc">Press <kbd>a</kbd> to execute the query with actual row counts, loop iterations, first-row response latency, and total node execution costs.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">💡 AI Index Recommendation Advisor (<kbd>i</kbd>)</div>
+            <div class="card-desc">Press <kbd>i</kbd> to generate actionable index recommendations with copyable <code>CREATE INDEX</code> DDL syntax to instantly eliminate full table scans.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 8: Compressed Export & Import Guide -->
+      <section id="export" class="doc-section">
+        <h2>Compressed Database Export & Import Guide</h2>
+        <p>Pheri exports database dumps directly into lightweight, compressed <code>.sql.gz</code> files. Compression removes excessive whitespace and repetitive SQL text, reducing dump sizes by up to 95% while ensuring 100% compatibility with external database GUI tools and command-line utilities.</p>
+
+        <div class="alert alert-tip">
+          <span class="alert-icon">💡</span>
+          <div>
+            <strong>Universal Compatibility:</strong> Exported <code>.sql.gz</code> files can be imported directly into <strong>DBeaver, phpMyAdmin, MySQL Workbench, Navicat, DataGrip, TablePlus</strong>, or via terminal command <code>zcat export.sql.gz | mysql -u user -p dbname</code>.
+          </div>
+        </div>
+
+        <h3>How to Export Database Dumps</h3>
+        <div class="features-grid">
+          <div class="card">
+            <div class="card-title">⚡ High-Speed Parallel Export (<kbd>Ctrl+W</kbd> / <kbd>F8</kbd>)</div>
+            <div class="card-desc">Press <kbd>Ctrl+W</kbd> or <kbd>F8</kbd> to dump all database tables, views, procedures, functions, triggers, and events in parallel into a single compressed <code>.sql.gz</code> file.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">⚙️ Selective Export Wizard (<kbd>Ctrl+E</kbd>)</div>
+            <div class="card-desc">Press <kbd>Ctrl+E</kbd> to pick specific database objects, choose between Compressed <code>.sql.gz</code>, Plain <code>.sql</code>, <code>.csv</code>, or <code>.json</code> formats, and set custom target output paths.</div>
+          </div>
+        </div>
+
+        <h3>Parallel Export Execution Example</h3>
+        <div class="code-wrapper">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+          <pre><code># Press Ctrl+W or F8 to launch High-Speed Parallel Worker Export
+⚡ Launching Parallel Worker Pool Export...
+  • Parallel Exported [TABLE]: orders
+  • Parallel Exported [TABLE]: users
+  • Parallel Exported [VIEW]: v_active_subscriptions
+⚡ Parallel Export Complete!
+Saved to: ./export/parallel_production_db_20260729_003000.sql.gz
+Exported: 42 Tables (1,250,000 Rows), 8 Views, 12 Procedures, 4 Functions, 6 Triggers</code></pre>
+        </div>
+
+        <h3>How to Import Backup Files in Pheri</h3>
+        <p>Press <kbd>F9</kbd> or type <code>:import</code> in the bottom command bar to launch the <strong>Interactive Database Import Wizard</strong>. Pheri automatically detects whether backup files are compressed (<code>.sql.gz</code>) or plain text (<code>.sql</code>) and streams statements safely without syntax errors.</p>
+
+        <div class="alert alert-important">
+          <span class="alert-icon">🛡️</span>
+          <div>
+            <strong>Read-Only Guard:</strong> If your connection is set to <strong>Read-Only Mode</strong>, Pheri blocks import operations automatically to protect production database integrity.
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Step / Method</th>
+                <th>Action / Feature</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1. Launch Import Wizard</strong></td>
+                <td><kbd>F9</kbd> or <code>:import</code></td>
+                <td>Opens the location picker form pre-filled with candidate backup files in <code>./export</code>.</td>
+              </tr>
+              <tr>
+                <td><strong>2. Location Picker</strong></td>
+                <td>File / Folder Path Input</td>
+                <td>Accepts single <code>.sql</code> / <code>.sql.gz</code> dump files or export directory folders.</td>
+              </tr>
+              <tr>
+                <td><strong>3. Permission Confirmation</strong></td>
+                <td>High-Visibility Warning Modal</td>
+                <td>Requires explicit user confirmation before executing any destructive DDL (DROP) or DML (INSERT/UPDATE) statements.</td>
+              </tr>
+              <tr>
+                <td><strong>4. Streaming Import</strong></td>
+                <td>Real-time Execution & Log Output</td>
+                <td>Streams statements individually, optimizes session checks, and displays progress in a live terminal viewer.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 9: Schema Search -->
+      <section id="search" class="doc-section">
+        <h2>Schema Object Search & Filter System</h2>
+        <p>Quickly locate database tables, views, stored procedures, and functions in large schemas with prefix queries in the sidebar search bar:</p>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Filter Prefix</th>
+                <th>Target Object Type</th>
+                <th>Example Query</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>table:</code></td>
+                <td>Database Tables</td>
+                <td><code>table:orders</code></td>
+              </tr>
+              <tr>
+                <td><code>view:</code></td>
+                <td>Database Views</td>
+                <td><code>view:v_active_subscriptions</code></td>
+              </tr>
+              <tr>
+                <td><code>procedure:</code></td>
+                <td>Stored Procedures</td>
+                <td><code>procedure:sp_recalculate_balance</code></td>
+              </tr>
+              <tr>
+                <td><code>function:</code></td>
+                <td>User-defined Functions</td>
+                <td><code>function:fn_calculate_tax</code></td>
+              </tr>
+              <tr>
+                <td><code>db:</code></td>
+                <td>Databases / Schemas</td>
+                <td><code>db:analytics_db</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Section 9: Real-Time Server Health & Performance Dashboard -->
+      <section id="health" class="doc-section">
+        <h2>Real-Time Server Health & Performance Dashboard (<kbd>F6</kbd> / <code>:health</code>)</h2>
+        <p>Monitor live MySQL server performance metrics directly in your terminal. Press <kbd>F6</kbd> or type <code>:health</code> to view real-time QPS, client thread counts, InnoDB buffer pool hit ratios, and slow query stats.</p>
+
+        <div class="features-grid">
+          <div class="card">
+            <div class="card-title">⚡ Live Traffic & Load Monitoring</div>
+            <div class="card-desc">Inspect total executed query counts, uptime, and client thread connections (connected vs active running) in real time.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🧠 InnoDB Buffer Pool Efficiency</div>
+            <div class="card-desc">Track memory hit/miss ratios (e.g. 99.8% hit ratio) and allocated buffer pool size.</div>
+          </div>
+          <div class="card">
+            <div class="card-title">🐢 Slow Query Threshold Tracking</div>
+            <div class="card-desc">Monitor queries exceeding 1.0 second execution thresholds to catch performance degradation early.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 10: Database Schema Diff & Migration Generator -->
+      <section id="diff" class="doc-section">
+        <h2>Database Schema Diff & Migration Generator (<kbd>F7</kbd> / <code>:diff</code>)</h2>
+        <p>Inspect active database structures, verify primary keys and indexes across tables, and auto-generate schema verification SQL scripts. Press <kbd>F7</kbd> or type <code>:diff</code> to launch.</p>
+      </section>
+
+      <!-- Section 11: Searchable Query History & SQL Formatter -->
+      <section id="history" class="doc-section">
+        <h2>Searchable Query History (<kbd>Ctrl+H</kbd>) & Auto-Formatter (<code>:format</code>)</h2>
+        <p>Never lose a query again. Press <kbd>Ctrl+H</kbd> to search through all past executed queries, filter by database name/timestamp, and restore any statement directly into the SQL editor.</p>
+        <p>Type <code>:format</code> or <code>:fmt</code> to auto-format complex SQL queries with capitalized keywords and clean clause line-breaks.</p>
+      </section>
+
+      <!-- Section 12: Environment Safeguards -->
+      <section id="environment" class="doc-section">
+        <h2>Environment Tags & Read-Only Guard</h2>
+        <p>Prevent disastrous accidental queries on production databases with connection tagging and enforcement rules.</p>
+
+        <h3>Environment Tags (-env)</h3>
+        <ul>
+          <li><span class="badge badge-warning">PROD</span> Prominently renders a bright red border header tag across all terminal panels to remind you that you are on production.</li>
+          <li><span class="badge badge-primary">STAGING</span> Renders an amber tag for staging/test environments.</li>
+          <li><span class="badge badge-success">DEV</span> Default green tag for local development databases.</li>
+        </ul>
+
+        <h3>Read-Only Safeguard (-readonly)</h3>
+        <p>When launching with <code>-readonly</code> or checking Read-Only in the connection screen, Pheri actively parses incoming queries and blocks non-SELECT mutations (<code>DROP</code>, <code>DELETE</code>, <code>UPDATE</code>, <code>ALTER</code>, <code>TRUNCATE</code>, <code>INSERT</code>) prior to sending them to MySQL server.</p>
+      </section>
+
+      <!-- Section 11: FAQ -->
+      <section id="faq" class="doc-section">
+        <h2>FAQ & Troubleshooting</h2>
+
+        <h3>Q: Does Pheri support SSH Tunnels?</h3>
+        <p>A: Yes! You can either use standard local SSH port forwarding (e.g. <code>ssh -L 3306:127.0.0.1:3306 user@remote</code>) and connect Pheri to <code>127.0.0.1:3306</code>, or run Pheri directly inside your remote SSH terminal session.</p>
+
+        <h3>Q: Where are saved database connections stored?</h3>
+        <p>A: Connection profiles are stored locally in your user home directory at <code>~/.pheri_connections.json</code> with file permissions restricted to your OS user.</p>
+
+        <h3>Q: How do I copy query result data to my system clipboard?</h3>
+        <p>A: Press <kbd>F11</kbd> to maximize the result grid, select rows with arrow keys, and press <kbd>Ctrl+X</kbd> or <kbd>Ctrl+P</kbd> to copy table formatted text or JSON.</p>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>Pheri - Fast MySQL Database Management TUI | Built with Go and Open Source (MIT License)</p>
+    <p style="margin-top: 0.5rem;"><a href="https://github.com/vickychhetri/pheri" target="_blank" style="color: var(--primary); text-decoration: none;">GitHub Repository</a> • <a href="https://github.com/vickychhetri/pheri/releases" target="_blank" style="color: var(--primary); text-decoration: none;">Releases</a></p>
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Copy Code Helper
+    function copyCode(button) {
+      const wrapper = button.closest('.code-wrapper');
+      const code = wrapper.querySelector('code').innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const originalText = button.innerText;
+        button.innerText = 'Copied!';
+        button.style.background = '#34d399';
+        button.style.color = '#000';
+        setTimeout(() => {
+          button.innerText = originalText;
+          button.style.background = '';
+          button.style.color = '';
+        }, 2000);
+      });
+    }
+
+    // Command Generator
+    function updateCmd() {
+      const host = document.getElementById('genHost').value || '127.0.0.1';
+      const port = document.getElementById('genPort').value || '3306';
+      const user = document.getElementById('genUser').value || 'root';
+      const pass = document.getElementById('genPass').value;
+      const db = document.getElementById('genDb').value;
+      const env = document.getElementById('genEnv').value;
+      const readonly = document.getElementById('genReadonly').checked;
+
+      let cmd = `./pheri -u ${user}`;
+      if (pass) cmd += ` -p ${pass}`;
+      cmd += ` -host ${host} -port ${port}`;
+      if (db) cmd += ` -db ${db}`;
+      if (env) cmd += ` -env ${env}`;
+      if (readonly) cmd += ` -readonly`;
+
+      document.getElementById('generatedCmd').innerText = cmd;
+    }
+
+    // Shortcut Filter
+    function filterShortcuts(category, btn) {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const rows = document.querySelectorAll('#shortcutTable tbody tr');
+      rows.forEach(row => {
+        if (category === 'all' || row.getAttribute('data-cat') === category) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    // Documentation Global Search Filter
+    function filterDocs() {
+      const query = document.getElementById('docSearch').value.toLowerCase();
+      const sections = document.querySelectorAll('.doc-section');
+      
+      sections.forEach(sec => {
+        const text = sec.innerText.toLowerCase();
+        if (text.includes(query)) {
+          sec.style.display = '';
+        } else {
+          sec.style.display = 'none';
+        }
+      });
+    }
+
+    // Scroll Active Link Highlight
+    window.addEventListener('scroll', () => {
+      let current = '';
+      const sections = document.querySelectorAll('.doc-section');
+      sections.forEach(sec => {
+        const secTop = sec.offsetTop;
+        if (pageYOffset >= (secTop - 120)) {
+          current = sec.getAttribute('id');
+        }
+      });
+
+      document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('href') === '#' + current) {
+          link.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

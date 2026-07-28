@@ -90,6 +90,12 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		} else {
 			updateFooterText("No active database selected to export")
 		}
+	case "import", "imp":
+		if activeGridDB != nil && activeGridDBName != "" {
+			ShowImportWizardModal(app, activeGridDB, activeGridDBName)
+		} else {
+			updateFooterText("No active database selected to import")
+		}
 	case "process", "top", "proc":
 		if activeGridDB != nil {
 			ShowProcessListModal(app, activeGridDB)
@@ -102,20 +108,50 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		} else {
 			updateFooterText("No active query available to explain")
 		}
+	case "health", "metrics", "stats":
+		if activeGridDB != nil {
+			showHealthDashboardModal(app, activeGridDB)
+		} else {
+			updateFooterText("No active connection for health metrics")
+		}
+	case "diff", "migrate":
+		if activeGridDB != nil && activeGridDBName != "" {
+			showSchemaDiffModal(app, activeGridDB, activeGridDBName)
+		} else {
+			updateFooterText("No active database selected for schema comparison")
+		}
+	case "history", "hist":
+		if activeGridDB != nil {
+			showQueryHistoryModal(app, activeGridDB, activeSQLEditor)
+		} else {
+			updateFooterText("No history available")
+		}
+	case "format", "fmt":
+		if activeSQLEditor != nil {
+			raw := activeSQLEditor.GetText()
+			activeSQLEditor.SetText(FormatSQLQuery(raw))
+			updateFooterText("SQL formatted and keywords normalized!")
+		}
+	case "theme", "colors":
+		showThemePickerModal(app)
 	default:
 		updateFooterText("Unknown command: " + cmd)
 	}
 }
 
 func showGlobalHelpModal(app *tview.Application) {
-	helpText := `[aqua::b]⚡ PHERI MYSQL TUI DEVELOPER SHORTCUTS ⚡[::-]
+	helpText := `[aqua::b]⚡ PHERI MYSQL TUI DEVELOPER SHORTCUTS ⚡::-]
 
 [lime::b]DevOps & Process Manager:[::-]
   • [white]F4 / :process / :top[-]: Open Live Process Manager & Query Killer
   • [white]F5 / :explain[-]: View Query Execution Plan (EXPLAIN ANALYZE)
+  • [white]F6 / :health[-]: Real-Time Server Health & Performance Dashboard
+  • [white]F7 / :diff[-]: Database Schema Diff & Migration Generator
 
 [lime::b]Editor Controls:[::-]
   • [white]Ctrl+R / Ctrl+Enter[-]: Execute SQL Query
+  • [white]Ctrl+H / :history[-]: Searchable Execution History & Restorer
+  • [white]:format / :fmt[-]: Auto-Format SQL Keywords & Clauses
   • [white]F11[-]: Toggle Fullscreen Code Editor
   • [white]Ctrl+S / Ctrl+T[-]: Open SQL Snippets & Template Modal
 
@@ -124,9 +160,10 @@ func showGlobalHelpModal(app *tview.Application) {
   • [white]Esc[-]: Back to main layout / Clear focus
   • [white]F3[-]: Inspect Table Columns & Indexes Schema
   • [white]Ctrl+E / :export[-]: Multi-Object Selective Database Export
+  • [white]F9 / :import[-]: Database Import Wizard (Requires confirmation)
 
 [lime::b]Command Launcher:[::-]
-  • Type [yellow]:help[-], [yellow]:process[-], [yellow]:explain[-], [yellow]:export[-], or [yellow]:quit[-]`
+  • Type [yellow]:help[-], [yellow]:health[-], [yellow]:diff[-], [yellow]:history[-], [yellow]:import[-], [yellow]:export[-], or [yellow]:quit[-]`
 
 	modal := tview.NewModal().
 		SetText(helpText).
