@@ -1,0 +1,53 @@
+# Binaries & Executables
+pheri.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.test.exe
+
+# Allow pre-built release binaries in build/
+!build/*.exe
+!build/*.zip
+!build/*.tar.gz
+!build/*.deb
+!build/pheri-*
+
+# Local tools & build caches
+.tools/
+bin/
+dist/
+
+# Local database files & history
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+phhistory.db
+
+# Log files
+*.log
+query.log
+ui/query.log
+
+# Exported user data dumps
+export/
+
+# Test & coverage artifacts
+*.out
+*.prof
+
+# OS generated files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# Editor & IDE artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

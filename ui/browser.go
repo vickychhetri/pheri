@@ -4,9 +4,11 @@ package ui
 import (
 	"bufio"
 	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
@@ -53,6 +55,36 @@ var activeGridObject string = ""
 var activeGridObjectType string = ""
 var activeGridDBName string = ""
 var activeGridDB *sql.DB = nil
+
+var (
+	isQueryRunning    atomic.Bool
+	activeQueryCancel context.CancelFunc
+	activeQueryMutex  sync.Mutex
+)
+
+type QueryResult struct {
+	Columns      []string
+	Rows         [][]string
+	Duration     time.Duration
+	RowCount     int
+	RowsAffected int64
+	IsMutation   bool
+	ErrorMessage string
+	IsCanceled   bool
+}
+
+func CancelActiveQuery() {
+	activeQueryMutex.Lock()
+	defer activeQueryMutex.Unlock()
+	if activeQueryCancel != nil {
+		activeQueryCancel()
+		activeQueryCancel = nil
+	}
+}
+
+func IsQueryRunning() bool {
+	return isQueryRunning.Load()
+}
 
 
 func filterTableList(
@@ -118,6 +150,17 @@ func filterTableList(
 						return typePriority[allTables[i].Type] < typePriority[allTables[j].Type]
 					})
 					app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+					if isQueryRunning.Load() {
+						if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyEscape {
+							CancelActiveQuery()
+							return nil
+						}
+					}
+
+					// Never hijack Backspace or Delete in global capture so editing always works in all inputs and editors
+					if event.Key() == tcell.KeyBackspace || event.Key() == tcell.KeyBackspace2 || event.Key() == tcell.KeyDelete {
+						return event
+					}
 						if event.Key() == tcell.KeyCtrlX {
 							if objType == "TABLE" {
 								// Step 1: Get the table's DDL (definition)
@@ -1631,6 +1674,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					return typePriority[allTables[i].Type] < typePriority[allTables[j].Type]
 				})
 				app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+					if isQueryRunning.Load() {
+						if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyEscape {
+							CancelActiveQuery()
+							return nil
+						}
+					}
+
+					// Never hijack Backspace or Delete in global capture so editing always works in all inputs and editors
+					if event.Key() == tcell.KeyBackspace || event.Key() == tcell.KeyBackspace2 || event.Key() == tcell.KeyDelete {
+						return event
+					}
 
 					//if event.Key() == tcell.KeyCtrlY {
 					//
@@ -1823,8 +1877,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
-					// Searchable Query History (Ctrl+H)
-					if event.Key() == tcell.KeyCtrlH {
+					// Searchable Query History (F2 / :history)
+					if event.Key() == tcell.KeyF2 {
 						showQueryHistoryModal(app, db, activeSQLEditor)
 						return nil
 					}
@@ -2074,22 +2128,21 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		// Initialize queryBox and dataText outside of the callback scope
 		runButton := tview.NewButton(runIcon).
 			SetSelectedFunc(func() {
-				query := queryBox.GetText()
-				err := ExecuteQuery(app, db, query, dataTable)
-				phhistory.SaveQuery(query, dbName)
-				isEditingEnabled = false
-				if err != nil {
-					modal := tview.NewModal().
-						SetText("Failed to execute query: " + err.Error()).
-						AddButtons([]string{"OK"}).
-						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							layout := CreateLayoutWithFooter(app, mainFlex)
-							app.SetRoot(layout, true)
-						})
-					app.SetRoot(modal, true)
+				query := ""
+				if activeSQLEditor != nil {
+					query = strings.TrimSpace(activeSQLEditor.GetText())
+				} else if queryBox != nil {
+					query = strings.TrimSpace(queryBox.GetText())
+				}
+				if query == "" {
+					updateFooterText("SQL query is empty. Press 'e' or click in editor to type a query.")
 					return
 				}
-				app.SetFocus(dataTable)
+				ExecuteQueryAsync(app, db, query, dataTable, func(res *QueryResult) {
+					phhistory.SaveQuery(query, dbName)
+					isEditingEnabled = false
+					app.SetFocus(dataTable)
+				})
 			})
 
 		buttonBox := tview.NewFlex().
@@ -2109,84 +2162,43 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		activeSQLEditor = NewSQLEditor(app)
 		activeSQLEditor.OnExecute = func(query string) {
-			err := ExecuteQuery(app, db, query, dataTable)
-			phhistory.SaveQuery(query, dbName)
-			isEditingEnabled = false
-			if err != nil {
-				modal := tview.NewModal().
-					SetText("Failed to execute query: " + err.Error()).
-					AddButtons([]string{"OK"}).
-					SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-						layout := CreateLayoutWithFooter(app, mainFlex)
-						app.SetRoot(layout, true)
-					})
-				app.SetRoot(modal, true)
+			cleanQuery := strings.TrimSpace(query)
+			if cleanQuery == "" {
+				updateFooterText("SQL query is empty. Type a query to execute.")
 				return
 			}
-			app.SetFocus(dataTable)
+			ExecuteQueryAsync(app, db, cleanQuery, dataTable, func(res *QueryResult) {
+				phhistory.SaveQuery(cleanQuery, dbName)
+				isEditingEnabled = false
+				app.SetFocus(dataTable)
+			})
 		}
 		activeSQLEditor.OnNextFocus = func() {
 			app.SetFocus(runButton)
 		}
+		var isEditorFullscreen bool = false
 		activeSQLEditor.OnExit = func() {
-			layout := CreateLayoutWithFooter(app, mainFlex)
-			app.SetRoot(layout, true)
+			if isEditorFullscreen {
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
+				app.SetFocus(activeSQLEditor.Editor)
+				isEditorFullscreen = false
+				return
+			}
 			app.SetFocus(tableList)
 		}
 		activeSQLEditor.OnFullscreen = func() {
-			app.SetRoot(activeSQLEditor.Container, true)
-		}
-
-		activeSQLEditor.Editor.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			switch event.Key() {
-			case tcell.KeyTab:
-				app.SetFocus(runButton)
-				return nil
-			case tcell.KeyEscape:
+			if isEditorFullscreen {
 				layout := CreateLayoutWithFooter(app, mainFlex)
 				app.SetRoot(layout, true)
-				app.SetFocus(tableList)
-				return nil
-			case tcell.KeyF11:
-				app.SetRoot(activeSQLEditor.Container, true)
-				return nil
-			case tcell.KeyCtrlR:
-				query := activeSQLEditor.GetText()
-				err := ExecuteQuery(app, db, query, dataTable)
-				phhistory.SaveQuery(query, dbName)
-				isEditingEnabled = false
-				if err != nil {
-					modal := tview.NewModal().
-						SetText("Failed to execute query: " + err.Error()).
-						AddButtons([]string{"OK"}).
-						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							layout := CreateLayoutWithFooter(app, mainFlex)
-							app.SetRoot(layout, true)
-						})
-					app.SetRoot(modal, true)
-					return nil
-				}
-				app.SetRoot(mainFlex, true)
-				app.SetFocus(dataTable)
-				return nil
-
-			case tcell.KeyCtrlP:
-				clipboardText := util.GetClipboardText()
-				setEditorText(queryBox, clipboardText)
 				app.SetFocus(activeSQLEditor.Editor)
-				return nil
-
-			case tcell.KeyCtrlT:
-				activeSQLEditor.ShowTableSuggestionsModal()
-				return nil
-
-			case tcell.KeyCtrlS, tcell.KeyCtrlSpace:
-				activeSQLEditor.ShowSnippetsModal()
-				return nil
+				isEditorFullscreen = false
+			} else {
+				app.SetRoot(activeSQLEditor.Container, true)
+				app.SetFocus(activeSQLEditor.Editor)
+				isEditorFullscreen = true
 			}
-
-			return activeSQLEditor.handleInput(event)
-		})
+		}
 
 		button1 := tview.NewButton(saveIcon)
 		button1.
@@ -2347,7 +2359,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetBorders(true).
 			SetSelectable(true, false).
 			SetFixed(1, 0).
-			SetTitle(" 📊 Result Data Grid [white](Ctrl+N: Next | Ctrl+P: Prev | Ctrl+E: Export | F3: Schema) ").
+			SetTitle(" 📊 Result Data Grid [white]([lime]e:[-]Edit SQL | Ctrl+N: Next | Ctrl+P: Prev | Ctrl+E: Export | F3: Schema) ").
 			SetTitleAlign(tview.AlignLeft).
 			SetBorder(true).
 			SetBorderColor(tcell.ColorDarkGray).
@@ -2363,6 +2375,18 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E' || event.Rune() == 'i' || event.Rune() == 'I') {
+				if activeSQLEditor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+					return nil
+				}
+			}
+			if event.Key() == tcell.KeyCtrlQ || event.Key() == tcell.KeyCtrlI {
+				if activeSQLEditor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+					return nil
+				}
+			}
 			if event.Key() == tcell.KeyTab {
 				app.SetFocus(tableList)
 				return nil
@@ -2435,11 +2459,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		tableList.
 			SetBorder(true).
-			SetTitle(" 📋 Schema Objects ").
+			SetTitle(" 📋 Schema Objects [white]([lime]e:[-]Edit SQL) ").
 			SetTitleAlign(tview.AlignLeft).
 			SetBorderColor(tcell.ColorDarkCyan)
 
 		tableList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
+				if activeSQLEditor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+					return nil
+				}
+			}
 			if event.Key() == tcell.KeyTab {
 				app.SetFocus(dataBaseList)
 				return nil
@@ -2458,9 +2488,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetBorderColor(tcell.ColorDarkCyan)
 
 		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
+				if activeSQLEditor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+					return nil
+				}
+			}
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(activeSQLEditor.Editor)
-				return nil
+				if activeSQLEditor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+					return nil
+				}
 			}
 			return event
 		})
@@ -2538,9 +2576,19 @@ func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
 	return cols[0], nil
 }
 
-// Fetch data and show in table with query timing, pagination, and keybindings
+// Fetch data and show in table asynchronously with cancellation, live timing, and pagination
 func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
-	startTime := time.Now()
+	ExecuteQueryAsync(app, db, query, table, nil)
+	return nil
+}
+
+// ExecuteQueryAsync executes a database query off the UI thread with context cancellation
+func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *tview.Table, onComplete func(res *QueryResult)) {
+	if isQueryRunning.Load() {
+		updateFooterText("A query is already executing. Press Ctrl+C or Esc to cancel it first.")
+		return
+	}
+
 	activeGridQuery = query
 	activeGridDB = db
 
@@ -2556,77 +2604,146 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 
 	if isMutation && ActiveReadOnly {
 		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.")
-		return fmt.Errorf("read-only mode enabled")
+		if onComplete != nil {
+			onComplete(&QueryResult{ErrorMessage: "read-only mode enabled", IsMutation: true})
+		}
+		return
 	}
 
-	rows, err := db.Query(query)
-	if err != nil {
-		table.Clear()
-		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+err.Error()))
-		return err
-	}
-	defer rows.Close()
-
-	columns, err := rows.Columns()
-	if err != nil {
-		table.Clear()
-		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+err.Error()))
-		return err
-	}
+	activeQueryMutex.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	activeQueryCancel = cancel
+	isQueryRunning.Store(true)
+	activeQueryMutex.Unlock()
 
 	table.Clear()
 	table.SetBorders(false)
+	table.SetCell(0, 0, tview.NewTableCell("[yellow::b]⚡ Executing query in background... [lime](Ctrl+C / Esc: Cancel)[-::-]").
+		SetAlign(tview.AlignCenter).
+		SetSelectable(false))
+	UpdateFooterRunningQuery(0)
 
-	// Set header with styling
-	for i, col := range columns {
-		header := fmt.Sprintf("[::b][white::]%s", col)
-		table.SetCell(0, i,
-			tview.NewTableCell(header).
-				SetTextColor(tcell.ColorWhite).
-				SetAlign(tview.AlignCenter).
-				SetSelectable(false))
-	}
+	startTime := time.Now()
 
-	scanValues := make([]interface{}, len(columns))
-	rawValues := make([]sql.RawBytes, len(columns))
-	for i := range rawValues {
-		scanValues[i] = &rawValues[i]
-	}
+	// Live progress ticker
+	tickerDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-tickerDone:
+				return
+			case t := <-ticker.C:
+				elapsed := t.Sub(startTime)
+				app.QueueUpdateDraw(func() {
+					if isQueryRunning.Load() {
+						UpdateFooterRunningQuery(elapsed)
+						table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]⚡ Executing query... (%0.1fs) [lime::b](Ctrl+C / Esc: Cancel)[-::-]", elapsed.Seconds())).
+							SetAlign(tview.AlignCenter).
+							SetSelectable(false))
+					}
+				})
+			}
+		}
+	}()
 
-	rowIndex := 1
-	for rows.Next() {
-		err := rows.Scan(scanValues...)
-		if err != nil {
-			continue
+	// Background worker
+	go func() {
+		defer func() {
+			close(tickerDone)
+			activeQueryMutex.Lock()
+			activeQueryCancel = nil
+			isQueryRunning.Store(false)
+			activeQueryMutex.Unlock()
+		}()
+
+		result := &QueryResult{
+			IsMutation: isMutation,
 		}
 
-		for i, col := range rawValues {
-			var text string
-			if col == nil {
-				text = "[gray]NULL"
+		if isMutation {
+			execRes, err := db.ExecContext(ctx, query)
+			duration := time.Since(startTime)
+			result.Duration = duration
+
+			if err != nil {
+				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+					result.IsCanceled = true
+				} else {
+					result.ErrorMessage = err.Error()
+				}
 			} else {
-				text = string(col) // Make a string copy of the raw byte slice
-				if text == "" {
-					text = "[gray]EMPTY"
+				rowsAff, _ := execRes.RowsAffected()
+				result.RowsAffected = rowsAff
+			}
+		} else {
+			rows, err := db.QueryContext(ctx, query)
+			duration := time.Since(startTime)
+			result.Duration = duration
+
+			if err != nil {
+				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+					result.IsCanceled = true
+				} else {
+					result.ErrorMessage = err.Error()
+				}
+			} else {
+				defer rows.Close()
+
+				cols, err := rows.Columns()
+				if err != nil {
+					result.ErrorMessage = err.Error()
+				} else {
+					result.Columns = cols
+					scanValues := make([]interface{}, len(cols))
+					rawValues := make([]sql.RawBytes, len(cols))
+					for i := range rawValues {
+						scanValues[i] = &rawValues[i]
+					}
+
+					for rows.Next() {
+						if ctx.Err() == context.Canceled {
+							result.IsCanceled = true
+							break
+						}
+						if scanErr := rows.Scan(scanValues...); scanErr != nil {
+							continue
+						}
+
+						rowStrings := make([]string, len(cols))
+						for i, col := range rawValues {
+							if col == nil {
+								rowStrings[i] = "[gray]NULL"
+							} else {
+								sVal := string(col)
+								if sVal == "" {
+									rowStrings[i] = "[gray]EMPTY"
+								} else {
+									rowStrings[i] = sVal
+								}
+							}
+						}
+						result.Rows = append(result.Rows, rowStrings)
+					}
+					result.RowCount = len(result.Rows)
 				}
 			}
-
-			color := tcell.ColorWhite
-			if rowIndex%2 == 0 {
-				color = tcell.ColorLightGray
-			}
-
-			cell := tview.NewTableCell(text).
-				SetTextColor(color).
-				SetAlign(tview.AlignLeft)
-
-			table.SetCell(rowIndex, i, cell)
 		}
-		rowIndex++
-	}
 
-	duration := time.Since(startTime)
-	rowCount := rowIndex - 1
+		// Update UI on main thread safely
+		app.QueueUpdateDraw(func() {
+			renderQueryResult(app, result, table)
+			if onComplete != nil {
+				onComplete(result)
+			}
+		})
+	}()
+}
+
+func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Table) {
+	table.Clear()
+	table.SetBorders(false)
 
 	envTagStr := "[green::b]DEV[-::-]"
 	if ActiveEnv == "PROD" {
@@ -2635,11 +2752,83 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 		envTagStr = "[yellow::b]STAGING[-::-]"
 	}
 
+	if res.IsCanceled {
+		titleStr := fmt.Sprintf(" [::b]Query Result [%s] [yellow](Canceled after %s) ", envTagStr, res.Duration.Round(time.Millisecond))
+		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]⚠️ Query Canceled by User [white](Execution aborted after %s)[-::-]", res.Duration.Round(time.Millisecond))).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false))
+		updateFooterText(fmt.Sprintf("Query execution canceled by user after %s", res.Duration.Round(time.Millisecond)))
+		setupTableInputCapture(app, table)
+		return
+	}
+
+	if res.ErrorMessage != "" {
+		titleStr := fmt.Sprintf(" [::b]Query Result [%s] [red](Error) ", envTagStr)
+		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
+		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+res.ErrorMessage).
+			SetAlign(tview.AlignLeft).
+			SetSelectable(false))
+		updateFooterText("Query failed: " + res.ErrorMessage)
+		setupTableInputCapture(app, table)
+		return
+	}
+
+	if res.IsMutation {
+		titleStr := fmt.Sprintf(" [::b]Mutation Result [%s] [white](Query OK, %d rows affected, %s) ",
+			envTagStr, res.RowsAffected, res.Duration.Round(time.Microsecond))
+		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
+
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[lime::b]✓ Query OK, %d row(s) affected [white](Execution time: %s)[-::-]",
+			res.RowsAffected, res.Duration.Round(time.Microsecond))).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false))
+		updateFooterText(fmt.Sprintf("Query OK, %d row(s) affected (%s)", res.RowsAffected, res.Duration.Round(time.Microsecond)))
+		setupTableInputCapture(app, table)
+		return
+	}
+
+	// Set column headers with styling
+	for i, col := range res.Columns {
+		header := fmt.Sprintf("[::b][white::]%s", col)
+		table.SetCell(0, i,
+			tview.NewTableCell(header).
+				SetTextColor(tcell.ColorWhite).
+				SetAlign(tview.AlignCenter).
+				SetSelectable(false))
+	}
+
+	// Set rows
+	for rIdx, row := range res.Rows {
+		for cIdx, val := range row {
+			color := tcell.ColorWhite
+			if (rIdx+1)%2 == 0 {
+				color = tcell.ColorLightGray
+			}
+			cell := tview.NewTableCell(val).
+				SetTextColor(color).
+				SetAlign(tview.AlignLeft)
+			table.SetCell(rIdx+1, cIdx, cell)
+		}
+	}
+
 	titleStr := fmt.Sprintf(" [::b]Query Result [%s] [white](%d rows, %s) | Pg %d | [yellow]Ctrl+N/P[::-]:Pg [yellow]Ctrl+E[::-]:Export [yellow]F3[::-]:Schema [yellow]F4[::-]:Top [yellow]F5[::-]:Plan ",
-		envTagStr, rowCount, duration.Round(time.Microsecond), currentGridPage+1)
+		envTagStr, res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1)
 	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
+	updateFooterText(fmt.Sprintf("Fetched %d row(s) in %s", res.RowCount, res.Duration.Round(time.Microsecond)))
+	setupTableInputCapture(app, table)
+}
+
+func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 	table.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if isQueryRunning.Load() {
+			if event.Key() == tcell.KeyCtrlC || event.Key() == tcell.KeyEscape {
+				CancelActiveQuery()
+				return nil
+			}
+		}
+
 		switch {
 		case event.Key() == tcell.KeyTab:
 			app.SetFocus(tableList)
@@ -2712,8 +2901,6 @@ func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview
 
 		return event
 	})
-
-	return nil
 }
 
 // Enable editing and database update with support for composite keys and keyless tables

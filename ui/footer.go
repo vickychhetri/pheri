@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -64,7 +65,22 @@ func updateFooterText(status string) {
 		envBadge = "[yellow::b]STAGING[-::-]"
 	}
 
-	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [green]F1:[-] Help | [cyan]F3:[-] Schema | [yellow]F4:[-] Top | [lime]Ctrl+R:[-] Run | [yellow]Ctrl+E:[-] Export | [white]Tab:[-] Switch [gray]| %s", envBadge, status)
+	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [lime]e:[-] Edit SQL | [lime]Ctrl+R:[-] Run | [yellow]F2:[-] History | [cyan]F3:[-] Schema | [yellow]F4:[-] Top | [yellow]Ctrl+E:[-] Export | [white]Tab:[-] Switch [gray]| %s", envBadge, status)
+	footerBar.SetText(text)
+}
+
+func UpdateFooterRunningQuery(elapsed time.Duration) {
+	if footerBar == nil {
+		return
+	}
+	envBadge := "[green::b]DEV[-::-]"
+	if ActiveEnv == "PROD" {
+		envBadge = "[red::b]PROD[-::-]"
+	} else if ActiveEnv == "STAGING" {
+		envBadge = "[yellow::b]STAGING[-::-]"
+	}
+
+	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [yellow::b]⚡ Executing Query... (%0.1fs)[-::-] | [lime::b]Ctrl+C / Esc:[-] Cancel Query", envBadge, elapsed.Seconds())
 	footerBar.SetText(text)
 }
 
@@ -150,7 +166,7 @@ func showGlobalHelpModal(app *tview.Application) {
 
 [lime::b]Editor Controls:[::-]
   • [white]Ctrl+R / Ctrl+Enter[-]: Execute SQL Query
-  • [white]Ctrl+H / :history[-]: Searchable Execution History & Restorer
+  • [white]F2 / :history[-]: Searchable Execution History & Restorer
   • [white]:format / :fmt[-]: Auto-Format SQL Keywords & Clauses
   • [white]F11[-]: Toggle Fullscreen Code Editor
   • [white]Ctrl+S / Ctrl+T[-]: Open SQL Snippets & Template Modal
