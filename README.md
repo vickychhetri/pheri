@@ -1,205 +1,244 @@
 # Pheri
 
-Pheri is a fast, terminal-based database management Terminal User Interface built for MySQL in Go. It offers developers an interactive environment with real-time SQL syntax highlighting, live process management, query execution plan analysis, interactive cell editing, and super-fast multi-threaded database exporting directly from the command line.
-
-
----
-
-## Features
-
-- Tokenized SQL Syntax Highlighting: Real-time syntax coloring for SQL keywords, functions, data types, strings, identifiers, numbers, comments, and operators.
-- Table Name Auto-Completion (Ctrl+T): Instant schema table name suggestions while writing queries.
-- SQL Snippets and Templates (Ctrl+S / Ctrl+Space): Boilerplate query generation for SELECT, INSERT, UPDATE, DELETE, JOINs, and DDL statements.
-- High-Speed Compressed Export (.sql.gz): Dumps tables, views, procedures, functions, triggers, and events into lightweight Gzip archives reducing file sizes by up to 95%.
-- High-Speed Parallel Worker Export (Ctrl+W / F8): Separate multi-threaded exporter utilizing a CPU-tuned worker pool for rapid database dumping.
-- Database Import Wizard (F9 / :import): Interactive step-by-step importer supporting .sql and .sql.gz dumps with location selection, overwrite permission confirmation, and Read-Only protection.
-- Live Process Manager (F4 / :process): Real-time MySQL process monitor displaying active threads (ID, User, Host, DB, Command, Execution Time, State, and Query Info) with instant query termination capabilities (KILL query_id).
-- EXPLAIN Execution Plan Analyzer (F5 / :explain): Multi-view performance analyzer providing health scores, operator tree graphs, latency benchmarking, and AI index recommendations.
-- Real-Time Health & Metrics Dashboard (F6 / :health): Monitor live QPS, client threads, InnoDB buffer pool hit ratios, and slow query counts.
-- Database Schema Diff & Migration Generator (F7 / :diff): Compare active database tables and auto-generate verification SQL scripts.
-- Searchable Query History & Restorer (Ctrl+H / :history): Search past executions and restore SQL into active editor.
-- SQL Auto-Formatter (:format): Clean up query formatting and normalize SQL keywords.
-- Active Panel Focus Highlighting: Visual border indicator denoting active keyboard focus across the query editor, schema list, database browser, and result grid.
-- Environment Tags & Read-Only Guard: Tag connections as PROD, STAGING, or DEV with optional read-only enforcement to prevent accidental database mutations.
-- Selective Export Wizard (Ctrl+E): Export selected schema objects into Compressed .sql.gz, Plain .sql, CSV, or JSON formats.
-- Schema Inspector (F3): Detailed structural view of table column definitions, primary keys, data types, and index configurations.
-- Smart Object Search & Filters: Search objects across schemas using prefix queries (table:, view:, procedure:, function:, db:).
-- Inline Cell Editing: Directly edit table row data inside the terminal grid.
-- Saved Connection Profiles: Local storage for saved database credentials (~/.pheri_connections.json).
+Pheri is a lightweight, terminal-based database client and management tool for MySQL built in Go. It delivers a fast, interactive keyboard-driven interface with asynchronous query execution, real-time query cancellation, an interactive SQL editor, live process monitoring, query plan analysis, and compressed database backups directly in your terminal.
 
 ---
 
-## Installation
+## About Pheri
 
-### Build from Source
+Pheri was designed to give developers, database administrators, and DevOps engineers a comprehensive database management experience without the overhead of heavy desktop applications. It runs directly inside your terminal, over SSH sessions, in containerized environments, or locally on your workstation.
 
-Requirements: Go 1.18 or higher.
+### Why Pheri?
+- **Fast and Lightweight**: Starts instantly with a minimal memory footprint.
+- **SSH and Remote Ready**: Run Pheri directly on remote servers without needing X11 forwarding or remote desktop tools.
+- **Non-Blocking Architecture**: Queries execute asynchronously. If a query runs too long, cancel it instantly with `Ctrl+C` or `Esc` without crashing your session or freezing your screen.
+- **Developer Ergonomics**: Full-featured multiline SQL editor with native cursor control, word jumps, clipboard integration, table autocompletion, and templates.
+- **Production Safeguards**: Environment tags (PROD, STAGING, DEV) and a dedicated Read-Only mode to prevent accidental mutations on critical databases.
+
+---
+
+## Key Features
+
+### 1. Asynchronous Query Execution with Real-Time Cancellation
+- Run heavy analytical queries without freezing the user interface.
+- Live progress indicator displays elapsed execution duration.
+- Press `Ctrl+C` or `Esc` while a query is running to abort immediately.
+- Automatic statement routing: `SELECT` queries run via query context; mutations (`INSERT`, `UPDATE`, `DELETE`, `ALTER`) run via execution context and display affected row counts.
+
+### 2. Interactive SQL Query Editor
+- Multiline editing with native hardware cursor, line wrapping, and scrolling.
+- Full keyboard navigation: Home, End, PageUp, PageDown, and word jumps (`Ctrl+Left` / `Ctrl+Right`).
+- Multi-level Undo (`Ctrl+Z`) and Redo (`Ctrl+Y`).
+- Two-way operating system clipboard integration for copying and pasting.
+- Table name auto-completion (`Ctrl+T`): Fuzzy table name suggestion matching at cursor position.
+- SQL templates and snippets (`Ctrl+S`): Boilerplate templates for `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `JOIN`, and `CREATE TABLE`.
+- Direct focus jump: Press `e` from anywhere in the result grid or sidebar to edit the active query.
+
+### 3. Result Data Grid & Inline Cell Editing
+- Tabular result viewer with column borders and selection highlight.
+- Inspect full cell content with `v`.
+- Inline cell editor: Edit table values directly in the grid.
+- Pagination controls: Navigate large result sets with `Ctrl+N` (Next) and `Ctrl+P` (Previous).
+
+### 4. Live Process Manager & Query Killer (`F4` or `:process`)
+- Real-time monitor of active database threads showing thread ID, user, host, database, command type, elapsed time, state, and query text.
+- Safe query termination: Highlight any locked or slow thread and press Enter or `K` to issue `KILL <id>`.
+
+### 5. EXPLAIN Query Execution Plan Analyzer (`F5` or `:explain`)
+- Instant performance analysis for queries in the editor.
+- Visual breakdown of scanned rows, join types, missing indexes, and potential performance bottlenecks.
+
+### 6. Real-Time Server Health & Metrics (`F6` or `:health`)
+- Monitor live queries per second (QPS), active client connections, InnoDB buffer pool hit ratios, and slow query counters.
+
+### 7. Database Schema Diff Generator (`F7` or `:diff`)
+- Compare active schema definitions and generate verification scripts.
+
+### 8. Searchable Query Execution History (`F2` or `:history`)
+- Search through past query executions with execution timestamps and host metadata.
+- Press Enter on any history entry to restore it directly into the active editor.
+
+### 9. Compressed Database Export & Import
+- Parallel multi-threaded exporter (`Ctrl+W` / `F8`) dumping schemas and tables into compressed `.sql.gz` archives, reducing file size by up to 95%.
+- Selective Export Wizard (`Ctrl+E`): Export specific tables and views to `.sql.gz`, plain `.sql`, CSV, or JSON.
+- Database Import Wizard (`F9` or `:import`): Step-by-step importer supporting `.sql` and `.sql.gz` archives with confirmation checks and Read-Only enforcement.
+
+---
+
+## Quick Start
+
+Launch Pheri directly from your terminal:
+
+```bash
+./pheri
+```
+
+Or connect directly by specifying connection flags:
+
+```bash
+./pheri -u root -p password -host 127.0.0.1 -port 3306 -db my_database
+```
+
+To connect in Read-Only mode with a production tag:
+
+```bash
+./pheri -u root -p password -host 127.0.0.1 -port 3306 -db production_db -env PROD -readonly
+```
+
+---
+
+## Installation & Building from Source
+
+### Requirements
+- Go 1.22 or higher (Go 1.24 recommended)
+- MySQL 5.7+ or MySQL 8.0+ / MariaDB 10.3+
+
+### Build from Source (Linux / macOS)
 
 ```bash
 git clone https://github.com/vickychhetri/pheri.git
 cd pheri
-go build -o pheri main.go
+go build -ldflags="-s -w" -o pheri main.go
 ./pheri
 ```
 
-### Install via Go CLI
+### Build from Source (Windows)
 
-```bash
-go install github.com/vickychhetri/pheri@latest
+Use the included build script to compile with Smart App Control compliant flags:
+
+```powershell
+git clone https://github.com/vickychhetri/pheri.git
+cd pheri
+.\build.ps1
+.\pheri.exe
 ```
+
+Or compile manually using PowerShell:
+
+```powershell
+go build -ldflags="-s -w" -o pheri.exe main.go
+.\pheri.exe
+```
+
+### Pre-Built Binaries
+Pre-built release packages are available in the `build/` directory:
+- `build/pheri-windows-amd64.exe` (Windows 64-bit)
+- `build/pheri-linux-amd64` (Linux 64-bit)
+- `build/pheri-linux-arm64` (Linux ARM 64-bit)
+- `build/pheri_1.0.0_amd64.deb` (Debian / Ubuntu package)
 
 ---
 
-## Documentation
-
-Pheri provides complete in-depth documentation covering architecture, terminal controls, query optimization, and backup engines.
-
-### 📚 Official Documentation Suite
-- 📖 **[Complete Reference Manual (All-in-One)](docs/PHERI_COMPLETE_GUIDE.md)**: Full guide consolidated into a single document.
-- 📑 **[Documentation Portal & Index](docs/README.md)**: Modular chapter-by-chapter guide directory.
-- 🌐 **[Interactive HTML Documentation](docs/index.html)**: Searchable web interface with live shortcut filter and command generator.
-
-#### Documentation Chapters:
-1. [Architecture & System Design](docs/01_ARCHITECTURE_AND_DESIGN.md)
-2. [Installation & Configuration Guide](docs/02_INSTALLATION_AND_CONFIG.md)
-3. [UI Layout & Navigation](docs/03_UI_AND_NAVIGATION.md)
-4. [SQL Editor, Syntax Highlighting & Snippets](docs/04_SQL_EDITOR_AND_SNIPPETS.md)
-5. [Data Grid, Pagination & Inline Cell Editing](docs/05_DATA_GRID_AND_CELL_EDITING.md)
-6. [Performance, Diagnostics & DBA Tools](docs/06_PERFORMANCE_AND_DIAGNOSTICS.md)
-7. [Backup & Restore Engines](docs/07_BACKUP_AND_RESTORE.md)
-8. [Query History & Local Storage](docs/08_QUERY_HISTORY_AND_STORAGE.md)
-9. [Keyboard Shortcuts & Commands Cheat Sheet](docs/09_KEYBOARD_SHORTCUTS_AND_COMMANDS.md)
-
----
-
-### Core Documentation Summary
-
-#### 1. Connection & CLI Flags
-Launch Pheri interactively or directly via command line arguments:
-```bash
-./pheri -u <user> -p <password> -host <host> -port <port> -db <database> -env <PROD|STAGING|DEV> -readonly
-```
-
-#### 2. SQL Query Editor & Snippets
-- **Syntax Highlighting**: Real-time tokenized coloring for SQL keywords, functions, identifiers, numbers, strings, and comments.
-- **Table Autocompletion (`Ctrl+T`)**: Instant schema table suggestions at cursor position.
-- **SQL Templates (`Ctrl+S` / `Ctrl+Space`)**: Insert selectable boilerplates for `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `JOIN`, and DDL statements.
-
-#### 3. Live Process Manager (`F4` or `:process`)
-- Real-time active thread monitor displaying thread ID, user, host, database, command type, execution time, and query state.
-- **Instant Query Termination**: Select any thread and press `Enter` or `K` to safely terminate locked queries (`KILL query_id`).
-
-#### 4. EXPLAIN Execution Plan Analyzer (`F5` or `:explain`)
-- Instant execution plan visualizer for SQL queries in the editor.
-- Detects bottlenecks, scanned row counts, join types (`ALL`, `index`, `range`, `ref`, `eq_ref`, `const`), and provides warnings for missing indexes or full table scans.
-
-#### 5. Super-Fast Compressed Database Export & Import
-- **High-Speed Parallel Export (`Ctrl+W` / `F8`)**: Dumps database schemas, tables, and routines into a compressed `.sql.gz` file (reducing disk footprint up to 95%). Fully compatible with DBeaver, phpMyAdmin, MySQL Workbench, Navicat, and `zcat file.sql.gz | mysql`.
-- **Interactive Import Wizard (`F9` or `:import`)**: Step-by-step importer supporting `.sql` and `.sql.gz` files. Prompts for source location, displays explicit destructive operation warnings before running, and enforces Read-Only safeguards.
-
-#### 6. Environment Safeguards & Read-Only Guard
-- Tag connections with `-env PROD` for red warning highlights across all terminal panels.
-- Pass `-readonly` to intercept and block non-SELECT mutations (`DELETE`, `UPDATE`, `DROP`, `ALTER`, `TRUNCATE`, `INSERT`) and disable database import actions.
-
----
-
-## CLI Flags & Usage
-
-Launch Pheri directly with command line flags to bypass the connection screen:
-
-```bash
-./pheri -u root -p mypassword -host 127.0.0.1 -port 3306 -db sales_db -env PROD -readonly
-```
-
-### Available Command Line Options
+## Command Line Options
 
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `-u` | MySQL username | `root` |
 | `-p` | MySQL password | `""` |
-| `-host` | Server host address | `127.0.0.1` |
-| `-port` | Server port | `3306` |
-| `-db` | Default database | `""` |
-| `-env` | Environment tag (PROD, STAGING, DEV) | `DEV` |
-| `-readonly` | Enable read-only safeguard (`true`/`false`) | `false` |
+| `-host` | Database server hostname or IP address | `127.0.0.1` |
+| `-port` | Database server port | `3306` |
+| `-db` | Database to select on connect | `""` |
+| `-env` | Environment label (`PROD`, `STAGING`, `DEV`) | `DEV` |
+| `-readonly` | Enforce read-only mode (`true`/`false`) | `false` |
+| `-history` | Show execution history | `false` |
 
 ---
 
 ## Keyboard Shortcuts
 
-| Key | Action |
+### SQL Editor Shortcuts
+| Shortcut | Action |
 | :--- | :--- |
-| `Ctrl+R` | Run SQL Query |
-| `Ctrl+T` | Table Name Auto-Completion |
-| `Ctrl+S` / `Ctrl+Space` | Insert SQL Snippets and Templates |
-| `Ctrl+Y` | Standard Folder Export (.sql.gz) |
-| `Ctrl+W` / `F8` | High-Speed Parallel Worker Export (.sql.gz) |
-| `F9` / `:import` | Database Import Wizard (Location Picker & Confirmation) |
-| `Ctrl+E` | Open Selective Database Export Wizard |
-| `Ctrl+P` | Paste Clipboard Content |
-| `F4` | Open Live Process Manager and Query Killer |
-| `F5` | Open EXPLAIN Query Execution Plan Analyzer |
-| `F6` / `:health` | Real-Time Server Health & Performance Dashboard |
-| `F7` / `:diff` | Database Schema Diff & Migration Generator |
-| `Ctrl+H` / `:history` | Searchable Query History & Session Restorer |
-| `:format` / `:fmt` | Auto-Format SQL Keywords & Clauses |
-| `F11` | Toggle Fullscreen Mode for Editor or Data Viewer |
-| `F3` | Open Schema Inspector (Column Types, Keys, Indexes) |
-| `Ctrl+X` | Copy Table / View DDL to Clipboard |
-| `Tab` | Cycle Keyboard Focus |
-| `Esc` | Return Focus to Schema Objects Sidebar |
+| `Ctrl+R` / `Ctrl+Enter` / `F5` | Execute active SQL query |
+| `Ctrl+C` / `Esc` (while running) | Cancel in-flight query |
+| `Ctrl+T` | Open Table Name Autocomplete modal |
+| `Ctrl+S` / `Ctrl+Space` | Open SQL Snippets and Templates modal |
+| `Ctrl+K` | Clear query editor text |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / Redo text edits |
+| `Ctrl+C` | Copy selected text (or full query) to clipboard |
+| `Ctrl+V` / `Ctrl+P` | Paste from clipboard |
+| `F11` | Toggle fullscreen editor mode |
+| `Tab` | Move focus to Run button |
+| `Esc` | Return focus to Table List |
+
+### Global Navigation & DBA Tools
+| Shortcut | Action |
+| :--- | :--- |
+| `e` | Jump focus directly to SQL Editor from any grid or list |
+| `Tab` | Cycle focus: Sidebar -> Databases -> Editor -> Run -> Grid |
+| `F2` / `:history` | Open Searchable Query History modal |
+| `F3` | Open Schema Inspector (Columns, Types, Keys, Indexes) |
+| `F4` / `:process` | Open Live Process Manager and Query Killer |
+| `F5` / `:explain` | Open EXPLAIN Query Execution Plan Analyzer |
+| `F6` / `:health` | Open Real-Time Health & Performance Dashboard |
+| `F7` / `:diff` | Open Database Schema Diff & Migration Generator |
+| `F8` / `Ctrl+W` | High-Speed Parallel Worker Export (.sql.gz) |
+| `F9` / `:import` | Open Database Import Wizard |
+| `Ctrl+E` / `:export` | Open Selective Export Wizard (CSV, JSON, SQL, Gzip) |
+| `Ctrl+B` | Toggle Sidebar Visibility |
+| `:format` / `:fmt` | Auto-format and normalize SQL query keywords |
+| `:about` | Display About Pheri dialog |
+| `:help` | Open Keyboard Shortcuts Help modal |
+| `:quit` / `:exit` | Exit Pheri |
+
+### Data Grid Shortcuts
+| Shortcut | Action |
+| :--- | :--- |
+| `e` | Jump to SQL Editor |
+| `v` | Inspect highlighted cell in viewer modal |
+| `Enter` | Edit selected cell value (inline editing) |
+| `Ctrl+N` | Go to next page of results |
+| `Ctrl+P` | Go to previous page of results |
 
 ---
 
-## Object Search and Filter System
+## Object Search and Filters
 
-Use the search bar in the sidebar to isolate specific database objects using structured prefix queries:
+Use the search bar above the schema objects list to filter database objects using structured prefixes:
 
-```
-<prefix>:<keyword>
-```
-
-### Filter Examples
-
-| Prefix | Target | Example |
+| Filter Prefix | Target Object Type | Example |
 | :--- | :--- | :--- |
-| `table:` | Database Tables | `table:orders` |
-| `view:` | Database Views | `view:active_users` |
-| `procedure:` | Stored Procedures | `procedure:generate_invoice` |
-| `function:` | User Functions | `function:calculate_tax` |
+| `table:` | Tables only | `table:users` |
+| `view:` | Views only | `view:active_orders` |
+| `procedure:` | Stored Procedures | `procedure:calculate_total` |
+| `function:` | User-Defined Functions | `function:format_name` |
 | `db:` | Databases | `db:production` |
 
-- Unprefixed Search: Typing a keyword directly (e.g. `customer`) searches across all tables, views, procedures, and functions.
-- Selection Action: Pressing Enter on a table or view runs `SELECT * FROM table LIMIT 100` and activates inline editing. Pressing Enter on a procedure or function displays its DDL definition.
+Typing without a prefix performs a global search across all tables, views, procedures, and functions simultaneously.
 
 ---
 
-## Screenshots
+## Documentation
 
-- Connection Manager: https://github.com/user-attachments/assets/dae70040-9043-4de0-9794-bf1252e6c65b
-- Main Workspace: https://github.com/user-attachments/assets/d111fe23-b7f5-4593-8036-288f716f5c62
+Full documentation chapters are available in the `docs/` directory:
+
+- [Complete Reference Manual](docs/PHERI_COMPLETE_GUIDE.md): Complete guide in one document.
+- [Documentation Index](docs/README.md): Chapter directory.
+- [Chapter 1: Architecture & System Design](docs/01_ARCHITECTURE_AND_DESIGN.md)
+- [Chapter 2: Installation & Configuration](docs/02_INSTALLATION_AND_CONFIG.md)
+- [Chapter 3: UI Layout & Navigation](docs/03_UI_AND_NAVIGATION.md)
+- [Chapter 4: SQL Editor, Autocomplete & Snippets](docs/04_SQL_EDITOR_AND_SNIPPETS.md)
+- [Chapter 5: Data Grid & Cell Editing](docs/05_DATA_GRID_AND_CELL_EDITING.md)
+- [Chapter 6: Performance, Diagnostics & DBA Tools](docs/06_PERFORMANCE_AND_DIAGNOSTICS.md)
+- [Chapter 7: Backup & Restore Engines](docs/07_BACKUP_AND_RESTORE.md)
+- [Chapter 8: Query History & Storage](docs/08_QUERY_HISTORY_AND_STORAGE.md)
+- [Chapter 9: Keyboard Shortcuts & Command Reference](docs/09_KEYBOARD_SHORTCUTS_AND_COMMANDS.md)
 
 ---
 
-## Supported Terminals
+## Roadmap
 
-Linux Terminal, macOS Terminal.app, iTerm2, Windows Terminal, PowerShell, Command Prompt, WSL, Alacritty, Kitty, Termux, Zsh, Bash, Fish.
-
----
-
-## Contributing & Open Source Vision
-
-Pheri is an open-source initiative dedicated to simplifying database management inside SSH and server terminal environments with an ultra-low memory footprint.
-
-We welcome contributions from developers worldwide! Future roadmap items include:
-- Multi-database engine support (PostgreSQL, SQLite, MariaDB).
-- Advanced column-level AST auto-completion.
-- Enhanced TUI themes and custom key bindings.
-
-Feel free to submit Pull Requests, report issues, or suggest new features on [GitHub](https://github.com/vickychhetri/pheri).
+Track upcoming improvements in [pheri_feature_roadmap_tracker.csv](pheri_feature_roadmap_tracker.csv) and [GitHub Issues](https://github.com/vickychhetri/pheri/issues):
+- Dynamic column sorting in the data grid (ASC / DESC)
+- Foreign key relationship traversal
+- Interactive row insertion and deletion modals
+- Native pure-Go SSH bastion tunneling
+- SSL/TLS certificate management
+- Terminal ASCII ER relationship diagrams
+- Support for PostgreSQL and SQLite drivers
 
 ---
 
 ## License
 
-MIT License. See LICENSE for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
