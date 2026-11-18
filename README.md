@@ -52,9 +52,25 @@ go install github.com/vickychhetri/pheri@latest
 
 ## Documentation
 
-Pheri provides interactive terminal database management for MySQL and MariaDB databases. Complete interactive web documentation with search, command generator, and shortcut filtering is available at:
+Pheri provides complete in-depth documentation covering architecture, terminal controls, query optimization, and backup engines.
 
-👉 **[Interactive Detailed HTML Documentation](docs/index.html)**
+### 📚 Official Documentation Suite
+- 📖 **[Complete Reference Manual (All-in-One)](docs/PHERI_COMPLETE_GUIDE.md)**: Full guide consolidated into a single document.
+- 📑 **[Documentation Portal & Index](docs/README.md)**: Modular chapter-by-chapter guide directory.
+- 🌐 **[Interactive HTML Documentation](docs/index.html)**: Searchable web interface with live shortcut filter and command generator.
+
+#### Documentation Chapters:
+1. [Architecture & System Design](docs/01_ARCHITECTURE_AND_DESIGN.md)
+2. [Installation & Configuration Guide](docs/02_INSTALLATION_AND_CONFIG.md)
+3. [UI Layout & Navigation](docs/03_UI_AND_NAVIGATION.md)
+4. [SQL Editor, Syntax Highlighting & Snippets](docs/04_SQL_EDITOR_AND_SNIPPETS.md)
+5. [Data Grid, Pagination & Inline Cell Editing](docs/05_DATA_GRID_AND_CELL_EDITING.md)
+6. [Performance, Diagnostics & DBA Tools](docs/06_PERFORMANCE_AND_DIAGNOSTICS.md)
+7. [Backup & Restore Engines](docs/07_BACKUP_AND_RESTORE.md)
+8. [Query History & Local Storage](docs/08_QUERY_HISTORY_AND_STORAGE.md)
+9. [Keyboard Shortcuts & Commands Cheat Sheet](docs/09_KEYBOARD_SHORTCUTS_AND_COMMANDS.md)
+
+---
 
 ### Core Documentation Summary
 
