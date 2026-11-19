@@ -93,34 +93,18 @@ func ShowExportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 
 func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items []ExportItem) {
 	list := tview.NewList().ShowSecondaryText(true)
-	list.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 📦 Database Object Export Picker: %s (%d objects) ", dbName, len(items))).
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan)
+	StyleModalBox(list.Box, fmt.Sprintf("Database Object Export Picker: %s (%d objects)", dbName, len(items)))
+	StyleList(list)
 
 	renderList := func() {
 		list.Clear()
 		for idx, item := range items {
-			icon := "📋"
-			switch item.Type {
-			case "VIEW":
-				icon = "👁️"
-			case "PROCEDURE":
-				icon = "⚙️"
-			case "FUNCTION":
-				icon = "⚡"
-			case "TRIGGER":
-				icon = "🔔"
-			case "EVENT":
-				icon = "📅"
-			}
-
 			check := "[lime][x][-]"
 			if !item.Selected {
 				check = "[gray][ ][-]"
 			}
 
-			label := fmt.Sprintf("%s %s [%s] [white::b]%s[::-]", check, icon, item.Type, item.Name)
+			label := fmt.Sprintf("%s [%-9s] [white::b]%s[::-]", check, item.Type, item.Name)
 			itemIdx := idx
 			list.AddItem(label, "Space: Toggle | Enter: Select Settings", 0, func() {
 				items[itemIdx].Selected = !items[itemIdx].Selected
@@ -201,7 +185,7 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 	form.AddDropDown("Export Format", []string{"SQL Script Compressed (.sql.gz)", "SQL Script Plain (.sql)", "JSON (.json)", "CSV Folder (.csv)"}, 0, nil)
 	form.AddInputField("Output Target File/Path", defaultFileName, 50, nil, nil)
 
-	form.AddButton("[lime::b] ▶ START EXPORT ", func() {
+	form.AddButton(" Start Export ", func() {
 		opts := InteractiveExportOptions{
 			SelectedItems: items,
 			IncludeSchema: form.GetFormItem(0).(*tview.Checkbox).IsChecked(),
@@ -225,19 +209,20 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 		executeInteractiveExport(app, db, dbName, opts)
 	})
 
-	form.AddButton("[yellow::b] ⬅ BACK TO OBJECTS ", func() {
+	form.AddButton(" Back to Objects ", func() {
 		showItemSelector(app, db, dbName, items)
 	})
 
-	form.AddButton("[red::b] ✖ CANCEL ", func() {
+	form.AddButton(" Cancel ", func() {
 		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
 	})
 
-	form.SetBackgroundColor(tcell.ColorBlack)
-	form.SetFieldBackgroundColor(tcell.Color234)
-	form.SetLabelColor(tcell.ColorWhite)
-	form.SetButtonBackgroundColor(tcell.Color236)
+	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	form.SetFieldBackgroundColor(tcell.ColorReset)
+	form.SetLabelColor(CurrentTheme.TextPrimary)
+	form.SetButtonBackgroundColor(CurrentTheme.SelectedBg)
+	form.SetButtonTextColor(CurrentTheme.SelectedFg)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
@@ -260,9 +245,7 @@ func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string,
 			app.Draw()
 		})
 
-	logView.SetBorder(true).
-		SetTitle(" 🚀 Exporting Database: " + dbName + " ").
-		SetBorderColor(tcell.ColorDarkCyan)
+	StyleBox(logView.Box, "Exporting Database: "+dbName, true)
 
 	app.SetRoot(logView, true)
 
@@ -350,7 +333,7 @@ func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string,
 
 		err := writeExportFile(opts.OutputPath, []byte(summary.String()))
 		if err != nil {
-			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Export Error: %v", err))
+			appendLog(logView, fmt.Sprintf("\n[red::b]Export Error: %v", err))
 		} else {
 			appendLog(logView, fmt.Sprintf("\n[lime::b]✅ Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
 				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
@@ -452,14 +435,12 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 			app.Draw()
 		})
 
-	logView.SetBorder(true).
-		SetTitle(" ⚡ High-Speed Parallel Worker Export: " + dbName + " ").
-		SetBorderColor(tcell.ColorYellow)
+	StyleBox(logView.Box, "Parallel Worker Export: "+dbName, true)
 
 	app.SetRoot(logView, true)
 
 	go func() {
-		appendLog(logView, "[yellow::b]⚡ Launching Parallel Go Goroutine Worker Pool Export...\n\n")
+		appendLog(logView, "[cyan::b]Launching Parallel Go Goroutine Worker Pool Export...\n\n")
 
 		// 1. Fetch items to export
 		var items []ExportItem
@@ -574,7 +555,7 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 
 		for res := range results {
 			if res.Err != nil {
-				appendLog(logView, fmt.Sprintf("  [red]❌ Failed [%s] %s: %v", res.Item.Type, res.Item.Name, res.Err))
+				appendLog(logView, fmt.Sprintf("  [red]Failed [%s] %s: %v", res.Item.Type, res.Item.Name, res.Err))
 				continue
 			}
 
@@ -602,9 +583,9 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 
 		err = writeExportFile(opts.OutputPath, []byte(summary.String()))
 		if err != nil {
-			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Parallel Export Error: %v", err))
+			appendLog(logView, fmt.Sprintf("\n[red::b]Parallel Export Error: %v", err))
 		} else {
-			appendLog(logView, fmt.Sprintf("\n[lime::b]⚡ Parallel Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
+			appendLog(logView, fmt.Sprintf("\n[lime::b]Parallel Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
 				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
 				exportedCounts["Procedures"], exportedCounts["Functions"], exportedCounts["Triggers"], exportedCounts["Events"]))
 		}

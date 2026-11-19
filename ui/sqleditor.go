@@ -33,13 +33,12 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 		SetBorder(true).
 		SetTitleAlign(tview.AlignLeft)
 
-	// High contrast, professional dark theme styling
-	textArea.SetTextStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(tcell.ColorBlack))
-	textArea.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow))
-	textArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(tcell.ColorDarkGray).Background(tcell.ColorBlack))
-
-	textArea.SetBorderColor(tcell.ColorYellow).
-		SetTitleColor(tcell.ColorYellow)
+	// Professional dark theme styling using CurrentTheme
+	textArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(tcell.ColorReset))
+	textArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
+	textArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(tcell.ColorReset))
+	textArea.SetBorderColor(CurrentTheme.BorderInactive).
+		SetTitleColor(CurrentTheme.TitleInactive)
 
 	// Direct 2-way integration with the OS system clipboard
 	textArea.SetClipboard(
@@ -63,37 +62,53 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 	}
 
 	// Dynamic cursor telemetry and status header
-	updateTitle := func() {
+	updateTitle := func(focused bool) {
 		fromRow, fromCol, _, _ := textArea.GetCursor()
 		textLen := textArea.GetTextLength()
-		title := fmt.Sprintf(" 📝 [black:lime:b] SQL Query Editor [-:-:-] [white]| Ln %d, Col %d | %d chars [lime](Ctrl+R: Run | Ctrl+T: Tables | Ctrl+S: Snippets | Tab: Next | Esc: Back) ",
+		title := fmt.Sprintf(" [ SQL Query Editor ]  Ln %d, Col %d | %d chars ",
 			fromRow+1, fromCol+1, textLen)
 		textArea.SetTitle(title)
+		if focused {
+			textArea.SetBorderColor(CurrentTheme.BorderFocused)
+			textArea.SetTitleColor(CurrentTheme.TitleFocused)
+		} else {
+			textArea.SetBorderColor(CurrentTheme.BorderInactive)
+			textArea.SetTitleColor(CurrentTheme.TitleInactive)
+		}
 	}
 
 	textArea.SetMovedFunc(func() {
-		updateTitle()
+		updateTitle(textArea.HasFocus())
 	})
 
 	textArea.SetChangedFunc(func() {
-		updateTitle()
+		updateTitle(textArea.HasFocus())
 	})
 
 	textArea.SetFocusFunc(func() {
-		textArea.SetBorderColor(tcell.ColorYellow).
-			SetTitleColor(tcell.ColorYellow)
-		updateTitle()
+		updateTitle(true)
 	})
 
 	textArea.SetBlurFunc(func() {
-		textArea.SetBorderColor(tcell.ColorDarkGray).
-			SetTitleColor(tcell.ColorGray)
+		updateTitle(false)
 	})
 
 	textArea.SetInputCapture(sqlEditor.handleInput)
-	updateTitle()
+	updateTitle(false)
 
 	return sqlEditor
+}
+
+// ApplyTheme synchronizes the SQL editor's palette with CurrentTheme.
+func (s *SQLEditor) ApplyTheme() {
+	if s.TextArea == nil {
+		return
+	}
+	s.TextArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(tcell.ColorReset))
+	s.TextArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
+	s.TextArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(tcell.ColorReset))
+	s.TextArea.SetBorderColor(CurrentTheme.BorderInactive)
+	s.TextArea.SetTitleColor(CurrentTheme.TitleInactive)
 }
 
 // handleInput intercepts specialized hotkeys (execution, autocomplete, snippets, navigation)
@@ -242,11 +257,10 @@ func (s *SQLEditor) ShowTableSuggestionsModal() {
 	}
 
 	list := tview.NewList()
-	list.ShowSecondaryText(false).
-		SetBorder(true).
-		SetTitle(fmt.Sprintf(" 🧮 Table Name Suggestions (Ctrl+T) [Filter: '%s'] ", currentWord)).
-		SetBorderColor(tcell.ColorYellow).
-		SetTitleColor(tcell.ColorYellow)
+	list.ShowSecondaryText(false)
+	StyleModalBox(list.Box, fmt.Sprintf("Table Autocomplete [Filter: '%s']", currentWord))
+	list.SetBackgroundColor(tcell.ColorReset)
+	StyleList(list)
 
 	restoreView := func() {
 		if mainFlex != nil {
@@ -260,7 +274,7 @@ func (s *SQLEditor) ShowTableSuggestionsModal() {
 
 	for _, tableName := range matches {
 		tName := tableName
-		list.AddItem("  📋 "+tName, "", 0, func() {
+		list.AddItem("  "+tName, "", 0, func() {
 			restoreView()
 			quotedTable := "`" + tName + "`"
 			s.TextArea.Replace(wordStart, cursorIdx, quotedTable)
@@ -268,7 +282,7 @@ func (s *SQLEditor) ShowTableSuggestionsModal() {
 		})
 	}
 
-	list.AddItem("  ✖ Cancel", "Press Esc or Enter to close", 'c', func() {
+	list.AddItem("  [ Cancel ]", "Press Esc or Enter to close", 'c', func() {
 		restoreView()
 	})
 
@@ -301,10 +315,9 @@ func (s *SQLEditor) ShowSnippetsModal() {
 	}
 
 	list := tview.NewList()
-	list.SetBorder(true).
-		SetTitle(" 💡 SQL Snippet / Query Templates (Ctrl+S) ").
-		SetBorderColor(tcell.ColorYellow).
-		SetTitleColor(tcell.ColorYellow)
+	StyleModalBox(list.Box, "SQL Query Snippets (Ctrl+S)")
+	list.SetBackgroundColor(tcell.ColorReset)
+	StyleList(list)
 
 	restoreView := func() {
 		if mainFlex != nil {
@@ -318,7 +331,7 @@ func (s *SQLEditor) ShowSnippetsModal() {
 
 	for _, snip := range snippets {
 		q := snip.Query
-		list.AddItem("  ⚡ "+snip.Label, q, 0, func() {
+		list.AddItem("  "+snip.Label, q, 0, func() {
 			restoreView()
 			if strings.TrimSpace(s.GetText()) == "" {
 				s.SetText(q)
@@ -330,7 +343,7 @@ func (s *SQLEditor) ShowSnippetsModal() {
 		})
 	}
 
-	list.AddItem("  ✖ Cancel", "Close snippets window", 'c', func() {
+	list.AddItem("  [ Cancel ]", "Close snippets window", 'c', func() {
 		restoreView()
 	})
 

@@ -527,7 +527,7 @@ func restoreImportSessionVariables(db *sql.DB) {
 // ShowImportWizardModal displays the step-by-step import wizard with read-only safeguards, location picker, and danger confirmation.
 func ShowImportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 	if ActiveReadOnly {
-		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.\nImporting database dumps is not allowed while Read-Only mode is enabled.")
+		showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode.\nImporting database dumps is not allowed while Read-Only mode is enabled.")
 		return
 	}
 
@@ -555,16 +555,12 @@ func ShowImportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 
 	// Step 1: Location & File Picker Modal
 	form := tview.NewForm()
-	form.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 📥 Database Import Wizard (%s) ", dbName)).
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan).
-		SetTitleColor(tcell.ColorAqua).
-		SetBorderPadding(1, 1, 3, 3)
+	StyleModalBox(form.Box, fmt.Sprintf("Database Import Wizard (%s)", dbName))
+	form.SetBorderPadding(1, 1, 3, 3)
 
 	form.AddInputField("Import File or Folder Path", defaultPath, 60, nil, nil)
 
-	form.AddButton("[lime::b] ▶ NEXT: CONFIRMATION ", func() {
+	form.AddButton(" Next: Confirmation ", func() {
 		targetPath := strings.TrimSpace(form.GetFormItem(0).(*tview.InputField).GetText())
 		if targetPath == "" {
 			showErrorModal(app, mainFlex, "Please specify a valid file or folder path to import.")
@@ -581,7 +577,7 @@ func ShowImportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 		showImportConfirmationModal(app, db, dbName, targetPath, stat.IsDir())
 	})
 
-	form.AddButton("[red::b] ✖ CANCEL ", func() {
+	form.AddButton(" Cancel ", func() {
 		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
 	})
@@ -600,7 +596,7 @@ func showImportConfirmationModal(app *tview.Application, db *sql.DB, dbName, tar
 	}
 
 	text := fmt.Sprintf(
-		"[red::b]⚠️ DANGEROUS / DESTRUCTIVE OPERATION![-::-]\n\n"+
+		"[red::b]WARNING: DESTRUCTIVE OPERATION![-::-]\n\n"+
 			"Target Database: [lime::b]%s[-::-]\n"+
 			"Import Source: [cyan::b]%s[-::-] (%s)\n\n"+
 			"[yellow::b]CRITICAL WARNING: Importing this source will execute DDL and DML statements which may DROP existing tables, OVERWRITE schema definitions, or REPLACE data inside database '%s'.[-::-]\n\n"+
@@ -610,11 +606,11 @@ func showImportConfirmationModal(app *tview.Application, db *sql.DB, dbName, tar
 
 	modal := tview.NewModal().
 		SetText(text).
-		AddButtons([]string{"[red::b] ⚠️ YES, OVERWRITE & IMPORT ", "[yellow::b] ⬅ BACK ", "[white::b] CANCEL"}).
+		AddButtons([]string{" Yes, Overwrite & Import ", " Back ", " Cancel "}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			if strings.Contains(buttonLabel, "YES") {
+			if strings.Contains(buttonLabel, "Yes") {
 				executeInteractiveImport(app, db, dbName, targetPath, isDir)
-			} else if strings.Contains(buttonLabel, "BACK") {
+			} else if strings.Contains(buttonLabel, "Back") {
 				ShowImportWizardModal(app, db, dbName)
 			} else {
 				layout := CreateLayoutWithFooter(app, mainFlex)
@@ -632,9 +628,7 @@ func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, target
 		SetChangedFunc(func() {
 			app.Draw()
 		})
-	logView.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 📥 Importing Data into '%s' ", dbName)).
-		SetTitleColor(tcell.ColorLime)
+	StyleBox(logView.Box, fmt.Sprintf("Importing Data into '%s'", dbName), true)
 
 	layout := CreateLayoutWithFooter(app, logView)
 	app.SetRoot(layout, true)
@@ -655,13 +649,13 @@ func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, target
 	go func() {
 		defer close(progressChan)
 
-		progressChan <- fmt.Sprintf("[cyan::b]🚀 Starting import into database '%s'...", dbName)
+		progressChan <- fmt.Sprintf("[cyan::b]Starting import into database '%s'...", dbName)
 		progressChan <- fmt.Sprintf("[white]Source path: %s", targetPath)
 		startTime := time.Now()
 
 		// Optimize session for fast streaming import
 		if err := setImportSessionVariables(db); err != nil {
-			progressChan <- fmt.Sprintf("[red::b]❌ Failed to set session variables: %v", err)
+			progressChan <- fmt.Sprintf("[red::b]Failed to set session variables: %v", err)
 			return
 		}
 
@@ -682,7 +676,7 @@ func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, target
 			})
 
 			if err != nil || len(files) == 0 {
-				progressChan <- fmt.Sprintf("[red::b]❌ No valid SQL files found in directory: %s", targetPath)
+				progressChan <- fmt.Sprintf("[red::b]No valid SQL files found in directory: %s", targetPath)
 				return
 			}
 
@@ -705,7 +699,7 @@ func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, target
 			totalSuccess += succ
 			totalErrors += errs
 			if err != nil {
-				progressChan <- fmt.Sprintf("[red::b]❌ Import Error: %v", err)
+				progressChan <- fmt.Sprintf("[red::b]Import Error: %v", err)
 			}
 		}
 
@@ -713,7 +707,7 @@ func executeInteractiveImport(app *tview.Application, db *sql.DB, dbName, target
 		restoreImportSessionVariables(db)
 
 		elapsed := time.Since(startTime)
-		progressChan <- fmt.Sprintf("\n[lime::b]🎉 IMPORT COMPLETE! Duration: %v", elapsed.Round(time.Millisecond))
+		progressChan <- fmt.Sprintf("\n[lime::b]IMPORT COMPLETE! Duration: %v", elapsed.Round(time.Millisecond))
 		progressChan <- fmt.Sprintf("[green]Successfully executed %d statements (Errors: %d)", totalSuccess, totalErrors)
 		progressChan <- "[yellow::b]Press ESC or ENTER to return to workspace."
 

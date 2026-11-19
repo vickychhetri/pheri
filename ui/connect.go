@@ -45,7 +45,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
  ██████╔╝███████║█████╗  ██████╔╝██║
  ██╔═══╝ ██╔══██║██╔══╝  ██╔══██╗██║
  ██║     ██║  ██║███████╗██║  ██║██║
-[white::-]  ⚡ MySQL Terminal Client ⚡`
+[white::-]  MySQL Terminal Client`
 	asciiBanner.SetText(asciiArt)
 	asciiBanner.SetBackgroundColor(tcell.ColorBlack)
 
@@ -59,7 +59,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		if envTag == "" {
 			envTag = "DEV"
 		}
-		profileOptions = append(profileOptions, fmt.Sprintf("🔑 %s@%s:%s [%s]", p.User, p.Host, p.Port, envTag))
+		profileOptions = append(profileOptions, fmt.Sprintf("%s@%s:%s [%s]", p.User, p.Host, p.Port, envTag))
 	}
 
 	form.AddDropDown("Quick Saved Profile", profileOptions, 0, func(optionText string, optionIndex int) {
@@ -140,36 +140,32 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	}
 
 	form.
-		AddButton("[lime::b] ▶ CONNECT ", connectAction).
-		AddButton("[yellow::b] ⟳ CLEAR ", func() {
+		AddButton(" Connect ", connectAction).
+		AddButton(" Clear ", func() {
 			for i := 1; i <= 4; i++ {
 				form.GetFormItem(i).(*tview.InputField).SetText("")
 			}
 		}).
-		AddButton("[red::b] ✖ QUIT ", func() {
+		AddButton(" Quit ", func() {
 			app.Stop()
 		})
 
-	form.SetBorder(true).
-		SetTitle(" 🔒 MySQL Server Authentication ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan).
-		SetTitleColor(tcell.ColorAqua).
-		SetBorderPadding(1, 1, 3, 3)
+	StyleModalBox(form.Box, "MySQL Server Authentication")
+	form.SetBorderPadding(1, 1, 3, 3)
 
-	form.SetBackgroundColor(tcell.ColorBlack)
-	form.SetFieldBackgroundColor(tcell.Color234)
-	form.SetFieldTextColor(tcell.ColorWhite)
-	form.SetLabelColor(tcell.ColorAqua)
-	form.SetButtonBackgroundColor(tcell.Color236)
-	form.SetButtonTextColor(tcell.ColorWhite)
+	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	form.SetFieldBackgroundColor(tcell.ColorReset)
+	form.SetFieldTextColor(CurrentTheme.TextPrimary)
+	form.SetLabelColor(CurrentTheme.AccentPrimary)
+	form.SetButtonBackgroundColor(CurrentTheme.SelectedBg)
+	form.SetButtonTextColor(CurrentTheme.SelectedFg)
 
 	// Status Footer
 	footer := tview.NewTextView().
-		SetText("[aqua]TAB[-] Move Field | [lime]ENTER[-] Connect | [yellow]ESC[-] Quit").
+		SetText(" [::b]TAB[::-] Move Field   |   [::b]ENTER[::-] Connect   |   [::b]ESC[::-] Quit").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
-		SetBackgroundColor(tcell.ColorBlack)
+		SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	// Layout Flex
 	flex := tview.NewFlex().
@@ -187,18 +183,19 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	list := tview.NewList().ShowSecondaryText(false)
-	list.SetBorder(true).
-		SetTitle(" 🗄️ Available Databases ").
-		SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorDarkCyan)
+	StyleBox(list.Box, "Available Databases", true)
+	list.SetBackgroundColor(tcell.ColorReset)
+	StyleList(list)
 
 	searchInput := tview.NewInputField()
 	searchInput.
-		SetLabel("🔍 Filter: ").
+		SetLabel(" Filter: ").
+		SetLabelColor(CurrentTheme.AccentPrimary).
 		SetFieldWidth(30).
 		SetPlaceholder("Type database name...").
-		SetBorder(true).
-		SetBorderColor(tcell.ColorYellow)
+		SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
+		SetFieldTextColor(CurrentTheme.TextPrimary)
+	StyleBox(searchInput.Box, "Search", false)
 
 	var dbNames []string
 	filtered := func(filter string) {
@@ -206,19 +203,19 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		for _, name := range dbNames {
 			if strings.Contains(strings.ToLower(name), strings.ToLower(filter)) {
 				dbCopy := name
-				list.AddItem("  🗂️  [white::b]"+dbCopy+"[::-]", "Press Enter to open database", 0, func() {
+				list.AddItem("  "+dbCopy, "Press Enter to open database", 0, func() {
 					UseDatabase(app, db, dbCopy)
 				})
 			}
 		}
-		list.AddItem("  ⬅️  [yellow::b]Back to Login[::-]", "Return to connection screen", 'b', func() {
+		list.AddItem("  [ Back to Login ]", "Return to connection screen", 'b', func() {
 			ShowConnectionForm(app, user, pass, host, port)
 		})
 	}
 
 	rows, err := db.Query("SHOW DATABASES")
 	if err != nil {
-		list.AddItem("❌ Error: "+err.Error(), "", 0, nil)
+		list.AddItem("  Error: "+err.Error(), "", 0, nil)
 	} else {
 		defer rows.Close()
 		var dbName string

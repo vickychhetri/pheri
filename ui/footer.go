@@ -15,18 +15,18 @@ var commandInput *tview.InputField
 func CreateLayoutWithFooter(app *tview.Application, mainContent tview.Primitive) tview.Primitive {
 	footerBar = tview.NewTextView()
 	footerBar.SetDynamicColors(true)
-	footerBar.SetTextAlign(tview.AlignCenter)
-	footerBar.SetBackgroundColor(tcell.Color234)
+	footerBar.SetTextAlign(tview.AlignLeft)
+	footerBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	updateFooterText("Ready")
 
 	commandInput = tview.NewInputField().
-		SetLabel(" [lime::b]: [white]").
+		SetLabel(" [white::b]: [-::-]").
 		SetFieldWidth(40).
-		SetPlaceholder("Enter command (:help, :use db, :export csv, :quit)...").
-		SetFieldBackgroundColor(tcell.ColorBlack).
+		SetPlaceholder("Enter command (:help, :use <db>, :export, :quit)...").
+		SetFieldBackgroundColor(tcell.ColorReset).
 		SetFieldTextColor(tcell.ColorWhite).
-		SetLabelColor(tcell.ColorLime)
+		SetLabelColor(CurrentTheme.BorderFocused)
 
 	commandInput.SetDoneFunc(func(key tcell.Key) {
 		if key == tcell.KeyEnter {
@@ -58,14 +58,14 @@ func updateFooterText(status string) {
 	if footerBar == nil {
 		return
 	}
-	envBadge := "[green::b]DEV[-::-]"
+	envColor := "green"
 	if ActiveEnv == "PROD" {
-		envBadge = "[red::b]PROD[-::-]"
+		envColor = "red"
 	} else if ActiveEnv == "STAGING" {
-		envBadge = "[yellow::b]STAGING[-::-]"
+		envColor = "yellow"
 	}
 
-	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [lime]e:[-] Edit SQL | [lime]Ctrl+R:[-] Run | [yellow]F2:[-] History | [cyan]F3:[-] Schema | [yellow]F4:[-] Top | [yellow]Ctrl+E:[-] Export | [white]Tab:[-] Switch [gray]| %s", envBadge, status)
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F2[-::-] History  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, status)
 	footerBar.SetText(text)
 }
 
@@ -73,14 +73,14 @@ func UpdateFooterRunningQuery(elapsed time.Duration) {
 	if footerBar == nil {
 		return
 	}
-	envBadge := "[green::b]DEV[-::-]"
+	envColor := "green"
 	if ActiveEnv == "PROD" {
-		envBadge = "[red::b]PROD[-::-]"
+		envColor = "red"
 	} else if ActiveEnv == "STAGING" {
-		envBadge = "[yellow::b]STAGING[-::-]"
+		envColor = "yellow"
 	}
 
-	text := fmt.Sprintf("[white::b]PHERI[-] [%s] | [yellow::b]⚡ Executing Query... (%0.1fs)[-::-] | [lime::b]Ctrl+C / Esc:[-] Cancel Query", envBadge, elapsed.Seconds())
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [yellow::b]Executing Query... (%0.1fs)[-::-] [gray]│[-] [aqua::b]Ctrl+C / Esc:[-] Cancel Query", envColor, ActiveEnv, elapsed.Seconds())
 	footerBar.SetText(text)
 }
 
