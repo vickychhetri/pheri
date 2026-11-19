@@ -104,3 +104,27 @@ func TestSQLEditorBackspaceHandling(t *testing.T) {
 		t.Fatalf("Expected 'SELECT' after Backspace2, got '%s'", editor.GetText())
 	}
 }
+
+func TestFormatSchemaObjectBadge(t *testing.T) {
+	testCases := []struct {
+		objType  string
+		expected string
+	}{
+		{"TABLE", "[aqua::b]TABLE[-::-]"},
+		{"VIEW", "[purple::b]VIEW [-::-]"},
+		{"PROCEDURE", "[yellow::b]PROC [-::-]"},
+		{"PROC", "[yellow::b]PROC [-::-]"},
+		{"FUNCTION", "[lime::b]FUNC [-::-]"},
+		{"FUNC", "[lime::b]FUNC [-::-]"},
+		{"TRIGGER", "[red::b]TRIG [-::-]"},
+		{"TRIG", "[red::b]TRIG [-::-]"},
+		{"EVENT", "[blue::b]EVENT[-::-]"},
+	}
+
+	for _, tc := range testCases {
+		badge := FormatSchemaObjectBadge(tc.objType)
+		if badge != tc.expected {
+			t.Errorf("FormatSchemaObjectBadge(%q) = %q; want %q", tc.objType, badge, tc.expected)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -170,4 +171,24 @@ func StyleModalBox(box *tview.Box, title string) {
 	box.SetTitleAlign(tview.AlignCenter)
 	box.SetBorderColor(CurrentTheme.BorderFocused)
 	box.SetTitleColor(CurrentTheme.TitleFocused)
+}
+
+// FormatSchemaObjectBadge returns an aligned, color-coded badge for schema objects.
+func FormatSchemaObjectBadge(objectType string) string {
+	switch strings.ToUpper(strings.TrimSpace(objectType)) {
+	case "TABLE":
+		return "[aqua::b]TABLE[-::-]"
+	case "VIEW":
+		return "[purple::b]VIEW [-::-]"
+	case "PROCEDURE", "PROC":
+		return "[yellow::b]PROC [-::-]"
+	case "FUNCTION", "FUNC":
+		return "[lime::b]FUNC [-::-]"
+	case "TRIGGER", "TRIG":
+		return "[red::b]TRIG [-::-]"
+	case "EVENT":
+		return "[blue::b]EVENT[-::-]"
+	default:
+		return fmt.Sprintf("[gray::b]%-5s[-::-]", objectType)
+	}
 }

@@ -125,9 +125,19 @@ func filterTableList(
 
 	} else {
 		for _, obj := range allTable {
-			// Match type filter if present
-			if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
-				continue
+			// Match type filter if present (supports proc, func, trig, view, table)
+			if typeFilter != "" {
+				tf := strings.ToLower(typeFilter)
+				ot := strings.ToLower(obj.Type)
+				match := (ot == tf) ||
+					(tf == "proc" && ot == "procedure") ||
+					(tf == "func" && ot == "function") ||
+					(tf == "trig" && ot == "trigger") ||
+					(tf == "view" && ot == "view") ||
+					(tf == "table" && ot == "table")
+				if !match {
+					continue
+				}
 			}
 
 			// Match name
@@ -135,12 +145,8 @@ func filterTableList(
 				objName := obj.Name
 				objType := obj.Type
 
-				typeTag := "[aqua]TABLE[-]"
-				if obj.Type == "VIEW" {
-					typeTag = "[purple]VIEW [-]"
-				}
-				cleanName := fmt.Sprintf(" %s %s", typeTag, obj.Name)
-				list.AddItem(cleanName, "Press Enter to view table data", 0, func() {
+				cleanName := fmt.Sprintf(" %s %s", FormatSchemaObjectBadge(obj.Type), obj.Name)
+				list.AddItem(cleanName, "Press Enter to use", 0, func() {
 
 					typePriority := map[string]int{
 						"TABLE":     0,
@@ -1598,11 +1604,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			//rows.Scan(&tableName)
 			currentName := name
 			currentobjectType := objectType
-			typeTag := "[aqua]TABLE[-]"
-			if objectType == "VIEW" {
-				typeTag = "[purple]VIEW [-]"
-			}
-			tableLabel := fmt.Sprintf(" %s %s", typeTag, name)
+			tableLabel := fmt.Sprintf(" %s %s", FormatSchemaObjectBadge(objectType), name)
 			tableList.AddItem(tableLabel, "Press Enter to use", 0, func() {
 				// app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 				// 	if event.Key() == tcell.KeyCtrlX {
