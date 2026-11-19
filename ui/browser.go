@@ -1783,7 +1783,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 							layout := tview.NewFlex().
 								SetDirection(tview.FlexRow).
 								AddItem(tview.NewTextView().
-									SetText("[::b]  ⏳ Exporting Database  ").
+									SetText("[::b]  Exporting Database  ").
 									SetDynamicColors(true), 1, 1, false).
 								AddItem(progressView, 0, 1, false).
 								AddItem(statusBar, 1, 1, false)
@@ -1843,7 +1843,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 										SetText("[white::b]Export completed successfully!\n\nBackup File: [white]check export folder for zip").
 										AddButtons([]string{"OK"}).
 										SetDoneFunc(func(i int, label string) {
-											app.SetRoot(mainFlex, true)
+											layout := CreateLayoutWithFooter(app, mainFlex)
+											app.SetRoot(layout, true)
 										})
 
 									app.SetRoot(modal, true)

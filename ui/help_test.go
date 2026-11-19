@@ -54,6 +54,7 @@ func TestGetLaymanHelpGuide(t *testing.T) {
 		"F5",
 		"F6",
 		"F7",
+		"Ctrl+Y",
 		"Ctrl+W",
 		"F9",
 		":help",
