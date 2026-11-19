@@ -1853,6 +1853,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
+					// Comprehensive Layman Help Screen (F1)
+					if event.Key() == tcell.KeyF1 {
+						ShowComprehensiveHelpModal(app)
+						return nil
+					}
+
 					// High-Speed Parallel Worker Export (Ctrl+W or F8)
 					if event.Key() == tcell.KeyCtrlW || event.Key() == tcell.KeyF8 {
 						ShowParallelWorkerExportModal(app, db, dbName)
@@ -3223,64 +3229,10 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 }
 
 func showHelpModal(app *tview.Application) {
-	helpText := `
- [lime::b]PHERI KEYBOARD SHORTCUTS REFERENCE[::-]
-
- [yellow::b]General Shortcuts[::-]
-   [green]F1 / ?[-]        Show this Help Legend
-   [green]Tab[-]           Switch Focus between Panes
-   [green]Esc[-]           Return Focus / Close Dialogs
-   [green]Ctrl+Q[-]        Quit Application
-
- [yellow::b]Search & Navigation[::-]
-   [green]table:kw[-]      Filter Tables
-   [green]view:kw[-]       Filter Views
-   [green]procedure:kw[-]  Filter Stored Procedures
-   [green]function:kw[-]   Filter Functions
-   [green]db:kw[-]         Filter Databases
-
- [yellow::b]Query Editor Shortcuts[::-]
-   [green]Ctrl+R[-]        Execute Query
-   [green]Ctrl+F11[-]      Full Screen Editor
-   [green]Ctrl+T[-]        Insert Tables List
-   [green]Ctrl+S[-]        SQL Keywords Popup
-   [green]Ctrl+_[-]        SQL Templates Popup
-
- [yellow::b]Data Grid Shortcuts[::-]
-   [green]Enter[-]         Edit Selected Cell
-   [green]Ctrl+N[-]        Next Page (100 Rows)
-   [green]Ctrl+P[-]        Previous Page (100 Rows)
-   [green]Ctrl+E[-]        Export Results (CSV / JSON)
-   [green]F3 / Ctrl+K[-]   Table Schema & Index Inspector
-   [green]Ctrl+X[-]        Copy DDL & Inserts to Clipboard
-
- [yellow::b]Backup Tools[::-]
-   [green]Ctrl+Y[-]        Export Full Database (Gzip)
-   [gray]Ctrl+I[-]        Import Database Dump (Disabled)
-
- [white]Press ESC or ENTER to close this window.
-`
-
-	modal := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText(helpText)
-	modal.SetBorder(true).SetTitle(" ❓ Keyboard Shortcuts ").SetTitleAlign(tview.AlignCenter)
-
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(modal, 26, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
-			app.SetRoot(mainFlex, true)
-			return nil
-		}
-		return event
-	})
-
-	app.SetRoot(flex, true).SetFocus(modal)
+	ShowComprehensiveHelpModal(app)
 }
+
+
 
 
 // Remove formatting codes like [::b]

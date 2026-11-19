@@ -65,7 +65,7 @@ func updateFooterText(status string) {
 		envColor = "yellow"
 	}
 
-	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F2[-::-] History  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, status)
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F2[-::-] History  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, status)
 	footerBar.SetText(text)
 }
 
@@ -95,7 +95,7 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 	case "quit", "exit", "q":
 		app.Stop()
 	case "help", "h":
-		showGlobalHelpModal(app)
+		ShowComprehensiveHelpModal(app)
 	case "clear", "cls":
 		if activeSQLEditor != nil {
 			activeSQLEditor.SetText("")
@@ -158,79 +158,79 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 }
 
 func showAboutModal(app *tview.Application) {
-	aboutText := `[white::b]Pheri - Terminal Database Management TUI[::-]
-Version: 1.0.0
-Author: Vicky Chhetri
-License: MIT
-Repository: https://github.com/vickychhetri/pheri
+	aboutText := ` [yellow::b]PHERI - MODERN TERMINAL DATABASE CLIENT[-::-]
+ [gray]Version 3.1.0 │ MIT License │ Author: Vicky Chhetri[-::-]
+ [gray]Repository: https://github.com/vickychhetri/pheri[-::-]
 
-About:
-Pheri is a fast, terminal-based database management interface built for MySQL in Go.
-It offers developers an interactive environment with asynchronous query execution,
-real-time process management, EXPLAIN performance analyzer, schema diff generator,
-and high-speed compressed database backups directly from the terminal.
+ [aqua::b]About Pheri[-::-]
+ Pheri is a high-performance terminal user interface (TUI) for MySQL written in Go.
+ It gives software engineers and DBAs an interactive, keyboard-driven console
+ with instant query cancellation, real-time DevOps diagnostics, execution plan
+ analysis, schema migrations, and high-speed backups without leaving the terminal.
 
-Features:
-- Asynchronous query execution with real-time Ctrl+C / Esc cancellation
-- Interactive multiline SQL code editor with autocomplete and snippets
-- Live process manager and query killer (F4)
-- EXPLAIN query execution plan analyzer (F5)
-- Server health and metrics dashboard (F6)
-- Database schema diff generator (F7)
-- Searchable query history (F2)
-- High-speed compressed export and import (.sql.gz)`
+ [aqua::b]Key Architecture Highlights[-::-]
+  * [white]Asynchronous Execution:[-] Non-blocking queries with real-time Ctrl+C / Esc abort
+  * [white]Interactive SQL Editor:[-] Multiline editing, table autocomplete, and SQL snippets
+  * [white]Live Process Manager:[-] Real-time connection monitor and runaway query killer (F4)
+  * [white]Execution Plan Analyzer:[-] EXPLAIN and EXPLAIN ANALYZE visual tree diagrams (F5)
+  * [white]Server Health Dashboard:[-] Live QPS, connection pools, and cache hit metrics (F6)
+  * [white]Schema Diff Generator:[-] Cross-database schema comparisons and ALTER generators (F7)
+  * [white]Parallel Backups:[-] High-speed multi-threaded .sql.gz compressed exports (Ctrl+W)
+  * [white]Enterprise Safety:[-] Read-only production safety guards and import verification (F9)`
 
-	modal := tview.NewModal().
-		SetText(aboutText).
-		AddButtons([]string{"Close"}).
-		SetBackgroundColor(tcell.ColorDarkBlue).
-		SetButtonBackgroundColor(tcell.ColorDarkCyan).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			if mainFlex != nil {
-				layout := CreateLayoutWithFooter(app, mainFlex)
-				app.SetRoot(layout, true)
-			}
-		})
-	app.SetRoot(modal, true)
+	view := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetWrap(true).
+		SetText(aboutText)
+	view.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleModalBox(view.Box, "About Pheri")
+
+	statusBar := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignCenter).
+		SetText(" [yellow::b]ESC / ENTER[-::-] Close About ")
+	statusBar.SetBackgroundColor(CurrentTheme.HeaderBg)
+
+	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(view, 0, 1, true).
+		AddItem(statusBar, 1, 0, false)
+
+	outerFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 2, 0, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 4, 0, false).
+			AddItem(contentFlex, 0, 1, true).
+			AddItem(nil, 4, 0, false),
+			0, 1, true).
+		AddItem(nil, 2, 0, false)
+
+	closeModal := func() {
+		if mainFlex != nil {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+		}
+	}
+
+	view.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+		if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+			closeModal()
+			return nil
+		}
+		return e
+	})
+
+	outerFlex.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
+		if e.Key() == tcell.KeyEscape || e.Key() == tcell.KeyEnter {
+			closeModal()
+			return nil
+		}
+		return e
+	})
+
+	app.SetRoot(CreateLayoutWithFooter(app, outerFlex), true).SetFocus(view)
 }
 
 func showGlobalHelpModal(app *tview.Application) {
-	helpText := `[aqua::b]PHERI MYSQL TUI DEVELOPER SHORTCUTS[::-]
-
-[lime::b]DevOps & Process Manager:[::-]
-  * [white]F4 / :process / :top[-]: Open Live Process Manager & Query Killer
-  * [white]F5 / :explain[-]: View Query Execution Plan (EXPLAIN ANALYZE)
-  * [white]F6 / :health[-]: Real-Time Server Health & Performance Dashboard
-  * [white]F7 / :diff[-]: Database Schema Diff & Migration Generator
-
-[lime::b]Editor Controls:[::-]
-  * [white]e[-]: Jump Focus Directly to SQL Editor
-  * [white]Ctrl+R / Ctrl+Enter[-]: Execute SQL Query
-  * [white]F2 / :history[-]: Searchable Execution History & Restorer
-  * [white]:format / :fmt[-]: Auto-Format SQL Keywords & Clauses
-  * [white]F11[-]: Toggle Fullscreen Code Editor
-  * [white]Ctrl+S / Ctrl+T[-]: Open SQL Snippets & Table Autocomplete Modal
-
-[lime::b]Navigation & Grid:[::-]
-  * [white]Tab / Shift+Tab[-]: Cycle focus between Sidebar, Editor, and Grid
-  * [white]Esc[-]: Back to main layout / Clear focus
-  * [white]F3[-]: Inspect Table Columns & Indexes Schema
-  * [white]Ctrl+E / :export[-]: Multi-Object Selective Database Export
-  * [white]F9 / :import[-]: Database Import Wizard (Requires confirmation)
-
-[lime::b]Command Launcher:[::-]
-  * Type [yellow]:help[-], [yellow]:about[-], [yellow]:health[-], [yellow]:diff[-], [yellow]:history[-], [yellow]:import[-], [yellow]:export[-], or [yellow]:quit[-]`
-
-	modal := tview.NewModal().
-		SetText(helpText).
-		AddButtons([]string{"Close"}).
-		SetBackgroundColor(tcell.ColorDarkBlue).
-		SetButtonBackgroundColor(tcell.ColorDarkCyan).
-		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-			if mainFlex != nil {
-				layout := CreateLayoutWithFooter(app, mainFlex)
-				app.SetRoot(layout, true)
-			}
-		})
-	app.SetRoot(modal, true)
+	ShowComprehensiveHelpModal(app)
 }

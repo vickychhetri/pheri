@@ -133,6 +133,10 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	switch event.Key() {
+	case tcell.KeyF1:
+		ShowComprehensiveHelpModal(s.App)
+		return nil
+
 	case tcell.KeyTab:
 		if s.OnNextFocus != nil {
 			s.OnNextFocus()
