@@ -20,7 +20,7 @@ $headers = @{
 }
 
 # 2. Prepare Release Body with Detail List & Features
-$releaseBody = @"
+$releaseBody = @'
 # Pheri v3.1.0
 
 Pheri v3.1.0 introduces a major architectural milestone featuring non-blocking asynchronous query execution with instant cancellation, a completely redesigned multiline interactive SQL code editor, and vital developer ergonomics improvements.
@@ -107,7 +107,7 @@ Press ``Ctrl+C`` or ``Esc`` to cancel the query instantly.
 
 - ``pheri-windows-amd64.exe``: Windows 64-bit standalone executable (Smart App Control compliant).
 - ``pheri-windows-amd64.zip``: Windows 64-bit package with binary, documentation, and build scripts.
-"@
+'@
 
 # 3. Create Git Tag if it doesn't exist locally/remotely
 Write-Host "Creating and pushing git tag $TagName..." -ForegroundColor Cyan
