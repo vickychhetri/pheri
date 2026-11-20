@@ -6,7 +6,9 @@ import (
 	"mysql-tui/phhistory"
 	"mysql-tui/ui"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/rivo/tview"
 )
@@ -73,6 +75,17 @@ func main() {
 
 	defer phhistory.Close()
 	app := tview.NewApplication()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		for range sigChan {
+			if ui.IsQueryRunning() {
+				ui.CancelActiveQuery()
+			}
+		}
+	}()
+
 	ui.ShowConnectionForm(app, *user, password, *host, *port)
 	if err := app.Run(); err != nil {
 		panic(err)
