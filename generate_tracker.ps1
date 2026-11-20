@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$OutputPath = "c:\Users\vicky\Desktop\pj\pheri\pheri_feature_roadmap_tracker.xlsx",
     [string]$CsvPath = "c:\Users\vicky\Desktop\pj\pheri\pheri_feature_roadmap_tracker.csv"
 )
@@ -20,7 +20,7 @@ $tasks = @(
     },
     [PSCustomObject]@{
         ID = "PHERI-02"
-        Status = "To Do"
+        Status = "Completed"
         Priority = "P0 - Critical"
         Phase = "Phase 1: Core Reliability"
         Category = "Core Engine"
@@ -33,7 +33,7 @@ $tasks = @(
     },
     [PSCustomObject]@{
         ID = "PHERI-03"
-        Status = "To Do"
+        Status = "Completed"
         Priority = "P0 - Critical"
         Phase = "Phase 1: Core Reliability"
         Category = "Data Grid"
