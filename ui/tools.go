@@ -58,21 +58,18 @@ func showHealthDashboardModal(app *tview.Application, db *sql.DB) {
 	}
 
 	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
-	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkBlue).Bold(true))
-	table.SetBorder(true).
-		SetTitle(" 📊 PHERI REAL-TIME DATABASE HEALTH & PERFORMANCE DASHBOARD ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorLime).
-		SetBackgroundColor(tcell.ColorBlack)
+	StyleTable(table)
+	StyleBox(table.Box, "Real-Time Database Health & Performance Dashboard", true)
+	table.SetBackgroundColor(CurrentTheme.SurfaceBg)
 
 	headers := []string{"Metric Category", "Parameter Name", "Value / Counter", "Health Indicator"}
-	headerStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorLime).Bold(true)
+	headerStyle := tcell.StyleDefault.Foreground(CurrentTheme.HeaderFg).Background(CurrentTheme.HeaderBg).Bold(true)
 	for i, h := range headers {
 		table.SetCell(0, i, tview.NewTableCell(" "+h+" ").SetStyle(headerStyle).SetSelectable(false))
 	}
 
 	data := [][]string{
-		{"Server Status", "MySQL Server Version", version, "[lime::b]⚡ RUNNING[-]"},
+		{"Server Status", "MySQL Server Version", version, "[lime::b]ONLINE[-]"},
 		{"Server Status", "Uptime (Seconds)", uptime, "[lime::b]ONLINE[-]"},
 		{"Traffic & Load", "Total Executed Queries", queries, "[cyan::b]TRAFFIC ACTIVE[-]"},
 		{"Connections", "Threads Connected", threadsConn + " / " + maxConn, "[lime::b]OK[-]"},
@@ -151,11 +148,8 @@ func showSchemaDiffModal(app *tview.Application, db *sql.DB, activeDB string) {
 	diffView := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	diffView.SetBackgroundColor(tcell.ColorBlack)
-	diffView.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 🗄️ SCHEMA INSPECTOR & AUTO-MIGRATION SQL GENERATOR (%s) ", activeDB)).
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan)
+	diffView.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleModalBox(diffView.Box, fmt.Sprintf("Schema Inspector & Auto-Migration SQL Generator (%s)", activeDB))
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("[cyan::b]SCHEMA COMPARISON & MIGRATION SUMMARY FOR DATABASE: '%s'[-::-]\n\n", activeDB))
@@ -175,9 +169,9 @@ func showSchemaDiffModal(app *tview.Application, db *sql.DB, activeDB string) {
 			}
 		}
 		if hasIndex {
-			sb.WriteString(" [lime]✓ Index Verified[-] ")
+			sb.WriteString(" [lime]Index Verified[-] ")
 		} else {
-			sb.WriteString(" [yellow]⚠️ No Primary Key / Index[-] ")
+			sb.WriteString(" [yellow]No Primary Key / Index[-] ")
 		}
 
 		// Check column count
@@ -192,7 +186,7 @@ func showSchemaDiffModal(app *tview.Application, db *sql.DB, activeDB string) {
 		sb.WriteString(fmt.Sprintf("(Columns: %d)\n", cCount))
 	}
 
-	sb.WriteString("\n[lime::b]💡 GENERATED AUTO-MIGRATION VERIFICATION SQL:[-::-]\n")
+	sb.WriteString("\n[lime::b]GENERATED AUTO-MIGRATION VERIFICATION SQL:[-::-]\n")
 	sb.WriteString(fmt.Sprintf("-- Schema integrity verification script generated for %s\n", activeDB))
 	sb.WriteString(fmt.Sprintf("SELECT TABLE_NAME, ENGINE, TABLE_ROWS, DATA_LENGTH \nFROM INFORMATION_SCHEMA.TABLES \nWHERE TABLE_SCHEMA = '%s';\n", activeDB))
 
@@ -238,11 +232,9 @@ func showQueryHistoryModal(app *tview.Application, db *sql.DB, queryEditor *SQLE
 	}
 
 	list := tview.NewList().ShowSecondaryText(true)
-	list.SetBorder(true).
-		SetTitle(" 💾 SEARCHABLE QUERY HISTORY & SESSION RESTORER ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorYellow).
-		SetBackgroundColor(tcell.ColorBlack)
+	StyleModalBox(list.Box, "Searchable Query History & Session Restorer")
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleList(list)
 
 	for _, rec := range records {
 		q := rec.QueryText
@@ -350,11 +342,8 @@ func ShowCellInspectorModal(app *tview.Application, content string) {
 	view := tview.NewTextView().
 		SetDynamicColors(true).
 		SetScrollable(true)
-	view.SetBackgroundColor(tcell.ColorBlack)
-	view.SetBorder(true).
-		SetTitle(" 🔍 CELL CONTENT INSPECTOR ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorYellow)
+	view.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleModalBox(view.Box, "Cell Content Inspector")
 
 	// Check if JSON
 	trimmed := strings.TrimSpace(content)
@@ -404,58 +393,34 @@ func ShowCellInspectorModal(app *tview.Application, content string) {
 	app.SetRoot(CreateLayoutWithFooter(app, layout), true).SetFocus(view)
 }
 
-// Theme preset options
-type ThemePreset struct {
-	Name       string
-	Border     tcell.Color
-	HeaderBg   tcell.Color
-	HeaderFg   tcell.Color
-	SelectedBg tcell.Color
-}
-
-var CurrentTheme = ThemePreset{
-	Name:       "Dracula",
-	Border:     tcell.ColorPurple,
-	HeaderBg:   tcell.ColorPurple,
-	HeaderFg:   tcell.ColorWhite,
-	SelectedBg: tcell.ColorDarkBlue,
-}
-
-var AvailableThemes = []ThemePreset{
-	{Name: "Dracula (Default)", Border: tcell.ColorPurple, HeaderBg: tcell.ColorPurple, HeaderFg: tcell.ColorWhite, SelectedBg: tcell.ColorDarkBlue},
-	{Name: "Nord Frost", Border: tcell.ColorDarkCyan, HeaderBg: tcell.ColorDarkCyan, HeaderFg: tcell.ColorWhite, SelectedBg: tcell.ColorNavy},
-	{Name: "Monokai Vivid", Border: tcell.ColorYellow, HeaderBg: tcell.ColorYellow, HeaderFg: tcell.ColorBlack, SelectedBg: tcell.ColorDarkGreen},
-	{Name: "Cyberpunk Neon", Border: tcell.ColorLime, HeaderBg: tcell.ColorLime, HeaderFg: tcell.ColorBlack, SelectedBg: tcell.ColorDarkMagenta},
-	{Name: "Classic Midnight", Border: tcell.ColorDarkBlue, HeaderBg: tcell.ColorDarkBlue, HeaderFg: tcell.ColorWhite, SelectedBg: tcell.ColorDarkCyan},
-}
-
 func showThemePickerModal(app *tview.Application) {
 	list := tview.NewList()
-	list.SetBorder(true).
-		SetTitle(" 🎨 SELECT TERMINAL THEME ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorYellow).
-		SetBackgroundColor(tcell.ColorBlack)
+	StyleModalBox(list.Box, "Select Color Theme")
+	list.SetBackgroundColor(tcell.ColorReset)
+	StyleList(list)
 
 	for _, t := range AvailableThemes {
 		theme := t
-		list.AddItem(theme.Name, "Apply "+theme.Name+" color palette", 0, func() {
+		list.AddItem(theme.Name, "Apply "+theme.Name+" palette", 0, func() {
 			CurrentTheme = theme
 			if dataTable != nil {
-				dataTable.SetBorderColor(CurrentTheme.Border)
-				dataTable.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(CurrentTheme.SelectedBg).Bold(true))
+				StyleTable(dataTable)
+				StyleBox(dataTable.Box, "Query Results", false)
 			}
-			updateFooterText("Applied theme: " + CurrentTheme.Name)
+			if activeSQLEditor != nil && activeSQLEditor.TextArea != nil {
+				activeSQLEditor.ApplyTheme()
+			}
+			updateFooterText("Theme applied: " + CurrentTheme.Name)
 			orig := CreateLayoutWithFooter(app, mainFlex)
 			app.SetRoot(orig, true)
 		})
 	}
 
 	statusBar := tview.NewTextView().
-		SetText("[yellow]ESC[-] Cancel  |  [lime]ENTER[-] Apply Theme").
+		SetText(" [::b]ESC[::-] Cancel   |   [::b]ENTER[::-] Apply Theme").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
-		SetBackgroundColor(tcell.ColorBlack)
+		SetBackgroundColor(tcell.ColorReset)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).

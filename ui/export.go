@@ -91,73 +91,170 @@ func ShowExportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 	showItemSelector(app, db, dbName, items)
 }
 
+// FormatExportItemLabel generates a high-contrast, theme-aware label for export items.
+func FormatExportItemLabel(item ExportItem) string {
+	badge := FormatSchemaObjectBadge(item.Type)
+	if item.Selected {
+		return fmt.Sprintf(" %s %s  [white::b]%s[-::-]",
+			fmt.Sprintf("[lime::b]%s[-::-]", tview.Escape("[X]")),
+			badge,
+			item.Name,
+		)
+	}
+	return fmt.Sprintf(" %s [gray::d]%-5s[-::-]  [gray]%s[-::-]",
+		fmt.Sprintf("[gray::d]%s[-::-]", tview.Escape("[ ]")),
+		item.Type,
+		item.Name,
+	)
+}
+
+// filterExportItems filters items by case-insensitive name match or prefix (table:, view:, proc:, func:, trig:, event:).
+func filterExportItems(items []ExportItem, query string) []int {
+	query = strings.TrimSpace(strings.ToLower(query))
+	if query == "" {
+		indices := make([]int, len(items))
+		for i := range items {
+			indices[i] = i
+		}
+		return indices
+	}
+
+	var typeFilter string
+	nameFilter := query
+	if strings.HasPrefix(query, "table:") {
+		typeFilter = "TABLE"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(query, "table:"))
+	} else if strings.HasPrefix(query, "view:") {
+		typeFilter = "VIEW"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(query, "view:"))
+	} else if strings.HasPrefix(query, "proc:") || strings.HasPrefix(query, "procedure:") {
+		typeFilter = "PROCEDURE"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(query, "procedure:"), "proc:"))
+	} else if strings.HasPrefix(query, "func:") || strings.HasPrefix(query, "function:") {
+		typeFilter = "FUNCTION"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(query, "function:"), "func:"))
+	} else if strings.HasPrefix(query, "trig:") || strings.HasPrefix(query, "trigger:") {
+		typeFilter = "TRIGGER"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(query, "trigger:"), "trig:"))
+	} else if strings.HasPrefix(query, "event:") {
+		typeFilter = "EVENT"
+		nameFilter = strings.TrimSpace(strings.TrimPrefix(query, "event:"))
+	}
+
+	var indices []int
+	for i, it := range items {
+		if typeFilter != "" && !strings.EqualFold(it.Type, typeFilter) {
+			continue
+		}
+		if nameFilter == "" || strings.Contains(strings.ToLower(it.Name), nameFilter) {
+			indices = append(indices, i)
+		}
+	}
+	return indices
+}
+
 func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items []ExportItem) {
-	list := tview.NewList().ShowSecondaryText(true)
-	list.SetBorder(true).
-		SetTitle(fmt.Sprintf(" 📦 Database Object Export Picker: %s (%d objects) ", dbName, len(items))).
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan)
+	filterInput := tview.NewInputField().
+		SetLabel(" [aqua::b]Search:[-::-] ").
+		SetPlaceholder("Type object name or filter (table:, view:, proc:, func:, trig:)...").
+		SetFieldBackgroundColor(tcell.ColorReset).
+		SetFieldTextColor(tcell.ColorWhite).
+		SetPlaceholderTextColor(CurrentTheme.TextSecondary)
+	filterInput.SetLabelColor(CurrentTheme.BorderFocused)
 
-	renderList := func() {
-		list.Clear()
-		for idx, item := range items {
-			icon := "📋"
-			switch item.Type {
-			case "VIEW":
-				icon = "👁️"
-			case "PROCEDURE":
-				icon = "⚙️"
-			case "FUNCTION":
-				icon = "⚡"
-			case "TRIGGER":
-				icon = "🔔"
-			case "EVENT":
-				icon = "📅"
+	list := tview.NewList().ShowSecondaryText(false)
+	StyleList(list)
+
+	listWrapper := tview.NewFlex().SetDirection(tview.FlexRow)
+	listWrapper.SetBorder(true)
+	listWrapper.SetBorderColor(CurrentTheme.BorderFocused)
+	listWrapper.SetTitleColor(CurrentTheme.TitleFocused)
+	listWrapper.SetTitleAlign(tview.AlignCenter)
+
+	currentFilter := ""
+	filteredIndices := filterExportItems(items, currentFilter)
+
+	updateHeaderTitle := func() {
+		selCount := 0
+		for _, it := range items {
+			if it.Selected {
+				selCount++
 			}
-
-			check := "[lime][x][-]"
-			if !item.Selected {
-				check = "[gray][ ][-]"
-			}
-
-			label := fmt.Sprintf("%s %s [%s] [white::b]%s[::-]", check, icon, item.Type, item.Name)
-			itemIdx := idx
-			list.AddItem(label, "Space: Toggle | Enter: Select Settings", 0, func() {
-				items[itemIdx].Selected = !items[itemIdx].Selected
-			})
+		}
+		if currentFilter == "" {
+			listWrapper.SetTitle(fmt.Sprintf(" [ Database Object Export Picker: %s (%d/%d selected) ] ", dbName, selCount, len(items)))
+		} else {
+			listWrapper.SetTitle(fmt.Sprintf(" [ Database Object Export Picker: %s (%d/%d selected | %d matching '%s') ] ", dbName, selCount, len(items), len(filteredIndices), currentFilter))
 		}
 	}
 
-	renderList()
-
-	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyRune {
-			switch event.Rune() {
-			case ' ':
-				cur := list.GetCurrentItem()
-				if cur >= 0 && cur < len(items) {
-					items[cur].Selected = !items[cur].Selected
+	var renderList func()
+	renderList = func() {
+		list.Clear()
+		if len(filteredIndices) == 0 {
+			list.AddItem(" [gray]No database objects match the current filter[-]", "", 0, nil)
+		} else {
+			for _, origIdx := range filteredIndices {
+				idx := origIdx
+				item := items[idx]
+				label := FormatExportItemLabel(item)
+				list.AddItem(label, "", 0, func() {
+					items[idx].Selected = !items[idx].Selected
+					cur := list.GetCurrentItem()
 					renderList()
-					list.SetCurrentItem(cur)
-				}
-				return nil
-			case 'a', 'A':
-				for i := range items {
-					items[i].Selected = true
-				}
-				renderList()
-				return nil
-			case 'n', 'N':
-				for i := range items {
-					items[i].Selected = false
-				}
-				renderList()
-				return nil
+					if cur >= 0 && cur < list.GetItemCount() {
+						list.SetCurrentItem(cur)
+					}
+				})
 			}
-		} else if event.Key() == tcell.KeyEnter {
-			showExportSettingsForm(app, db, dbName, items)
+		}
+		updateHeaderTitle()
+	}
+
+	filterInput.SetChangedFunc(func(text string) {
+		currentFilter = text
+		filteredIndices = filterExportItems(items, currentFilter)
+		renderList()
+		if list.GetItemCount() > 0 {
+			list.SetCurrentItem(0)
+		}
+	})
+
+	toggleCurrentItem := func() {
+		cur := list.GetCurrentItem()
+		if cur >= 0 && cur < len(filteredIndices) {
+			origIdx := filteredIndices[cur]
+			items[origIdx].Selected = !items[origIdx].Selected
+			renderList()
+			list.SetCurrentItem(cur)
+		}
+	}
+
+	proceedToSettings := func() {
+		selCount := 0
+		for _, it := range items {
+			if it.Selected {
+				selCount++
+			}
+		}
+		if selCount == 0 {
+			updateFooterText("Please select at least one database object to export")
+			return
+		}
+		showExportSettingsForm(app, db, dbName, items)
+	}
+
+	filterInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEnter, tcell.KeyDown:
+			if list.GetItemCount() > 0 {
+				app.SetFocus(list)
+			}
 			return nil
-		} else if event.Key() == tcell.KeyEscape {
+		case tcell.KeyTab:
+			app.SetFocus(list)
+			return nil
+		case tcell.KeyEscape:
 			layout := CreateLayoutWithFooter(app, mainFlex)
 			app.SetRoot(layout, true)
 			return nil
@@ -165,16 +262,90 @@ func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items [
 		return event
 	})
 
+	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyRune {
+			switch event.Rune() {
+			case ' ':
+				toggleCurrentItem()
+				return nil
+			case 'a', 'A':
+				for _, origIdx := range filteredIndices {
+					items[origIdx].Selected = true
+				}
+				cur := list.GetCurrentItem()
+				renderList()
+				list.SetCurrentItem(cur)
+				return nil
+			case 'n', 'N':
+				for _, origIdx := range filteredIndices {
+					items[origIdx].Selected = false
+				}
+				cur := list.GetCurrentItem()
+				renderList()
+				list.SetCurrentItem(cur)
+				return nil
+			case 'i', 'I':
+				for _, origIdx := range filteredIndices {
+					items[origIdx].Selected = !items[origIdx].Selected
+				}
+				cur := list.GetCurrentItem()
+				renderList()
+				list.SetCurrentItem(cur)
+				return nil
+			case '/', 's', 'S':
+				app.SetFocus(filterInput)
+				return nil
+			}
+		}
+
+		switch event.Key() {
+		case tcell.KeyEnter:
+			proceedToSettings()
+			return nil
+		case tcell.KeyTab:
+			app.SetFocus(filterInput)
+			return nil
+		case tcell.KeyUp:
+			if list.GetCurrentItem() == 0 {
+				app.SetFocus(filterInput)
+				return nil
+			}
+		case tcell.KeyEscape:
+			if currentFilter != "" {
+				filterInput.SetText("")
+				currentFilter = ""
+				filteredIndices = filterExportItems(items, currentFilter)
+				renderList()
+				return nil
+			}
+			layout := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(layout, true)
+			return nil
+		}
+		return event
+	})
+
+	renderList()
+
 	hint := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText("[yellow]SPACE: Toggle Item | [lime]a: Select All | [lime]n: Deselect All | [cyan]ENTER: Continue | [white]ESC: Cancel")
+		SetText(" [yellow::b]SPACE[-::-] Toggle  [gray]│[-] [lime::b]a[-::-] Select All  [gray]│[-] [lime::b]n[-::-] Deselect All  [gray]│[-] [lime::b]i[-::-] Invert  [gray]│[-] [aqua::b]/ or Tab[-::-] Search  [gray]│[-] [aqua::b]ENTER[-::-] Continue  [gray]│[-] [white::b]ESC[-::-] Cancel ")
+	hint.SetBackgroundColor(CurrentTheme.HeaderBg)
 
-	layout := tview.NewFlex().
-		SetDirection(tview.FlexRow).
-		AddItem(list, 0, 1, true).
+	filterBar := tview.NewFlex().SetDirection(tview.FlexColumn).
+		AddItem(filterInput, 0, 1, true)
+	filterBar.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	listWrapper.
+		AddItem(filterBar, 1, 0, false).
+		AddItem(list, 0, 1, true)
+
+	outerFlex := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(listWrapper, 0, 1, true).
 		AddItem(hint, 1, 0, false)
 
+	layout := CreateLayoutWithFooter(app, outerFlex)
 	app.SetRoot(layout, true).SetFocus(list)
 }
 
@@ -190,10 +361,10 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 
 	form := tview.NewForm()
 	form.SetBorder(true).
-		SetTitle(fmt.Sprintf(" ⚙ Export Settings (%d of %d objects selected) ", selectedCount, len(items))).
+		SetTitle(fmt.Sprintf(" [ Export Settings (%d of %d objects selected) ] ", selectedCount, len(items))).
 		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan).
-		SetTitleColor(tcell.ColorAqua).
+		SetBorderColor(CurrentTheme.BorderFocused).
+		SetTitleColor(CurrentTheme.TitleFocused).
 		SetBorderPadding(1, 1, 3, 3)
 
 	form.AddCheckbox("Include Table & Object DDL Schema", true, nil)
@@ -201,7 +372,7 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 	form.AddDropDown("Export Format", []string{"SQL Script Compressed (.sql.gz)", "SQL Script Plain (.sql)", "JSON (.json)", "CSV Folder (.csv)"}, 0, nil)
 	form.AddInputField("Output Target File/Path", defaultFileName, 50, nil, nil)
 
-	form.AddButton("[lime::b] ▶ START EXPORT ", func() {
+	form.AddButton(" Start Export ", func() {
 		opts := InteractiveExportOptions{
 			SelectedItems: items,
 			IncludeSchema: form.GetFormItem(0).(*tview.Checkbox).IsChecked(),
@@ -225,19 +396,20 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 		executeInteractiveExport(app, db, dbName, opts)
 	})
 
-	form.AddButton("[yellow::b] ⬅ BACK TO OBJECTS ", func() {
+	form.AddButton(" Back to Objects ", func() {
 		showItemSelector(app, db, dbName, items)
 	})
 
-	form.AddButton("[red::b] ✖ CANCEL ", func() {
+	form.AddButton(" Cancel ", func() {
 		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
 	})
 
-	form.SetBackgroundColor(tcell.ColorBlack)
-	form.SetFieldBackgroundColor(tcell.Color234)
-	form.SetLabelColor(tcell.ColorWhite)
-	form.SetButtonBackgroundColor(tcell.Color236)
+	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	form.SetFieldBackgroundColor(tcell.ColorReset)
+	form.SetLabelColor(CurrentTheme.TextPrimary)
+	form.SetButtonBackgroundColor(CurrentTheme.SelectedBg)
+	form.SetButtonTextColor(CurrentTheme.SelectedFg)
 
 	layout := tview.NewFlex().
 		SetDirection(tview.FlexRow).
@@ -249,7 +421,7 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 			AddItem(nil, 0, 1, false), 16, 1, true).
 		AddItem(nil, 0, 1, false)
 
-	app.SetRoot(layout, true).SetFocus(form)
+	app.SetRoot(CreateLayoutWithFooter(app, layout), true).SetFocus(form)
 }
 
 func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string, opts InteractiveExportOptions) {
@@ -260,9 +432,7 @@ func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string,
 			app.Draw()
 		})
 
-	logView.SetBorder(true).
-		SetTitle(" 🚀 Exporting Database: " + dbName + " ").
-		SetBorderColor(tcell.ColorDarkCyan)
+	StyleBox(logView.Box, "Exporting Database: "+dbName, true)
 
 	app.SetRoot(logView, true)
 
@@ -350,9 +520,9 @@ func executeInteractiveExport(app *tview.Application, db *sql.DB, dbName string,
 
 		err := writeExportFile(opts.OutputPath, []byte(summary.String()))
 		if err != nil {
-			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Export Error: %v", err))
+			appendLog(logView, fmt.Sprintf("\n[red::b]Export Error: %v", err))
 		} else {
-			appendLog(logView, fmt.Sprintf("\n[lime::b]✅ Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
+			appendLog(logView, fmt.Sprintf("\n[lime::b]Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
 				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
 				exportedCounts["Procedures"], exportedCounts["Functions"], exportedCounts["Triggers"], exportedCounts["Events"]))
 		}
@@ -452,14 +622,12 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 			app.Draw()
 		})
 
-	logView.SetBorder(true).
-		SetTitle(" ⚡ High-Speed Parallel Worker Export: " + dbName + " ").
-		SetBorderColor(tcell.ColorYellow)
+	StyleBox(logView.Box, "Parallel Worker Export: "+dbName, true)
 
 	app.SetRoot(logView, true)
 
 	go func() {
-		appendLog(logView, "[yellow::b]⚡ Launching Parallel Go Goroutine Worker Pool Export...\n\n")
+		appendLog(logView, "[cyan::b]Launching Parallel Go Goroutine Worker Pool Export...\n\n")
 
 		// 1. Fetch items to export
 		var items []ExportItem
@@ -574,7 +742,7 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 
 		for res := range results {
 			if res.Err != nil {
-				appendLog(logView, fmt.Sprintf("  [red]❌ Failed [%s] %s: %v", res.Item.Type, res.Item.Name, res.Err))
+				appendLog(logView, fmt.Sprintf("  [red]Failed [%s] %s: %v", res.Item.Type, res.Item.Name, res.Err))
 				continue
 			}
 
@@ -602,9 +770,9 @@ func ShowParallelWorkerExportModal(app *tview.Application, db *sql.DB, dbName st
 
 		err = writeExportFile(opts.OutputPath, []byte(summary.String()))
 		if err != nil {
-			appendLog(logView, fmt.Sprintf("\n[red::b]❌ Parallel Export Error: %v", err))
+			appendLog(logView, fmt.Sprintf("\n[red::b]Parallel Export Error: %v", err))
 		} else {
-			appendLog(logView, fmt.Sprintf("\n[lime::b]⚡ Parallel Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
+			appendLog(logView, fmt.Sprintf("\n[lime::b]Parallel Export Complete!\n[white]Saved to: [cyan]%s\n[white]Exported: %d Tables (%d Rows), %d Views, %d Procedures, %d Functions, %d Triggers, %d Events",
 				opts.OutputPath, exportedCounts["Tables"], exportedCounts["Rows"], exportedCounts["Views"],
 				exportedCounts["Procedures"], exportedCounts["Functions"], exportedCounts["Triggers"], exportedCounts["Events"]))
 		}

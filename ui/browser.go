@@ -115,7 +115,7 @@ func filterTableList(
 			// if strings.ToLower(filterDbName)
 
 			if strings.Contains(strings.ToLower(filterDbName), search) {
-				dataBaseList.AddItem("📁 "+filterDbName, "Press Enter to use", 0, func() {
+				dataBaseList.AddItem("  "+filterDbName, "Press Enter to open database", 0, func() {
 					IsSearchStateEnabled = false
 					UseDatabase(app, db, filterDbName)
 				})
@@ -125,19 +125,28 @@ func filterTableList(
 
 	} else {
 		for _, obj := range allTable {
-			// Match type filter if present
-			if typeFilter != "" && strings.ToLower(obj.Type) != typeFilter {
-				continue
+			// Match type filter if present (supports proc, func, trig, view, table)
+			if typeFilter != "" {
+				tf := strings.ToLower(typeFilter)
+				ot := strings.ToLower(obj.Type)
+				match := (ot == tf) ||
+					(tf == "proc" && ot == "procedure") ||
+					(tf == "func" && ot == "function") ||
+					(tf == "trig" && ot == "trigger") ||
+					(tf == "view" && ot == "view") ||
+					(tf == "table" && ot == "table")
+				if !match {
+					continue
+				}
 			}
 
 			// Match name
 			if strings.Contains(strings.ToLower(obj.Name), search) {
-				//displayName := fmt.Sprintf("[%s] %s", obj.Type, obj.Name)
-				displayName := obj.Type + " " + obj.Name
 				objName := obj.Name
 				objType := obj.Type
 
-				list.AddItem("🧮 "+displayName, "Press Enter to use", 0, func() {
+				cleanName := fmt.Sprintf(" %s %s", FormatSchemaObjectBadge(obj.Type), obj.Name)
+				list.AddItem(cleanName, "Press Enter to use", 0, func() {
 
 					typePriority := map[string]int{
 						"TABLE":     0,
@@ -1467,10 +1476,10 @@ func setEditorText(queryBox *tview.TextArea, text string) {
 }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
-	runIcon := "▶  Run"
-	saveIcon := "💾  Save"
-	loadIcon := "📂  Load"
-	exitIcon := "✖  Exit"
+	runIcon := " Run "
+	saveIcon := " Save "
+	loadIcon := " Load "
+	exitIcon := " Exit "
 
 	// Use selected DB
 	_, err := db.Exec("USE " + util.QuoteIdentifier(dbName))
@@ -1486,30 +1495,22 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 
 	dataBaseList = tview.NewList()
-	dataBaseList.
-		ShowSecondaryText(false).
-		SetHighlightFullLine(true)
-
-	dataBaseList.SetBorder(true).
-		SetTitle(" 🗂️  Databases ").
-		SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorDarkGray).
-		SetTitleColor(tcell.ColorGray)
+	dataBaseList.ShowSecondaryText(false).SetHighlightFullLine(true)
+	StyleList(dataBaseList)
+	StyleBox(dataBaseList.Box, "Databases", false)
 
 	dataBaseList.SetFocusFunc(func() {
-		dataBaseList.SetBorderColor(tcell.ColorYellow).
-			SetTitleColor(tcell.ColorYellow)
+		StyleBox(dataBaseList.Box, "Databases", true)
 	})
 	dataBaseList.SetBlurFunc(func() {
-		dataBaseList.SetBorderColor(tcell.ColorDarkGray).
-			SetTitleColor(tcell.ColorGray)
+		StyleBox(dataBaseList.Box, "Databases", false)
 	})
 
 	queryAllDB := `SHOW DATABASES;`
 
 	dbRows, err := db.Query(queryAllDB)
 	if err != nil {
-		dataBaseList.AddItem("❌ "+"Error: "+err.Error(), "", 0, nil)
+		dataBaseList.AddItem("  Error: "+err.Error(), "", 0, nil)
 	} else {
 		defer dbRows.Close()
 		var dbNameli string
@@ -1520,34 +1521,28 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			}
 			allDatabases = append(allDatabases, dbNameli)
 			currentDBName := dbNameli
-			dataBaseList.AddItem("📁 "+currentDBName, "Press Enter to use", 0, func() {
+			dbItemLabel := "  " + currentDBName
+			if currentDBName == dbName {
+				dbItemLabel = " [aqua::b]▶ " + currentDBName + "[-::-]"
+			}
+			dataBaseList.AddItem(dbItemLabel, "Press Enter to use", 0, func() {
 				IsSearchStateEnabled = true
 				UseDatabase(app, db, currentDBName)
 			})
 		}
-
 	}
 
 	// LEFT: Table list (using tview.List)
 	tableList = tview.NewList()
-	tableList.
-		ShowSecondaryText(false).
-		SetHighlightFullLine(true)
-
-	tableList.
-		SetBorder(true).
-		SetTitle(" 🧮 Database Objects ").
-		SetTitleAlign(tview.AlignLeft).
-		SetBorderColor(tcell.ColorYellow).
-		SetTitleColor(tcell.ColorYellow)
+	tableList.ShowSecondaryText(false).SetHighlightFullLine(true)
+	StyleList(tableList)
+	StyleBox(tableList.Box, "Schema Objects", false)
 
 	tableList.SetFocusFunc(func() {
-		tableList.SetBorderColor(tcell.ColorYellow).
-			SetTitleColor(tcell.ColorYellow)
+		StyleBox(tableList.Box, "Schema Objects", true)
 	})
 	tableList.SetBlurFunc(func() {
-		tableList.SetBorderColor(tcell.ColorDarkGray).
-			SetTitleColor(tcell.ColorGray)
+		StyleBox(tableList.Box, "Schema Objects", false)
 	})
 
 	queryAllStructure := `
@@ -1605,13 +1600,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				continue
 			}
 
-			// displayName := fmt.Sprintf("[%s] %s", objectType, name)
-			dispalyName := objectType + " " + name
 			allTables = append(allTables, DBObject{Name: name, Type: objectType})
 			//rows.Scan(&tableName)
 			currentName := name
 			currentobjectType := objectType
-			tableList.AddItem("📋 "+dispalyName, "Press Enter to use", 0, func() {
+			tableLabel := fmt.Sprintf(" %s %s", FormatSchemaObjectBadge(objectType), name)
+			tableList.AddItem(tableLabel, "Press Enter to use", 0, func() {
 				// app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 				// 	if event.Key() == tcell.KeyCtrlX {
 				// 		if currentobjectType == "TABLE" {
@@ -1659,7 +1653,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					SetDynamicColors(true).
 					SetScrollable(true).
 					SetChangedFunc(func() { app.Draw() })
-				progressView.SetBorder(true).SetTitle("📦 Export Progress").SetTitleAlign(tview.AlignLeft)
+				StyleBox(progressView.Box, "Export Progress", true)
 
 				typePriority := map[string]int{
 					"TABLE":     0,
@@ -1789,7 +1783,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 							layout := tview.NewFlex().
 								SetDirection(tview.FlexRow).
 								AddItem(tview.NewTextView().
-									SetText("[::b]  ⏳ Exporting Database  ").
+									SetText("[::b]  Exporting Database  ").
 									SetDynamicColors(true), 1, 1, false).
 								AddItem(progressView, 0, 1, false).
 								AddItem(statusBar, 1, 1, false)
@@ -1849,13 +1843,20 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 										SetText("[white::b]Export completed successfully!\n\nBackup File: [white]check export folder for zip").
 										AddButtons([]string{"OK"}).
 										SetDoneFunc(func(i int, label string) {
-											app.SetRoot(mainFlex, true)
+											layout := CreateLayoutWithFooter(app, mainFlex)
+											app.SetRoot(layout, true)
 										})
 
 									app.SetRoot(modal, true)
 								})
 							}()
 						}()
+						return nil
+					}
+
+					// Comprehensive Layman Help Screen (F1)
+					if event.Key() == tcell.KeyF1 {
+						ShowComprehensiveHelpModal(app)
 						return nil
 					}
 
@@ -2145,20 +2146,9 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				})
 			})
 
-		buttonBox := tview.NewFlex().
-			SetDirection(tview.FlexColumn).
-			AddItem(nil, 2, 0, false).      // Left padding
-			AddItem(runButton, 0, 1, true). // Button
-			AddItem(nil, 2, 0, false)       // Right padding
-
 		queryBox = tview.NewTextArea()
-		queryBox.
-			SetPlaceholder("Enter SQL query here...").
-			SetBorder(true).
-			SetTitle(" 📝 [::b]SQL Query Editor[::-] [white]([green]Ctrl+R:[-]Run  [green]F11:[-]Fullscreen  [green]Tab:[-]Next) ").
-			SetTitleAlign(tview.AlignLeft).
-			SetBorderColor(tcell.ColorLightCyan).
-			SetTitleColor(tcell.ColorAqua)
+		queryBox.SetPlaceholder("Enter SQL query here...")
+		StyleBox(queryBox.Box, "SQL Query Editor", false)
 
 		activeSQLEditor = NewSQLEditor(app)
 		activeSQLEditor.OnExecute = func(query string) {
@@ -2258,36 +2248,16 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				app.SetRoot(flexSaveFilenName, true).SetFocus(fileNameInput)
 			})
 
-		saveButtonBox := tview.NewFlex().
-			SetDirection(tview.FlexColumn).
-			AddItem(nil, 2, 0, false).    // Left padding
-			AddItem(button1, 0, 1, true). // Button
-			AddItem(nil, 2, 0, false)     // Right padding
-
 		button1.SetBorderPadding(0, 0, 1, 1)
 
 		button2 := tview.NewButton(loadIcon).SetSelectedFunc(func() {
 		})
-
 		button2.SetBorderPadding(0, 0, 1, 1)
-
-		loadButtonBox := tview.NewFlex().
-			SetDirection(tview.FlexColumn).
-			AddItem(nil, 2, 0, false).    // Left padding
-			AddItem(button2, 0, 1, true). // Button
-			AddItem(nil, 2, 0, false)     // Right padding
 
 		exitButton := tview.NewButton(exitIcon).SetSelectedFunc(func() {
 			app.Stop()
 		})
-
-		exitButton.SetBorderPadding(0, 0, 5, 5)
-
-		exitButtonBox := tview.NewFlex().
-			SetDirection(tview.FlexColumn).
-			AddItem(nil, 1, 0, false).       // Left padding
-			AddItem(exitButton, 0, 1, true). // Button
-			AddItem(nil, 1, 0, false)        // Right padding
+		exitButton.SetBorderPadding(0, 0, 2, 2)
 
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
@@ -2347,31 +2317,30 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		queryPanel := tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(activeSQLEditor.Container, 6, 1, true).
+			AddItem(activeSQLEditor.Container, 0, 1, true).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
-				AddItem(buttonBox, 0, 1, false).
-				AddItem(saveButtonBox, 0, 1, false).
-				AddItem(loadButtonBox, 0, 1, false).
-				AddItem(exitButtonBox, 0, 1, false), 1, 0, false)
+				AddItem(runButton, 16, 0, false).
+				AddItem(nil, 1, 0, false).
+				AddItem(button1, 14, 0, false).
+				AddItem(nil, 1, 0, false).
+				AddItem(button2, 14, 0, false).
+				AddItem(nil, 1, 0, false).
+				AddItem(exitButton, 10, 0, false).
+				AddItem(nil, 0, 1, false), 1, 0, false)
 
 		dataTable = tview.NewTable()
 		dataTable.
 			SetBorders(true).
 			SetSelectable(true, false).
-			SetFixed(1, 0).
-			SetTitle(" 📊 Result Data Grid [white]([lime]e:[-]Edit SQL | Ctrl+N: Next | Ctrl+P: Prev | Ctrl+E: Export | F3: Schema) ").
-			SetTitleAlign(tview.AlignLeft).
-			SetBorder(true).
-			SetBorderColor(tcell.ColorDarkGray).
-			SetTitleColor(tcell.ColorGray)
+			SetFixed(1, 0)
+		StyleTable(dataTable)
+		StyleBox(dataTable.Box, "Query Results", false)
 
 		dataTable.SetFocusFunc(func() {
-			dataTable.SetBorderColor(tcell.ColorYellow).
-				SetTitleColor(tcell.ColorYellow)
+			StyleBox(dataTable.Box, "Query Results", true)
 		})
 		dataTable.SetBlurFunc(func() {
-			dataTable.SetBorderColor(tcell.ColorDarkGray).
-				SetTitleColor(tcell.ColorGray)
+			StyleBox(dataTable.Box, "Query Results", false)
 		})
 
 		dataTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
@@ -2421,18 +2390,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		searchInput := tview.NewInputField()
-		searchInput.SetFieldBackgroundColor(tcell.Color234).
-			SetLabel(" 🔍 Filter: ").
-			SetPlaceholder("Type to search objects...").
-			SetFieldWidth(30)
+		searchInput.SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
+			SetFieldTextColor(CurrentTheme.TextPrimary).
+			SetLabel(" Filter: ").
+			SetLabelColor(CurrentTheme.AccentPrimary).
+			SetPlaceholder("Search objects...").
+			SetPlaceholderTextColor(CurrentTheme.TextSecondary).
+			SetFieldWidth(22)
 
 		searchInput.SetFocusFunc(func() {
-			searchInput.SetBorder(true).
-				SetBorderColor(tcell.ColorYellow).
-				SetTitleColor(tcell.ColorYellow)
+			searchInput.SetLabelColor(CurrentTheme.BorderFocused)
 		})
 		searchInput.SetBlurFunc(func() {
-			searchInput.SetBorder(false)
+			searchInput.SetLabelColor(CurrentTheme.AccentPrimary)
 		})
 		searchInput.
 			SetChangedFunc(func(text string) {
@@ -2457,11 +2427,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
-		tableList.
-			SetBorder(true).
-			SetTitle(" 📋 Schema Objects [white]([lime]e:[-]Edit SQL) ").
-			SetTitleAlign(tview.AlignLeft).
-			SetBorderColor(tcell.ColorDarkCyan)
+		StyleList(tableList)
+		StyleBox(tableList.Box, "Schema Objects", false)
+
+		tableList.SetFocusFunc(func() {
+			StyleBox(tableList.Box, "Schema Objects", true)
+		})
+		tableList.SetBlurFunc(func() {
+			StyleBox(tableList.Box, "Schema Objects", false)
+		})
 
 		tableList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
@@ -2481,11 +2455,15 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
-		dataBaseList.
-			SetBorder(true).
-			SetTitle(" 🗂️ Databases ").
-			SetTitleAlign(tview.AlignLeft).
-			SetBorderColor(tcell.ColorDarkCyan)
+		StyleList(dataBaseList)
+		StyleBox(dataBaseList.Box, "Databases", false)
+
+		dataBaseList.SetFocusFunc(func() {
+			StyleBox(dataBaseList.Box, "Databases", true)
+		})
+		dataBaseList.SetBlurFunc(func() {
+			StyleBox(dataBaseList.Box, "Databases", false)
+		})
 
 		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
@@ -2510,13 +2488,13 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		// Center panel: Query + Data Table
 		mainCenterPanel = tview.NewFlex().SetDirection(tview.FlexRow).
-			AddItem(queryPanel, 6, 1, true).
-			AddItem(dataTable, 0, 3, false)
+			AddItem(queryPanel, 9, 0, true).
+			AddItem(dataTable, 0, 1, false)
 
 		// Main layout
 		mainFlex = tview.NewFlex().
-			AddItem(mainLeftPanel, 0, 1, true).   // use mainLeftPanel
-			AddItem(mainCenterPanel, 0, 5, false) // center content
+			AddItem(mainLeftPanel, 32, 0, true).
+			AddItem(mainCenterPanel, 0, 1, false)
 		layout := CreateLayoutWithFooter(app, mainFlex)
 		app.SetRoot(layout, true)
 	}
@@ -2536,8 +2514,8 @@ func toggleSidebarVisibility(app *tview.Application) {
 		mainFlex.AddItem(mainCenterPanel, 0, 1, true)
 		updateFooterText("Sidebar collapsed (Full width view). Press Ctrl+B to restore.")
 	} else {
-		mainFlex.AddItem(mainLeftPanel, 0, 1, false).
-			AddItem(mainCenterPanel, 0, 5, true)
+		mainFlex.AddItem(mainLeftPanel, 32, 0, false).
+			AddItem(mainCenterPanel, 0, 1, true)
 		updateFooterText("Sidebar restored.")
 	}
 }
@@ -2603,7 +2581,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 		strings.HasPrefix(cleanQ, "CREATE")
 
 	if isMutation && ActiveReadOnly {
-		showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode.")
+		showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode.")
 		if onComplete != nil {
 			onComplete(&QueryResult{ErrorMessage: "read-only mode enabled", IsMutation: true})
 		}
@@ -2618,7 +2596,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 
 	table.Clear()
 	table.SetBorders(false)
-	table.SetCell(0, 0, tview.NewTableCell("[yellow::b]⚡ Executing query in background... [lime](Ctrl+C / Esc: Cancel)[-::-]").
+	table.SetCell(0, 0, tview.NewTableCell("[yellow::b]Executing query in background... [aqua](Ctrl+C / Esc: Cancel)[-::-]").
 		SetAlign(tview.AlignCenter).
 		SetSelectable(false))
 	UpdateFooterRunningQuery(0)
@@ -2639,7 +2617,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 				app.QueueUpdateDraw(func() {
 					if isQueryRunning.Load() {
 						UpdateFooterRunningQuery(elapsed)
-						table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]⚡ Executing query... (%0.1fs) [lime::b](Ctrl+C / Esc: Cancel)[-::-]", elapsed.Seconds())).
+						table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]Executing query... (%0.1fs) [aqua::b](Ctrl+C / Esc: Cancel)[-::-]", elapsed.Seconds())).
 							SetAlign(tview.AlignCenter).
 							SetSelectable(false))
 					}
@@ -2745,17 +2723,10 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	table.Clear()
 	table.SetBorders(false)
 
-	envTagStr := "[green::b]DEV[-::-]"
-	if ActiveEnv == "PROD" {
-		envTagStr = "[red::b]PROD[-::-]"
-	} else if ActiveEnv == "STAGING" {
-		envTagStr = "[yellow::b]STAGING[-::-]"
-	}
-
 	if res.IsCanceled {
-		titleStr := fmt.Sprintf(" [::b]Query Result [%s] [yellow](Canceled after %s) ", envTagStr, res.Duration.Round(time.Millisecond))
+		titleStr := fmt.Sprintf(" [ Query Result: Canceled (%s) ] ", res.Duration.Round(time.Millisecond))
 		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
-		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]⚠️ Query Canceled by User [white](Execution aborted after %s)[-::-]", res.Duration.Round(time.Millisecond))).
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b][CANCELED] Query execution canceled by user [white](aborted after %s)[-::-]", res.Duration.Round(time.Millisecond))).
 			SetAlign(tview.AlignCenter).
 			SetSelectable(false))
 		updateFooterText(fmt.Sprintf("Query execution canceled by user after %s", res.Duration.Round(time.Millisecond)))
@@ -2764,7 +2735,7 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	}
 
 	if res.ErrorMessage != "" {
-		titleStr := fmt.Sprintf(" [::b]Query Result [%s] [red](Error) ", envTagStr)
+		titleStr := " [ Query Result: Error ] "
 		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 		table.SetCell(0, 0, tview.NewTableCell("[red::b]Error: "+res.ErrorMessage).
 			SetAlign(tview.AlignLeft).
@@ -2775,11 +2746,11 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	}
 
 	if res.IsMutation {
-		titleStr := fmt.Sprintf(" [::b]Mutation Result [%s] [white](Query OK, %d rows affected, %s) ",
-			envTagStr, res.RowsAffected, res.Duration.Round(time.Microsecond))
+		titleStr := fmt.Sprintf(" [ Mutation Result: %d rows affected (%s) ] ",
+			res.RowsAffected, res.Duration.Round(time.Microsecond))
 		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
-		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[lime::b]✓ Query OK, %d row(s) affected [white](Execution time: %s)[-::-]",
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[lime::b]Query OK, %d row(s) affected [white](Execution time: %s)[-::-]",
 			res.RowsAffected, res.Duration.Round(time.Microsecond))).
 			SetAlign(tview.AlignCenter).
 			SetSelectable(false))
@@ -2788,32 +2759,37 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		return
 	}
 
-	// Set column headers with styling
+	// Set column headers with professional styling
+	headerStyle := tcell.StyleDefault.
+		Background(CurrentTheme.HeaderBg).
+		Foreground(CurrentTheme.HeaderFg).
+		Bold(true)
 	for i, col := range res.Columns {
-		header := fmt.Sprintf("[::b][white::]%s", col)
 		table.SetCell(0, i,
-			tview.NewTableCell(header).
-				SetTextColor(tcell.ColorWhite).
+			tview.NewTableCell(" "+col+" ").
+				SetStyle(headerStyle).
 				SetAlign(tview.AlignCenter).
 				SetSelectable(false))
 	}
 
-	// Set rows
+	// Set rows with clean theme colors
 	for rIdx, row := range res.Rows {
 		for cIdx, val := range row {
-			color := tcell.ColorWhite
+			cellStyle := tcell.StyleDefault.
+				Foreground(CurrentTheme.TextPrimary).
+				Background(tcell.ColorReset)
 			if (rIdx+1)%2 == 0 {
-				color = tcell.ColorLightGray
+				cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
 			}
-			cell := tview.NewTableCell(val).
-				SetTextColor(color).
+			cell := tview.NewTableCell(" "+val+" ").
+				SetStyle(cellStyle).
 				SetAlign(tview.AlignLeft)
 			table.SetCell(rIdx+1, cIdx, cell)
 		}
 	}
 
-	titleStr := fmt.Sprintf(" [::b]Query Result [%s] [white](%d rows, %s) | Pg %d | [yellow]Ctrl+N/P[::-]:Pg [yellow]Ctrl+E[::-]:Export [yellow]F3[::-]:Schema [yellow]F4[::-]:Top [yellow]F5[::-]:Plan ",
-		envTagStr, res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1)
+	titleStr := fmt.Sprintf(" [ Query Results: %d rows | %s | Page %d ] ",
+		res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1)
 	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
 	updateFooterText(fmt.Sprintf("Fetched %d row(s) in %s", res.RowCount, res.Duration.Round(time.Microsecond)))
@@ -2921,7 +2897,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 		}
 
 		if ActiveReadOnly {
-			showErrorModal(app, mainFlex, "🔒 Action Blocked: Active Connection is in READ-ONLY Mode. Inline cell editing is disabled.")
+			showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode. Inline cell editing is disabled.")
 			return
 		}
 
@@ -3140,7 +3116,8 @@ func showExportResultsModal(app *tview.Application, table *tview.Table) {
 
 func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableName string) {
 	colTable := tview.NewTable().SetBorders(true)
-	colTable.SetTitle(fmt.Sprintf(" 📋 Columns of `%s` ", tableName)).SetBorder(true)
+	StyleModalBox(colTable.Box, fmt.Sprintf("Columns of `%s`", tableName))
+	StyleTable(colTable)
 
 	colQuery := fmt.Sprintf("SHOW COLUMNS FROM %s.%s", util.QuoteIdentifier(dbName), util.QuoteIdentifier(tableName))
 	rows, err := db.Query(colQuery)
@@ -3152,7 +3129,10 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 
 	headers := []string{"Field", "Type", "Null", "Key", "Default", "Extra"}
 	for i, h := range headers {
-		colTable.SetCell(0, i, tview.NewTableCell("[::b]"+h).SetTextColor(tcell.ColorYellow).SetAlign(tview.AlignCenter))
+		colTable.SetCell(0, i, tview.NewTableCell(" "+h+" ").
+			SetTextColor(CurrentTheme.HeaderFg).
+			SetBackgroundColor(CurrentTheme.HeaderBg).
+			SetAlign(tview.AlignCenter))
 	}
 
 	rIdx := 1
@@ -3160,18 +3140,19 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 		var field, typ, nullStr, keyStr, extraStr sql.NullString
 		var defStr sql.NullString
 		if err := rows.Scan(&field, &typ, &nullStr, &keyStr, &defStr, &extraStr); err == nil {
-			colTable.SetCell(rIdx, 0, tview.NewTableCell(field.String).SetTextColor(tcell.ColorGreen))
-			colTable.SetCell(rIdx, 1, tview.NewTableCell(typ.String).SetTextColor(tcell.ColorWhite))
-			colTable.SetCell(rIdx, 2, tview.NewTableCell(nullStr.String).SetTextColor(tcell.ColorLightGray))
-			colTable.SetCell(rIdx, 3, tview.NewTableCell(keyStr.String).SetTextColor(tcell.ColorAqua))
-			colTable.SetCell(rIdx, 4, tview.NewTableCell(defStr.String).SetTextColor(tcell.ColorLightGray))
-			colTable.SetCell(rIdx, 5, tview.NewTableCell(extraStr.String).SetTextColor(tcell.ColorGray))
+			colTable.SetCell(rIdx, 0, tview.NewTableCell(" "+field.String+" ").SetTextColor(CurrentTheme.AccentSuccess))
+			colTable.SetCell(rIdx, 1, tview.NewTableCell(" "+typ.String+" ").SetTextColor(CurrentTheme.TextPrimary))
+			colTable.SetCell(rIdx, 2, tview.NewTableCell(" "+nullStr.String+" ").SetTextColor(CurrentTheme.TextSecondary))
+			colTable.SetCell(rIdx, 3, tview.NewTableCell(" "+keyStr.String+" ").SetTextColor(CurrentTheme.AccentPrimary))
+			colTable.SetCell(rIdx, 4, tview.NewTableCell(" "+defStr.String+" ").SetTextColor(CurrentTheme.TextSecondary))
+			colTable.SetCell(rIdx, 5, tview.NewTableCell(" "+extraStr.String+" ").SetTextColor(CurrentTheme.TextSecondary))
 			rIdx++
 		}
 	}
 
 	idxTable := tview.NewTable().SetBorders(true)
-	idxTable.SetTitle(fmt.Sprintf(" 🔑 Indexes of `%s` ", tableName)).SetBorder(true)
+	StyleModalBox(idxTable.Box, fmt.Sprintf("Indexes of `%s`", tableName))
+	StyleTable(idxTable)
 
 	idxQuery := fmt.Sprintf("SHOW INDEX FROM %s.%s", util.QuoteIdentifier(dbName), util.QuoteIdentifier(tableName))
 	idxRows, err := db.Query(idxQuery)
@@ -3179,7 +3160,10 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 		defer idxRows.Close()
 		idxHeaders := []string{"Key_name", "Column_name", "Non_unique", "Index_type"}
 		for i, h := range idxHeaders {
-			idxTable.SetCell(0, i, tview.NewTableCell("[::b]"+h).SetTextColor(tcell.ColorYellow).SetAlign(tview.AlignCenter))
+			idxTable.SetCell(0, i, tview.NewTableCell(" "+h+" ").
+				SetTextColor(CurrentTheme.HeaderFg).
+				SetBackgroundColor(CurrentTheme.HeaderBg).
+				SetAlign(tview.AlignCenter))
 		}
 		irIdx := 1
 		for idxRows.Next() {
@@ -3194,10 +3178,10 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 				nuName := scanVals[1].(*sql.NullString).String
 				iType := scanVals[10].(*sql.NullString).String
 
-				idxTable.SetCell(irIdx, 0, tview.NewTableCell(kName).SetTextColor(tcell.ColorAqua))
-				idxTable.SetCell(irIdx, 1, tview.NewTableCell(cName).SetTextColor(tcell.ColorGreen))
-				idxTable.SetCell(irIdx, 2, tview.NewTableCell(nuName).SetTextColor(tcell.ColorWhite))
-				idxTable.SetCell(irIdx, 3, tview.NewTableCell(iType).SetTextColor(tcell.ColorLightGray))
+				idxTable.SetCell(irIdx, 0, tview.NewTableCell(" "+kName+" ").SetTextColor(CurrentTheme.AccentPrimary))
+				idxTable.SetCell(irIdx, 1, tview.NewTableCell(" "+cName+" ").SetTextColor(CurrentTheme.AccentSuccess))
+				idxTable.SetCell(irIdx, 2, tview.NewTableCell(" "+nuName+" ").SetTextColor(CurrentTheme.TextPrimary))
+				idxTable.SetCell(irIdx, 3, tview.NewTableCell(" "+iType+" ").SetTextColor(CurrentTheme.TextSecondary))
 				irIdx++
 			}
 		}
@@ -3246,64 +3230,10 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 }
 
 func showHelpModal(app *tview.Application) {
-	helpText := `
- [lime::b]PHERI KEYBOARD SHORTCUTS REFERENCE[::-]
-
- [yellow::b]General Shortcuts[::-]
-   [green]F1 / ?[-]        Show this Help Legend
-   [green]Tab[-]           Switch Focus between Panes
-   [green]Esc[-]           Return Focus / Close Dialogs
-   [green]Ctrl+Q[-]        Quit Application
-
- [yellow::b]Search & Navigation[::-]
-   [green]table:kw[-]      Filter Tables
-   [green]view:kw[-]       Filter Views
-   [green]procedure:kw[-]  Filter Stored Procedures
-   [green]function:kw[-]   Filter Functions
-   [green]db:kw[-]         Filter Databases
-
- [yellow::b]Query Editor Shortcuts[::-]
-   [green]Ctrl+R[-]        Execute Query
-   [green]Ctrl+F11[-]      Full Screen Editor
-   [green]Ctrl+T[-]        Insert Tables List
-   [green]Ctrl+S[-]        SQL Keywords Popup
-   [green]Ctrl+_[-]        SQL Templates Popup
-
- [yellow::b]Data Grid Shortcuts[::-]
-   [green]Enter[-]         Edit Selected Cell
-   [green]Ctrl+N[-]        Next Page (100 Rows)
-   [green]Ctrl+P[-]        Previous Page (100 Rows)
-   [green]Ctrl+E[-]        Export Results (CSV / JSON)
-   [green]F3 / Ctrl+K[-]   Table Schema & Index Inspector
-   [green]Ctrl+X[-]        Copy DDL & Inserts to Clipboard
-
- [yellow::b]Backup Tools[::-]
-   [green]Ctrl+Y[-]        Export Full Database (Gzip)
-   [gray]Ctrl+I[-]        Import Database Dump (Disabled)
-
- [white]Press ESC or ENTER to close this window.
-`
-
-	modal := tview.NewTextView().
-		SetDynamicColors(true).
-		SetText(helpText)
-	modal.SetBorder(true).SetTitle(" ❓ Keyboard Shortcuts ").SetTitleAlign(tview.AlignCenter)
-
-	flex := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(nil, 0, 1, false).
-		AddItem(modal, 26, 1, true).
-		AddItem(nil, 0, 1, false)
-
-	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
-			app.SetRoot(mainFlex, true)
-			return nil
-		}
-		return event
-	})
-
-	app.SetRoot(flex, true).SetFocus(modal)
+	ShowComprehensiveHelpModal(app)
 }
+
+
 
 
 // Remove formatting codes like [::b]
@@ -3438,16 +3368,13 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 		SetTextAlign(tview.AlignCenter)
 
 	table := tview.NewTable().SetBorders(true).SetSelectable(true, false)
-	table.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorDarkBlue).Bold(true))
-	table.SetBorder(true).
-		SetTitle(" 🔍 EXPLAIN Execution Plan & Performance Analyzer ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorYellow).
-		SetBackgroundColor(tcell.ColorBlack)
+	StyleTable(table)
+	StyleModalBox(table.Box, "EXPLAIN Execution Plan & Performance Analyzer")
+	table.SetBackgroundColor(CurrentTheme.SurfaceBg)
 
 	headerStyle := tcell.StyleDefault.
-		Foreground(tcell.ColorBlack).
-		Background(tcell.ColorYellow).
+		Foreground(CurrentTheme.HeaderFg).
+		Background(CurrentTheme.HeaderBg).
 		Bold(true)
 
 	for i, col := range columns {
@@ -3540,27 +3467,27 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 	healthScore := 100
 	if hasFullTableScan {
 		healthScore -= 50
-		warnings = append(warnings, "[red::b]🔴 FULL TABLE SCAN (type=ALL)[-]")
+		warnings = append(warnings, "[red::b][CRITICAL] FULL TABLE SCAN (type=ALL)[-]")
 	}
 	if hasFilesort {
 		healthScore -= 20
-		warnings = append(warnings, "[yellow::b]⚠️ FILESORT[-] ")
+		warnings = append(warnings, "[yellow::b][WARNING] FILESORT[-] ")
 	}
 	if hasTempTable {
 		healthScore -= 20
-		warnings = append(warnings, "[yellow::b]⚠️ TEMPORARY TABLE[-] ")
+		warnings = append(warnings, "[yellow::b][WARNING] TEMPORARY TABLE[-] ")
 	}
 	if healthScore < 0 {
 		healthScore = 0
 	}
 
-	scoreBadge := fmt.Sprintf("[lime::b]⚡ OPTIMAL (%d%%)[-]", healthScore)
+	scoreBadge := fmt.Sprintf("[lime::b]OPTIMAL (%d%%)[-]", healthScore)
 	bgColor := tcell.ColorDarkGreen
 	if healthScore <= 50 {
-		scoreBadge = fmt.Sprintf("[red::b]🔴 CRITICAL BOTTLENECK (%d%%)[-]", healthScore)
+		scoreBadge = fmt.Sprintf("[red::b]CRITICAL BOTTLENECK (%d%%)[-]", healthScore)
 		bgColor = tcell.ColorDarkRed
 	} else if healthScore <= 80 {
-		scoreBadge = fmt.Sprintf("[yellow::b]⚠️ SUBOPTIMAL (%d%%)[-]", healthScore)
+		scoreBadge = fmt.Sprintf("[yellow::b]SUBOPTIMAL (%d%%)[-]", healthScore)
 		bgColor = tcell.ColorDarkCyan
 	}
 
@@ -3641,10 +3568,8 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 			analyzeView := tview.NewTextView().
 				SetDynamicColors(true).
 				SetScrollable(true)
-			analyzeView.SetBackgroundColor(tcell.ColorBlack)
-			analyzeView.SetBorder(true).
-				SetTitle(" ⚡ EXPLAIN ANALYZE (Real Execution Time & Loop Costs) ").
-				SetTitleColor(tcell.ColorYellow)
+			analyzeView.SetBackgroundColor(CurrentTheme.SurfaceBg)
+			StyleModalBox(analyzeView.Box, "EXPLAIN ANALYZE (Execution Times & Costs)")
 
 			analyzeOutput := getExplainQueryOutput(db, "EXPLAIN ANALYZE "+cleanQ)
 			analyzeView.SetText(analyzeOutput)
@@ -3674,10 +3599,8 @@ func showExplainModal(app *tview.Application, db *sql.DB, query string) {
 			jsonView := tview.NewTextView().
 				SetDynamicColors(true).
 				SetScrollable(true)
-			jsonView.SetBackgroundColor(tcell.ColorBlack)
-			jsonView.SetBorder(true).
-				SetTitle(" 🔍 EXPLAIN FORMAT=JSON Output ").
-				SetTitleColor(tcell.ColorDarkMagenta)
+			jsonView.SetBackgroundColor(CurrentTheme.SurfaceBg)
+			StyleModalBox(jsonView.Box, "EXPLAIN FORMAT=JSON Output")
 
 			jsonOutput := getExplainQueryOutput(db, "EXPLAIN FORMAT=JSON "+cleanQ)
 			jsonView.SetText(jsonOutput)
@@ -3769,10 +3692,10 @@ func getExplainQueryOutput(db *sql.DB, query string) string {
 
 func buildIndexRecommendationText(tables []string, fullScan, filesort, tempTable bool, totalRows int64, usedKeys []string) string {
 	var sb strings.Builder
-	sb.WriteString("[aqua::b]💡 PHERI AI PERFORMANCE & INDEX ADVISOR 💡[-::-]\n\n")
+	sb.WriteString("[aqua::b]PHERI PERFORMANCE & INDEX ADVISOR[-::-]\n\n")
 
 	if !fullScan && !filesort && !tempTable {
-		sb.WriteString("[lime::b]✅ GREAT NEWS: Query execution plan is already optimal![-::-]\n")
+		sb.WriteString("[lime::b]Query execution plan is optimal.[-::-]\n")
 		sb.WriteString("• Using Index Key(s): " + strings.Join(usedKeys, ", ") + "\n")
 		sb.WriteString("• Scanned row count is minimal (" + fmt.Sprintf("%d", totalRows) + " rows).\n")
 		return sb.String()
@@ -3786,21 +3709,21 @@ func buildIndexRecommendationText(tables []string, fullScan, filesort, tempTable
 	}
 
 	if fullScan {
-		sb.WriteString("1. [red::b]🔴 CRITICAL: Full Table Scan Detected (type=ALL)[-::-]\n")
+		sb.WriteString("1. [red::b]CRITICAL: Full Table Scan Detected (type=ALL)[-::-]\n")
 		sb.WriteString("   Scanned ~" + formatSize(totalRows) + " rows without using an index.\n")
 		sb.WriteString("   [lime::b]Recommended Index Fix:[-::-]\n")
 		sb.WriteString(fmt.Sprintf("   [cyan::b]CREATE INDEX idx_%s_filter ON %s (id);[-::-]\n\n", tblName, tblName))
 	}
 
 	if filesort {
-		sb.WriteString("2. [yellow::b]⚠️ WARNING: Using Filesort[-::-]\n")
+		sb.WriteString("2. [yellow::b]WARNING: Using Filesort[-::-]\n")
 		sb.WriteString("   MySQL is sorting rows in memory/disk instead of using an ordered index.\n")
 		sb.WriteString("   [lime::b]Recommended Index Fix:[-::-]\n")
 		sb.WriteString(fmt.Sprintf("   [cyan::b]CREATE INDEX idx_%s_sort ON %s (created_at DESC);[-::-]\n\n", tblName, tblName))
 	}
 
 	if tempTable {
-		sb.WriteString("3. [yellow::b]⚠️ WARNING: Using Temporary Table[-::-]\n")
+		sb.WriteString("3. [yellow::b]WARNING: Using Temporary Table[-::-]\n")
 		sb.WriteString("   Intermediate result sets are being written to temporary disk tables.\n")
 	}
 

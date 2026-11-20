@@ -39,22 +39,17 @@ func ShowProcessListModal(app *tview.Application, db *sql.DB) {
 	metricsBar := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
-	metricsBar.SetBackgroundColor(tcell.ColorDarkBlue)
+	metricsBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	table := tview.NewTable().
 		SetBorders(true).
 		SetSelectable(true, false)
-
-	table.SetBorder(true).
-		SetTitle(" ⚡ MySQL Live Process Manager (SHOW FULL PROCESSLIST) ").
-		SetTitleAlign(tview.AlignCenter).
-		SetBorderColor(tcell.ColorDarkCyan)
-
-	table.SetBackgroundColor(tcell.ColorBlack)
+	StyleTable(table)
+	StyleBox(table.Box, "MySQL Live Process Manager (SHOW FULL PROCESSLIST)", true)
 
 	headerStyle := tcell.StyleDefault.
-		Foreground(tcell.ColorBlack).
-		Background(tcell.ColorAqua).
+		Foreground(CurrentTheme.HeaderFg).
+		Background(CurrentTheme.HeaderBg).
 		Bold(true)
 
 	headers := []string{"ID", "User", "Host", "DB", "Command", "Time (s)", "State", "Query Info"}
@@ -284,7 +279,7 @@ func ShowProcessListModal(app *tview.Application, db *sql.DB) {
 					SetText(fmt.Sprintf("[yellow::b]Thread ID: [white]%s | [yellow::b]User: [white]%s@%s | [yellow::b]DB: [white]%s\n[yellow::b]State: [white]%s | [yellow::b]Time: [white]%ss\n\n[lime::b]Query SQL:\n[white]%s",
 						proc.ID, proc.User, proc.Host, proc.DB, proc.State, proc.Time, proc.Info)).
 					SetScrollable(true)
-				sqlView.SetBorder(true).SetTitle(" 🔍 Full Query Details ")
+				StyleModalBox(sqlView.Box, "Full Query Details")
 
 				sqlModal := tview.NewFlex().SetDirection(tview.FlexRow).
 					AddItem(sqlView, 0, 1, true).
@@ -313,10 +308,10 @@ func ShowProcessListModal(app *tview.Application, db *sql.DB) {
 				procID := strings.TrimSpace(table.GetCell(r, 0).Text)
 				if procID != "" && procID != "ID" {
 					modal := tview.NewModal().
-						SetText(fmt.Sprintf("[yellow::b]⚡ Kill MySQL Connection / Query\n\n[white]Target Thread ID: [cyan]%s\nSelect action:", procID)).
+						SetText(fmt.Sprintf("[yellow::b]Kill MySQL Connection / Query\n\n[white]Target Thread ID: [cyan]%s\nSelect action:", procID)).
 						AddButtons([]string{"[red]Kill Connection", "[yellow]Kill Query Only", "[white]Cancel"}).
-						SetBackgroundColor(tcell.ColorDarkBlue).
-						SetButtonBackgroundColor(tcell.ColorDarkCyan).
+						SetBackgroundColor(CurrentTheme.SurfaceBg).
+						SetButtonBackgroundColor(CurrentTheme.SelectedBg).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 							if buttonIndex == 0 {
 								killProcess(procID, false)
