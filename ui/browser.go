@@ -59,6 +59,8 @@ var activeGridDB *sql.DB = nil
 var (
 	isQueryRunning    atomic.Bool
 	activeQueryCancel context.CancelFunc
+	activeQueryConnID atomic.Uint64
+	activeQueryDB     *sql.DB
 	activeQueryMutex  sync.Mutex
 )
 
@@ -71,19 +73,36 @@ type QueryResult struct {
 	IsMutation   bool
 	ErrorMessage string
 	IsCanceled   bool
+	ServerThread uint64
 }
 
 func CancelActiveQuery() {
 	activeQueryMutex.Lock()
-	defer activeQueryMutex.Unlock()
-	if activeQueryCancel != nil {
-		activeQueryCancel()
-		activeQueryCancel = nil
+	cancel := activeQueryCancel
+	connID := activeQueryConnID.Load()
+	db := activeQueryDB
+	activeQueryCancel = nil
+	activeQueryMutex.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	if connID > 0 && db != nil {
+		go func(targetID uint64, targetDB *sql.DB) {
+			ctxKill, cancelKill := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancelKill()
+			_, _ = targetDB.ExecContext(ctxKill, fmt.Sprintf("KILL QUERY %d", targetID))
+		}(connID, db)
 	}
 }
 
 func IsQueryRunning() bool {
 	return isQueryRunning.Load()
+}
+
+func GetActiveQueryConnectionID() uint64 {
+	return activeQueryConnID.Load()
 }
 
 
@@ -164,6 +183,18 @@ func filterTableList(
 							CancelActiveQuery()
 							return nil
 						}
+					} else if event.Key() == tcell.KeyCtrlC {
+						if activeSQLEditor != nil && activeSQLEditor.Editor != nil && activeSQLEditor.Editor.HasFocus() {
+							return event
+						}
+						updateFooterText("Press Ctrl+Q or type :quit to exit Pheri")
+						return nil
+					} else if event.Key() == tcell.KeyCtrlC {
+						if activeSQLEditor != nil && activeSQLEditor.Editor != nil && activeSQLEditor.Editor.HasFocus() {
+							return event
+						}
+						updateFooterText("Press Ctrl+Q or type :quit to exit Pheri")
+						return nil
 					}
 
 					// Never hijack Backspace or Delete in global capture so editing always works in all inputs and editors
@@ -1673,6 +1704,12 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 							CancelActiveQuery()
 							return nil
 						}
+					} else if event.Key() == tcell.KeyCtrlC {
+						if activeSQLEditor != nil && activeSQLEditor.Editor != nil && activeSQLEditor.Editor.HasFocus() {
+							return event
+						}
+						updateFooterText("Press Ctrl+Q or type :quit to exit Pheri")
+						return nil
 					}
 
 					// Never hijack Backspace or Delete in global capture so editing always works in all inputs and editors
@@ -2591,6 +2628,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 	activeQueryMutex.Lock()
 	ctx, cancel := context.WithCancel(context.Background())
 	activeQueryCancel = cancel
+	activeQueryDB = db
 	isQueryRunning.Store(true)
 	activeQueryMutex.Unlock()
 
@@ -2632,21 +2670,50 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			close(tickerDone)
 			activeQueryMutex.Lock()
 			activeQueryCancel = nil
+			activeQueryDB = nil
 			isQueryRunning.Store(false)
 			activeQueryMutex.Unlock()
+			activeQueryConnID.Store(0)
 		}()
 
 		result := &QueryResult{
 			IsMutation: isMutation,
 		}
 
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			result.Duration = time.Since(startTime)
+			if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+				result.IsCanceled = true
+			} else {
+				result.ErrorMessage = "Failed to acquire database connection: " + err.Error()
+			}
+			app.QueueUpdateDraw(func() {
+				renderQueryResult(app, result, table)
+				if onComplete != nil {
+					onComplete(result)
+				}
+			})
+			return
+		}
+		defer conn.Close()
+
+		var threadID uint64
+		idRow := conn.QueryRowContext(ctx, "SELECT CONNECTION_ID()")
+		if err := idRow.Scan(&threadID); err == nil && threadID > 0 {
+			activeQueryConnID.Store(threadID)
+			result.ServerThread = threadID
+		}
+
 		if isMutation {
-			execRes, err := db.ExecContext(ctx, query)
+			execRes, err := conn.ExecContext(ctx, query)
 			duration := time.Since(startTime)
 			result.Duration = duration
 
 			if err != nil {
-				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+				errLower := strings.ToLower(err.Error())
+				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled ||
+					strings.Contains(errLower, "interrupted") || strings.Contains(errLower, "1317") {
 					result.IsCanceled = true
 				} else {
 					result.ErrorMessage = err.Error()
@@ -2656,12 +2723,14 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 				result.RowsAffected = rowsAff
 			}
 		} else {
-			rows, err := db.QueryContext(ctx, query)
+			rows, err := conn.QueryContext(ctx, query)
 			duration := time.Since(startTime)
 			result.Duration = duration
 
 			if err != nil {
-				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+				errLower := strings.ToLower(err.Error())
+				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled ||
+					strings.Contains(errLower, "interrupted") || strings.Contains(errLower, "1317") {
 					result.IsCanceled = true
 				} else {
 					result.ErrorMessage = err.Error()
@@ -2686,6 +2755,11 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 							break
 						}
 						if scanErr := rows.Scan(scanValues...); scanErr != nil {
+							scanLower := strings.ToLower(scanErr.Error())
+							if errors.Is(scanErr, context.Canceled) || strings.Contains(scanLower, "interrupted") || strings.Contains(scanLower, "1317") {
+								result.IsCanceled = true
+								break
+							}
 							continue
 						}
 
@@ -2703,6 +2777,12 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 							}
 						}
 						result.Rows = append(result.Rows, rowStrings)
+					}
+					if rows.Err() != nil {
+						rErr := strings.ToLower(rows.Err().Error())
+						if errors.Is(rows.Err(), context.Canceled) || strings.Contains(rErr, "interrupted") || strings.Contains(rErr, "1317") {
+							result.IsCanceled = true
+						}
 					}
 					result.RowCount = len(result.Rows)
 				}
@@ -2724,12 +2804,16 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	table.SetBorders(false)
 
 	if res.IsCanceled {
-		titleStr := fmt.Sprintf(" [ Query Result: Canceled (%s) ] ", res.Duration.Round(time.Millisecond))
+		titleStr := fmt.Sprintf(" [ Query Result: Aborted (%s) ] ", res.Duration.Round(time.Millisecond))
 		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
-		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b][CANCELED] Query execution canceled by user [white](aborted after %s)[-::-]", res.Duration.Round(time.Millisecond))).
+		var threadInfo string
+		if res.ServerThread > 0 {
+			threadInfo = fmt.Sprintf(" [gray](MySQL Thread %d killed on server)[-]", res.ServerThread)
+		}
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]Query execution canceled by user (Ctrl+C / Esc) [white](aborted after %s)[-::-]%s", res.Duration.Round(time.Millisecond), threadInfo)).
 			SetAlign(tview.AlignCenter).
 			SetSelectable(false))
-		updateFooterText(fmt.Sprintf("Query execution canceled by user after %s", res.Duration.Round(time.Millisecond)))
+		updateFooterText(fmt.Sprintf("Query canceled after %s%s", res.Duration.Round(time.Millisecond), strings.TrimPrefix(threadInfo, " ")))
 		setupTableInputCapture(app, table)
 		return
 	}

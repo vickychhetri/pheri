@@ -80,7 +80,12 @@ func UpdateFooterRunningQuery(elapsed time.Duration) {
 		envColor = "yellow"
 	}
 
-	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [yellow::b]Executing Query... (%0.1fs)[-::-] [gray]│[-] [aqua::b]Ctrl+C / Esc:[-] Cancel Query", envColor, ActiveEnv, elapsed.Seconds())
+	threadInfo := ""
+	if threadID := GetActiveQueryConnectionID(); threadID > 0 {
+		threadInfo = fmt.Sprintf(" [gray](Thread %d)[-::-]", threadID)
+	}
+
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [yellow::b]Executing Query... (%0.1fs)%s[-::-] [gray]│[-] [aqua::b]Ctrl+C / Esc:[-] Cancel (Server Kill)", envColor, ActiveEnv, elapsed.Seconds(), threadInfo)
 	footerBar.SetText(text)
 }
 
