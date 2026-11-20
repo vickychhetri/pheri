@@ -79,9 +79,10 @@ type QueryResult struct {
 func CancelActiveQuery() {
 	activeQueryMutex.Lock()
 	cancel := activeQueryCancel
-	connID := activeQueryConnID.Load()
+	connID := activeQueryConnID.Swap(0)
 	db := activeQueryDB
 	activeQueryCancel = nil
+	activeQueryDB = nil
 	activeQueryMutex.Unlock()
 
 	if cancel != nil {
@@ -95,6 +96,24 @@ func CancelActiveQuery() {
 			_, _ = targetDB.ExecContext(ctxKill, fmt.Sprintf("KILL QUERY %d", targetID))
 		}(connID, db)
 	}
+}
+
+// IsQueryInterruptedError determines whether an error indicates that the query was canceled or interrupted
+func IsQueryInterruptedError(err error, ctx context.Context) bool {
+	if ctx != nil && ctx.Err() == context.Canceled {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return true
+	}
+	errLower := strings.ToLower(err.Error())
+	return strings.Contains(errLower, "interrupted") ||
+		strings.Contains(errLower, "1317") ||
+		strings.Contains(errLower, "operation was canceled") ||
+		strings.Contains(errLower, "query execution was interrupted")
 }
 
 func IsQueryRunning() bool {
@@ -2604,6 +2623,23 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 		return
 	}
 
+	if db == nil {
+		updateFooterText("Database connection is not initialized.")
+		if onComplete != nil {
+			onComplete(&QueryResult{ErrorMessage: "database connection is not initialized"})
+		}
+		return
+	}
+
+	cleanQuery := strings.TrimSpace(query)
+	if cleanQuery == "" {
+		updateFooterText("SQL query is empty. Type a query to execute.")
+		if onComplete != nil {
+			onComplete(&QueryResult{ErrorMessage: "empty query"})
+		}
+		return
+	}
+
 	activeGridQuery = query
 	activeGridDB = db
 
@@ -2683,7 +2719,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 		conn, err := db.Conn(ctx)
 		if err != nil {
 			result.Duration = time.Since(startTime)
-			if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled {
+			if IsQueryInterruptedError(err, ctx) {
 				result.IsCanceled = true
 			} else {
 				result.ErrorMessage = "Failed to acquire database connection: " + err.Error()
@@ -2711,9 +2747,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			result.Duration = duration
 
 			if err != nil {
-				errLower := strings.ToLower(err.Error())
-				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled ||
-					strings.Contains(errLower, "interrupted") || strings.Contains(errLower, "1317") {
+				if IsQueryInterruptedError(err, ctx) {
 					result.IsCanceled = true
 				} else {
 					result.ErrorMessage = err.Error()
@@ -2728,9 +2762,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			result.Duration = duration
 
 			if err != nil {
-				errLower := strings.ToLower(err.Error())
-				if errors.Is(err, context.Canceled) || ctx.Err() == context.Canceled ||
-					strings.Contains(errLower, "interrupted") || strings.Contains(errLower, "1317") {
+				if IsQueryInterruptedError(err, ctx) {
 					result.IsCanceled = true
 				} else {
 					result.ErrorMessage = err.Error()
@@ -2755,8 +2787,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 							break
 						}
 						if scanErr := rows.Scan(scanValues...); scanErr != nil {
-							scanLower := strings.ToLower(scanErr.Error())
-							if errors.Is(scanErr, context.Canceled) || strings.Contains(scanLower, "interrupted") || strings.Contains(scanLower, "1317") {
+							if IsQueryInterruptedError(scanErr, ctx) {
 								result.IsCanceled = true
 								break
 							}
@@ -2779,8 +2810,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 						result.Rows = append(result.Rows, rowStrings)
 					}
 					if rows.Err() != nil {
-						rErr := strings.ToLower(rows.Err().Error())
-						if errors.Is(rows.Err(), context.Canceled) || strings.Contains(rErr, "interrupted") || strings.Contains(rErr, "1317") {
+						if IsQueryInterruptedError(rows.Err(), ctx) {
 							result.IsCanceled = true
 						}
 					}

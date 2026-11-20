@@ -88,3 +88,20 @@ sequenceDiagram
    `Query execution canceled by user (Ctrl+C / Esc) (aborted after 1.8s) (MySQL Thread 42 killed on server)`.
 6. **Graceful OS Interrupt Listener (`main.go`)**:
    An OS signal notification loop catches `SIGINT` and invokes `ui.CancelActiveQuery()` if a query is executing.
+
+---
+
+## 5. Edge Cases & Verification Matrix
+
+| Edge Case Scenario | Risk / Failure Mode | Engineering Mitigation in PHERI-02 | Test Coverage |
+| :--- | :--- | :--- | :--- |
+| **Rapid Cancellation Spamming** | User mashes `Ctrl+C` or `Esc` 50 times in rapid succession, spawning dozens of concurrent `KILL QUERY` goroutines. | `activeQueryConnID.Swap(0)` and `activeQueryCancel = nil` under mutex ensure only the first cancellation call dispatches `KILL QUERY`. Subsequent calls become safe no-ops. | `TestCancelActiveQuery_RapidConcurrentInvocations` |
+| **Cancellation Before Thread ID Resolved** | User cancels while `SELECT CONNECTION_ID()` is still inflight or network is slow (`connID == 0`). | Context cancellation immediately aborts `QueryRowContext`. `connID > 0` guard skips `KILL QUERY 0`, avoiding invalid SQL execution. | `TestQueryCancellationMechanism` |
+| **Error Classification Discrepancies** | Different MySQL / MariaDB versions report interruption as `Error 1317`, `interrupted`, or `context.Canceled`. Syntax or auth errors misidentified as cancellations. | Centralized `IsQueryInterruptedError` rigorously checks `context.Canceled`, error code `1317`, and case-insensitive `"interrupted"`. Verified that syntax (1064), missing table (1146), and auth (1045) errors are never misclassified. | `TestIsQueryInterruptedError_EdgeCases` (14 subtests) |
+| **Mid-Stream Row Scanning Interruption** | Query returns 500,000 rows. User presses `Ctrl+C` while Pheri is buffering rows in `rows.Next()`. | `ctx.Err() == context.Canceled` checked inside loop; `rows.Scan` error checked with `IsQueryInterruptedError`. Loop breaks immediately; `defer rows.Close()` frees client & server memory. | `TestRowScanInterruptionHandling` |
+| **Long-Running DML / DDL Abort** | Heavy `UPDATE` or `ALTER TABLE` is cancelled by user. | `conn.ExecContext` error is evaluated with `IsQueryInterruptedError`. Result is cleanly categorized as `IsMutation = true` and `IsCanceled = true`. | `TestMutationQueryInterruptedClassification` |
+| **Uninitialized DB Pointer** | `ExecuteQueryAsync` invoked before connection initialization. | Nil guard `if db == nil` returns error result gracefully without nil pointer dereference. | `TestExecuteQueryAsync_DefensiveGuards` |
+| **Empty / Pure Whitespace Query** | User hits `Ctrl+R` on blank or whitespace query buffer. | Trim guard returns `"empty query"` without checking out a connection or executing background goroutines. | `TestExecuteQueryAsync_DefensiveGuards` |
+| **Concurrent Query Trigger** | User submits query while another query is actively running. | Atomic check `if isQueryRunning.Load()` blocks overlapping query execution and prompts user in footer. | `TestExecuteQueryAsync_DefensiveGuards` |
+| **Idle `Ctrl+C` in Editor vs Navigation** | User hits `Ctrl+C` while copying text in SQL editor or while browsing tables. | Editor retains clipboard copy function. Table and sidebar panes warn user `Press Ctrl+Q or type :quit to exit Pheri` without killing the process. | Global input capture validation |
+
