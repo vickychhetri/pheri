@@ -67,6 +67,7 @@ var (
 type QueryResult struct {
 	Columns      []string
 	Rows         [][]string
+	RawRows      [][]*string
 	Duration     time.Duration
 	RowCount     int
 	RowsAffected int64
@@ -2438,7 +2439,17 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				r, c := dataTable.GetSelection()
 				cell := dataTable.GetCell(r, c)
 				if cell != nil {
-					ShowCellInspectorModal(app, cell.Text)
+					headerCell := dataTable.GetCell(0, c)
+					colName := ""
+					if headerCell != nil {
+						colName = util.StripFormatting(headerCell.Text)
+					}
+					gc := GetGridCellFromTableCell(cell, colName)
+					inspectText := gc.Value()
+					if gc.IsNull() {
+						inspectText = "(NULL)"
+					}
+					ShowCellInspectorModal(app, inspectText)
 					return nil
 				}
 			}
@@ -2795,19 +2806,23 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 						}
 
 						rowStrings := make([]string, len(cols))
+						rawRow := make([]*string, len(cols))
 						for i, col := range rawValues {
 							if col == nil {
-								rowStrings[i] = "[gray]NULL"
+								rawRow[i] = nil
+								rowStrings[i] = "[gray::i]NULL[-::-]"
 							} else {
 								sVal := string(col)
+								rawRow[i] = &sVal
 								if sVal == "" {
-									rowStrings[i] = "[gray]EMPTY"
+									rowStrings[i] = "[gray::i]EMPTY[-::-]"
 								} else {
-									rowStrings[i] = sVal
+									rowStrings[i] = tview.Escape(sVal)
 								}
 							}
 						}
 						result.Rows = append(result.Rows, rowStrings)
+						result.RawRows = append(result.RawRows, rawRow)
 					}
 					if rows.Err() != nil {
 						if IsQueryInterruptedError(rows.Err(), ctx) {
@@ -2898,6 +2913,16 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 			cell := tview.NewTableCell(" "+val+" ").
 				SetStyle(cellStyle).
 				SetAlign(tview.AlignLeft)
+
+			var rawVal *string
+			if rIdx < len(res.RawRows) && cIdx < len(res.RawRows[rIdx]) {
+				rawVal = res.RawRows[rIdx][cIdx]
+			}
+			colName := ""
+			if cIdx < len(res.Columns) {
+				colName = res.Columns[cIdx]
+			}
+			cell.SetReference(NewGridCell(colName, rawVal))
 			table.SetCell(rIdx+1, cIdx, cell)
 		}
 	}
@@ -3016,37 +3041,89 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 		}
 
 		cell := table.GetCell(row, column)
-		currentValue := cell.Text
-
 		headerCell := table.GetCell(0, column)
 		columnName := util.StripFormatting(headerCell.Text)
+		gridCell := GetGridCellFromTableCell(cell, columnName)
+
+		isNULL := gridCell.IsNull()
+		cachedText := ""
+		if !isNULL {
+			cachedText = gridCell.Value()
+		}
+
+		statusView := tview.NewTextView().
+			SetDynamicColors(true).
+			SetTextAlign(tview.AlignLeft)
+
+		updateStatusText := func() {
+			if isNULL {
+				statusView.SetText(" Mode: [yellow::b][X] SQL NULL (Will save as NULL)[-::-]  │  [aqua]Ctrl+N[-]: Value Mode  │  [aqua]Ctrl+E[-]: Empty \"\"  │  [lime]Enter[-]: Save  │  [white]Esc[-]: Cancel")
+			} else if cachedText == "" {
+				statusView.SetText(" Mode: [cyan::b][ ] Empty String (\"\")[-::-]  │  [aqua]Ctrl+N[-]: Set to NULL  │  [lime]Enter[-]: Save  │  [white]Esc[-]: Cancel")
+			} else {
+				statusView.SetText(" Mode: [lime::b][ ] Literal Value[-::-]  │  [aqua]Ctrl+N[-]: Set to NULL  │  [aqua]Ctrl+E[-]: Empty \"\"  │  [lime]Enter[-]: Save  │  [white]Esc[-]: Cancel")
+			}
+		}
+		updateStatusText()
 
 		textArea := tview.NewTextArea()
-		textArea.
-			SetBorder(true).
-			SetTitle(fmt.Sprintf("Edit %s (Enter=Save, Esc=Cancel)", columnName))
-		textArea.SetText(string(currentValue), true)
+		textArea.SetBorder(true)
+		StyleBox(textArea.Box, fmt.Sprintf("Edit Cell: %s.%s", tableName, columnName), true)
+		if isNULL {
+			textArea.SetPlaceholder("SQL NULL (Press Ctrl+N or start typing to enter literal value)")
+			textArea.SetText("", false)
+		} else {
+			textArea.SetText(cachedText, true)
+		}
 
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			switch event.Key() {
+			case tcell.KeyCtrlN:
+				isNULL = !isNULL
+				if isNULL {
+					cachedText = textArea.GetText()
+					textArea.SetText("", false)
+					textArea.SetPlaceholder("SQL NULL (Press Ctrl+N or start typing to enter literal value)")
+				} else {
+					textArea.SetText(cachedText, true)
+				}
+				updateStatusText()
+				return nil
+
+			case tcell.KeyCtrlE:
+				isNULL = false
+				cachedText = ""
+				textArea.SetText("", false)
+				updateStatusText()
+				return nil
+
 			case tcell.KeyEnter:
 				if !isEditingEnabled {
 					modal := tview.NewModal().
 						SetText("Not allowed to update in Run Query mode").
 						AddButtons([]string{"OK"}).
 						SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-							app.SetRoot(mainFlex, true)
+							layout := CreateLayoutWithFooter(app, mainFlex)
+							app.SetRoot(layout, true)
 							util.SetFocusWithBorder(app, table)
 						})
 					app.SetRoot(modal, false)
 					return nil
 				}
 
-				newValue := textArea.GetText()
+				var valToSave *string
+				if !isNULL {
+					text := textArea.GetText()
+					valToSave = &text
+				}
 
 				var updateQuery string
 				var queryArgs []interface{}
-				queryArgs = append(queryArgs, newValue)
+				if valToSave == nil {
+					queryArgs = append(queryArgs, nil)
+				} else {
+					queryArgs = append(queryArgs, *valToSave)
+				}
 
 				if len(pkCols) > 0 {
 					var whereClauses []string
@@ -3054,9 +3131,13 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 						for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
 							colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
 							if colHeader == pkCol {
-								val := table.GetCell(row, colIdx).Text
-								whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(pkCol)))
-								queryArgs = append(queryArgs, val)
+								pkGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), pkCol)
+								if pkGC.IsNull() {
+									whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(pkCol)))
+								} else {
+									whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(pkCol)))
+									queryArgs = append(queryArgs, pkGC.Value())
+								}
 								break
 							}
 						}
@@ -3069,12 +3150,12 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 					var whereClauses []string
 					for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
 						colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
-						val := table.GetCell(row, colIdx).Text
-						if val == "[gray]NULL" || val == "" {
+						rowGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), colHeader)
+						if rowGC.IsNull() {
 							whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(colHeader)))
 						} else {
 							whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(colHeader)))
-							queryArgs = append(queryArgs, val)
+							queryArgs = append(queryArgs, rowGC.Value())
 						}
 					}
 					updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s LIMIT 1",
@@ -3090,25 +3171,37 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 					return nil
 				}
 
-				cell.SetText(newValue)
+				gridCell.RawValue = valToSave
+				cell.SetText(" " + gridCell.DisplayText() + " ")
+				cell.SetReference(gridCell)
+
 				fullQuery := phhistory.ReplacePlaceholders(updateQuery, queryArgs...)
 				phhistory.SaveQuery(fullQuery, dbName)
 				util.SaveLog(fullQuery)
 
-				app.SetRoot(mainFlex, true)
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
 				util.SetFocusWithBorder(app, table)
 				return nil
 
 			case tcell.KeyEscape:
-				app.SetRoot(mainFlex, true)
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
 				util.SetFocusWithBorder(app, table)
 				return nil
+
+			default:
+				if event.Key() == tcell.KeyRune && isNULL {
+					isNULL = false
+					updateStatusText()
+				}
 			}
 			return event
 		})
 
 		modal := tview.NewFlex().
 			SetDirection(tview.FlexRow).
+			AddItem(statusView, 1, 0, false).
 			AddItem(textArea, 0, 1, true)
 
 		app.SetRoot(modal, true).SetFocus(textArea)
@@ -3176,26 +3269,26 @@ func showExportResultsModal(app *tview.Application, table *tview.Table) {
 			for r := 1; r < rows; r++ {
 				var rowVals []string
 				for c := 0; c < cols; c++ {
-					val := table.GetCell(r, c).Text
-					if val == "[gray]NULL" {
-						val = ""
-					}
+					colHeader := util.StripFormatting(table.GetCell(0, c).Text)
+					gc := GetGridCellFromTableCell(table.GetCell(r, c), colHeader)
+					val := gc.ExportValue("")
 					rowVals = append(rowVals, fmt.Sprintf("%q", val))
 				}
 				lines = append(lines, strings.Join(rowVals, ","))
 			}
 			f.WriteString(strings.Join(lines, "\n") + "\n")
 		} else {
-			var jsonRows []map[string]string
+			var jsonRows []map[string]interface{}
 			for r := 1; r < rows; r++ {
-				rowMap := make(map[string]string)
+				rowMap := make(map[string]interface{})
 				for c := 0; c < cols; c++ {
 					header := util.StripFormatting(table.GetCell(0, c).Text)
-					val := table.GetCell(r, c).Text
-					if val == "[gray]NULL" {
-						val = "NULL"
+					gc := GetGridCellFromTableCell(table.GetCell(r, c), header)
+					if gc.IsNull() {
+						rowMap[header] = nil
+					} else {
+						rowMap[header] = gc.Value()
 					}
-					rowMap[header] = val
 				}
 				jsonRows = append(jsonRows, rowMap)
 			}
@@ -3207,7 +3300,8 @@ func showExportResultsModal(app *tview.Application, table *tview.Table) {
 			SetText(fmt.Sprintf("Exported %d rows to %s successfully!", rows-1, filePath)).
 			AddButtons([]string{"OK"}).
 			SetDoneFunc(func(i int, label string) {
-				app.SetRoot(mainFlex, true)
+				layout := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(layout, true)
 				util.SetFocusWithBorder(app, table)
 			})
 		app.SetRoot(modal, true)
