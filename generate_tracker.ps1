@@ -46,7 +46,7 @@ $tasks = @(
     },
     [PSCustomObject]@{
         ID = "PHERI-04"
-        Status = "To Do"
+        Status = "Completed"
         Priority = "P0 - Critical"
         Phase = "Phase 1: Core Reliability"
         Category = "Core Engine"
