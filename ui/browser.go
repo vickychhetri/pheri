@@ -65,16 +65,18 @@ var (
 )
 
 type QueryResult struct {
-	Columns      []string
-	Rows         [][]string
-	RawRows      [][]*string
-	Duration     time.Duration
-	RowCount     int
-	RowsAffected int64
-	IsMutation   bool
-	ErrorMessage string
-	IsCanceled   bool
-	ServerThread uint64
+	Columns       []string
+	Rows          [][]string
+	RawRows       [][]*string
+	Duration      time.Duration
+	RowCount      int
+	RowsAffected  int64
+	LastInsertID  int64
+	IsMutation    bool
+	StatementType string
+	ErrorMessage  string
+	IsCanceled    bool
+	ServerThread  uint64
 }
 
 func CancelActiveQuery() {
@@ -2654,20 +2656,12 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 	activeGridQuery = query
 	activeGridDB = db
 
-	cleanQ := strings.TrimSpace(strings.ToUpper(query))
-	isMutation := strings.HasPrefix(cleanQ, "INSERT") ||
-		strings.HasPrefix(cleanQ, "UPDATE") ||
-		strings.HasPrefix(cleanQ, "DELETE") ||
-		strings.HasPrefix(cleanQ, "DROP") ||
-		strings.HasPrefix(cleanQ, "TRUNCATE") ||
-		strings.HasPrefix(cleanQ, "ALTER") ||
-		strings.HasPrefix(cleanQ, "REPLACE") ||
-		strings.HasPrefix(cleanQ, "CREATE")
+	isMutation, stmtType := ClassifySQLStatement(query)
 
 	if isMutation && ActiveReadOnly {
-		showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode.")
+		showErrorModal(app, mainFlex, fmt.Sprintf("Action Blocked: %s statement not allowed in READ-ONLY Mode.", stmtType))
 		if onComplete != nil {
-			onComplete(&QueryResult{ErrorMessage: "read-only mode enabled", IsMutation: true})
+			onComplete(&QueryResult{ErrorMessage: "read-only mode enabled", IsMutation: true, StatementType: stmtType})
 		}
 		return
 	}
@@ -2724,7 +2718,8 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 		}()
 
 		result := &QueryResult{
-			IsMutation: isMutation,
+			IsMutation:    isMutation,
+			StatementType: stmtType,
 		}
 
 		conn, err := db.Conn(ctx)
@@ -2764,8 +2759,12 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 					result.ErrorMessage = err.Error()
 				}
 			} else {
-				rowsAff, _ := execRes.RowsAffected()
-				result.RowsAffected = rowsAff
+				if rowsAff, errAff := execRes.RowsAffected(); errAff == nil {
+					result.RowsAffected = rowsAff
+				}
+				if lastID, errID := execRes.LastInsertId(); errID == nil && lastID > 0 {
+					result.LastInsertID = lastID
+				}
 			}
 		} else {
 			rows, err := conn.QueryContext(ctx, query)
@@ -2875,15 +2874,29 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	}
 
 	if res.IsMutation {
-		titleStr := fmt.Sprintf(" [ Mutation Result: %d rows affected (%s) ] ",
-			res.RowsAffected, res.Duration.Round(time.Microsecond))
+		titleType := res.StatementType
+		if titleType == "" {
+			titleType = "Mutation"
+		}
+		titleStr := fmt.Sprintf(" [ %s: %d rows affected (%s) ] ",
+			titleType, res.RowsAffected, res.Duration.Round(time.Microsecond))
 		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
-		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[lime::b]Query OK, %d row(s) affected [white](Execution time: %s)[-::-]",
-			res.RowsAffected, res.Duration.Round(time.Microsecond))).
+		insertInfo := ""
+		if res.LastInsertID > 0 {
+			insertInfo = fmt.Sprintf("  [gray]│[-]  Last Insert ID: [aqua::b]%d[-::-]", res.LastInsertID)
+		}
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[lime::b]Query OK, %d row(s) affected [white](Execution time: %s)[-::-]%s",
+			res.RowsAffected, res.Duration.Round(time.Microsecond), insertInfo)).
 			SetAlign(tview.AlignCenter).
 			SetSelectable(false))
-		updateFooterText(fmt.Sprintf("Query OK, %d row(s) affected (%s)", res.RowsAffected, res.Duration.Round(time.Microsecond)))
+
+		footerInsertInfo := ""
+		if res.LastInsertID > 0 {
+			footerInsertInfo = fmt.Sprintf(", Last Insert ID: %d", res.LastInsertID)
+		}
+		updateFooterText(fmt.Sprintf("Query OK, %d row(s) affected (%s)%s",
+			res.RowsAffected, res.Duration.Round(time.Microsecond), footerInsertInfo))
 		setupTableInputCapture(app, table)
 		return
 	}
