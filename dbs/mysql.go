@@ -20,7 +20,7 @@ const (
 	DefaultWriteTimeout    = 60 * time.Second
 	DefaultMaxOpenConns    = 25
 	DefaultMaxIdleConns    = 5
-	DefaultConnMaxLifetime = 10 * time.Minute
+	DefaultConnMaxLifetime = 5 * time.Minute
 	DefaultConnMaxIdleTime = 3 * time.Minute
 	DefaultCollation       = "utf8mb4_general_ci"
 	DefaultPort            = "3306"
@@ -114,6 +114,60 @@ func BuildDSN(cfg ConnectConfig) string {
 	return mysqlCfg.FormatDSN()
 }
 
+// ConfigurePoolLimits sets connection pool constraints and lifecycle rotation limits on a *sql.DB instance.
+func ConfigurePoolLimits(db *sql.DB, maxOpen, maxIdle int, maxLifetime, maxIdleTime time.Duration) {
+	if db == nil {
+		return
+	}
+	if maxOpen <= 0 {
+		maxOpen = DefaultMaxOpenConns
+	}
+	if maxIdle <= 0 {
+		maxIdle = DefaultMaxIdleConns
+	}
+	if maxLifetime <= 0 {
+		maxLifetime = DefaultConnMaxLifetime
+	}
+	if maxIdleTime <= 0 {
+		maxIdleTime = DefaultConnMaxIdleTime
+	}
+
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(maxLifetime)
+	db.SetConnMaxIdleTime(maxIdleTime)
+}
+
+// PoolStatsSummary captures real-time driver connection pool telemetry.
+type PoolStatsSummary struct {
+	MaxOpenConnections int
+	OpenConnections    int
+	InUse              int
+	Idle               int
+	WaitCount          int64
+	WaitDuration       time.Duration
+	MaxLifetimeClosed  int64
+	MaxIdleTimeClosed  int64
+}
+
+// GetPoolStats extracts structured pool statistics from *sql.DB.
+func GetPoolStats(db *sql.DB) PoolStatsSummary {
+	if db == nil {
+		return PoolStatsSummary{}
+	}
+	stats := db.Stats()
+	return PoolStatsSummary{
+		MaxOpenConnections: stats.MaxOpenConnections,
+		OpenConnections:    stats.OpenConnections,
+		InUse:              stats.InUse,
+		Idle:               stats.Idle,
+		WaitCount:          stats.WaitCount,
+		WaitDuration:       stats.WaitDuration,
+		MaxLifetimeClosed:  stats.MaxLifetimeClosed,
+		MaxIdleTimeClosed:  stats.MaxIdleTimeClosed,
+	}
+}
+
 // OpenWithConfig creates a *sql.DB connection pool with configured limits, without executing Ping.
 func OpenWithConfig(cfg ConnectConfig) (*sql.DB, error) {
 	dsn := BuildDSN(cfg)
@@ -122,27 +176,7 @@ func OpenWithConfig(cfg ConnectConfig) (*sql.DB, error) {
 		return nil, err
 	}
 
-	maxOpen := cfg.MaxOpenConns
-	if maxOpen <= 0 {
-		maxOpen = DefaultMaxOpenConns
-	}
-	maxIdle := cfg.MaxIdleConns
-	if maxIdle <= 0 {
-		maxIdle = DefaultMaxIdleConns
-	}
-	connMaxLifetime := cfg.ConnMaxLifetime
-	if connMaxLifetime <= 0 {
-		connMaxLifetime = DefaultConnMaxLifetime
-	}
-	connMaxIdleTime := cfg.ConnMaxIdleTime
-	if connMaxIdleTime <= 0 {
-		connMaxIdleTime = DefaultConnMaxIdleTime
-	}
-
-	db.SetMaxOpenConns(maxOpen)
-	db.SetMaxIdleConns(maxIdle)
-	db.SetConnMaxLifetime(connMaxLifetime)
-	db.SetConnMaxIdleTime(connMaxIdleTime)
+	ConfigurePoolLimits(db, cfg.MaxOpenConns, cfg.MaxIdleConns, cfg.ConnMaxLifetime, cfg.ConnMaxIdleTime)
 
 	return db, nil
 }

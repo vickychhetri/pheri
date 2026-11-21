@@ -92,7 +92,8 @@ pheri/
 #### `dbs/mysql.go`
 - Exposes `dbs.Connect(user, pass, host, port string) (*sql.DB, error)` and `dbs.ConnectWithConfig(cfg ConnectConfig) (*sql.DB, error)`.
 - Builds safe DSN strings using `mysql.Config` with configurable network timeouts (`timeout=5s`, `readTimeout=60s`, `writeTimeout=60s`), collation (`utf8mb4_general_ci`), and `parseTime=true`.
-- Sets connection pooling limits on `*sql.DB` (`SetMaxOpenConns(25)`, `SetMaxIdleConns(5)`, `SetConnMaxLifetime(10m)`, `SetConnMaxIdleTime(3m)`).
+- Sets connection pooling limits on `*sql.DB` (`SetMaxOpenConns(25)`, `SetMaxIdleConns(5)`, `SetConnMaxLifetime(5m)`, `SetConnMaxIdleTime(3m)`) via `ConfigurePoolLimits`.
+- Exposes `GetPoolStats(db *sql.DB)` providing structured connection pool telemetry to the Health Dashboard (F6).
 - Provides `CategorizeConnectionError(err error) ConnectionErrorInfo` to diagnose connection errors (timeouts, connection refused, authentication failures, DNS issues) with user-friendly remediation hints.
 - Validates network connectivity and credentials with `db.Ping()` before the main workspace loads.
 

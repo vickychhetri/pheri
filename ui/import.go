@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"mysql-tui/dbs"
 	"mysql-tui/util"
 	"os"
 	"path/filepath"
@@ -56,9 +57,7 @@ func importAllObjects(progressChan chan string, dbName string) {
 	defer db.Close()
 
 	// Optimize connection pool for large imports
-	db.SetMaxOpenConns(25) // Reduce concurrent connections to avoid memory pressure
-	db.SetMaxIdleConns(10) // Keep fewer idle connections
-	db.SetConnMaxLifetime(time.Minute * 30)
+	dbs.ConfigurePoolLimits(db, 25, 10, 30*time.Minute, 5*time.Minute)
 
 	// Set session variables for import
 	if err := setImportSessionVariables(db); err != nil {

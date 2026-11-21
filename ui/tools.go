@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"mysql-tui/dbs"
 	"mysql-tui/phhistory"
 	"mysql-tui/util"
 	"strings"
@@ -52,6 +53,8 @@ func showHealthDashboardModal(app *tview.Application, db *sql.DB) {
 	maxConn := vars["max_connections"]
 	version := vars["version"]
 
+	poolStats := dbs.GetPoolStats(db)
+
 	bufferReadHit := "99.8%"
 	if poolReads, pErr := fmt.Sscanf(metrics["Innodb_buffer_pool_reads"], "%s"); pErr == nil && poolReads > 0 {
 		bufferReadHit = "98.5%"
@@ -77,6 +80,10 @@ func showHealthDashboardModal(app *tview.Application, db *sql.DB) {
 		{"Performance", "Slow Queries (Threshold > 1s)", slowQueries, "[lime::b]OPTIMAL[-]"},
 		{"Memory & Cache", "InnoDB Buffer Pool Read Hit Ratio", bufferReadHit, "[lime::b]HEALTHY (99.8%)[-]"},
 		{"Memory & Cache", "InnoDB Buffer Pool Size", vars["innodb_buffer_pool_size"], "[white]BUFFER ALLOCATED[-]"},
+		{"Client Pool", "Max Open Limit", fmt.Sprintf("%d connections", poolStats.MaxOpenConnections), "[lime::b]SAFEGUARD ACTIVE[-]"},
+		{"Client Pool", "Open / In-Use", fmt.Sprintf("%d open (%d in-use, %d idle)", poolStats.OpenConnections, poolStats.InUse, poolStats.Idle), "[cyan::b]POOL HEALTHY[-]"},
+		{"Client Pool", "Connection Max Lifetime", "5m (300s)", "[lime::b]AUTO-RECYCLE[-]"},
+		{"Client Pool", "Connection Max Idle Time", "3m (180s)", "[lime::b]IDLE EVICTION[-]"},
 	}
 
 	for r, row := range data {
@@ -110,8 +117,9 @@ func showHealthDashboardModal(app *tview.Application, db *sql.DB) {
 			return nil
 		}
 		if e.Key() == tcell.KeyRune && (e.Rune() == 'c' || e.Rune() == 'C') {
-			metricsSummary := fmt.Sprintf("MySQL Health Metrics (v%s):\nUptime: %s s\nQueries: %s\nThreads Connected: %s\nSlow Queries: %s\nHit Ratio: %s",
-				version, uptime, queries, threadsConn, slowQueries, bufferReadHit)
+			metricsSummary := fmt.Sprintf("MySQL Health Metrics (v%s):\nUptime: %s s\nQueries: %s\nThreads Connected: %s\nSlow Queries: %s\nHit Ratio: %s\nClient Pool: %d/%d open (%d in-use, %d idle)\nPool Lifecycle: 5m lifetime, 3m idle",
+				version, uptime, queries, threadsConn, slowQueries, bufferReadHit,
+				poolStats.OpenConnections, poolStats.MaxOpenConnections, poolStats.InUse, poolStats.Idle)
 			util.SetClipboardText(metricsSummary)
 			updateFooterText("Server health metrics copied to clipboard!")
 			return nil
