@@ -1387,6 +1387,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 	activeGridDB = db
 	activeGridDBName = dbName
+	ActiveLoginDB = db
+	ActiveScreen = "browser"
 
 	dataBaseList = tview.NewList()
 	dataBaseList.ShowSecondaryText(false).SetHighlightFullLine(true)
@@ -2007,6 +2009,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		searchInput := tview.NewInputField()
+		SchemaSearchInput = searchInput
 		searchInput.SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
 			SetFieldTextColor(CurrentTheme.TextPrimary).
 			SetLabel(" Filter: ").

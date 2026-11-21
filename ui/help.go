@@ -54,7 +54,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("   [lime::b]: (colon)[-::-]          Open interactive Command Launcher (:command palette)\n")
 	b.WriteString("   [lime::b]Ctrl+B[-::-]             Toggle Sidebar (collapse for full-width editor, expand back)\n")
 	b.WriteString("   [lime::b]F11[-::-]                Toggle Fullscreen View (press F11 or Esc to restore)\n")
-	b.WriteString("   [lime::b]F12[-::-]                Switch Theme (Nordic Frost, Tokyo Night, Catppuccin, Slate)\n")
+	b.WriteString("   [lime::b]F12[-::-]                Switch Theme (Nordic, Tokyo, Catppuccin, Slate, Dark, Light, Developer, Hacker, Classic, Gen-Z)\n")
 	b.WriteString("   [lime::b]Esc[-::-]                Close any active modal dialog or cancel active query\n\n")
 
 	b.WriteString(" [aqua::b]3. BROWSING & SEARCHING DATABASE OBJECTS (SIDEBAR)[-::-]\n")

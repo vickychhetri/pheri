@@ -19,6 +19,8 @@ var ActiveEnv string = "DEV"
 var ActiveReadOnly bool = false
 
 func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portArg string) {
+	ActiveScreen = "login"
+	ActiveLoginDB = nil
 	ActiveEnv = "DEV"
 	ActiveReadOnly = false
 
@@ -318,6 +320,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		AddButton(" Connect ", connectAction).
 		AddButton(" Test Ping ", testConnectionAction).
 		AddButton(" Save Profile ", saveProfileAction).
+		AddButton(" Theme (F12) ", func() { showThemePickerModal(app) }).
 		AddButton(" Delete ", deleteProfileAction).
 		AddButton(" Clear ", clearForm).
 		AddButton(" Quit ", func() {
@@ -368,7 +371,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 	// 5. Status Footer
 	footer := tview.NewTextView().
-		SetText(" [white::b]PHERI[-::-] [gray]│[-] [aqua::b]Tab / Shift+Tab[-::-] Switch Panels  [gray]│[-] [aqua::b]↑/↓[-::-] Select Profile  [gray]│[-] [aqua::b]Enter[-::-] Connect  [gray]│[-] [aqua::b]t[-::-] Test Ping  [gray]│[-] [aqua::b]n[-::-] New  [gray]│[-] [aqua::b]d[-::-] Delete  [gray]│[-] [aqua::b]F1[-::-] Help  [gray]│[-] [aqua::b]Esc[-::-] Quit").
+		SetText(" [white::b]PHERI[-::-] [gray]│[-] [aqua::b]Tab / Shift+Tab[-::-] Switch Panels  [gray]│[-] [aqua::b]↑/↓[-::-] Select Profile  [gray]│[-] [aqua::b]Enter[-::-] Connect  [gray]│[-] [aqua::b]t[-::-] Test Ping  [gray]│[-] [aqua::b]n[-::-] New  [gray]│[-] [aqua::b]F12[-::-] Theme  [gray]│[-] [aqua::b]F1[-::-] Help  [gray]│[-] [aqua::b]Esc[-::-] Quit").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
 		SetBackgroundColor(CurrentTheme.HeaderBg)
@@ -391,6 +394,10 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 			ShowComprehensiveHelpModal(app)
 			return nil
 		}
+		if event.Key() == tcell.KeyF12 {
+			showThemePickerModal(app)
+			return nil
+		}
 		return event
 	})
 
@@ -398,9 +405,12 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 }
 
 func ShowDatabaseList(app *tview.Application, db *sql.DB) {
+	ActiveScreen = "dblist"
+	ActiveLoginDB = db
+
 	list := tview.NewList().ShowSecondaryText(false)
 	StyleBox(list.Box, "Available Databases", true)
-	list.SetBackgroundColor(tcell.ColorReset)
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
 	StyleList(list)
 
 	searchInput := tview.NewInputField()
@@ -462,11 +472,16 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	})
 
 	statusBar := tview.NewTextView().
-		SetText(" [cyan]↑/↓ / TAB[-] Navigate List • [lime]ENTER[-] Open Database • [yellow]ESC[-] Back to Login").
+		SetText(" [cyan]↑/↓ / TAB[-] Navigate List • [lime]ENTER[-] Open Database • [aqua]F12[-] Theme • [yellow]ESC[-] Back to Login").
 		SetTextAlign(tview.AlignCenter).
-		SetDynamicColors(true)
+		SetDynamicColors(true).
+		SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyF12 {
+			showThemePickerModal(app)
+			return nil
+		}
 		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyDown {
 			app.SetFocus(list)
 			return nil
@@ -499,6 +514,10 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	})
 
 	list.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyF12 {
+			showThemePickerModal(app)
+			return nil
+		}
 		if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyBacktab {
 			app.SetFocus(searchInput)
 			return nil

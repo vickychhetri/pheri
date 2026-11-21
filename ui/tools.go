@@ -402,33 +402,82 @@ func ShowCellInspectorModal(app *tview.Application, content string) {
 }
 
 func showThemePickerModal(app *tview.Application) {
-	list := tview.NewList()
+	list := tview.NewList().ShowSecondaryText(true)
 	StyleModalBox(list.Box, "Select Color Theme")
-	list.SetBackgroundColor(tcell.ColorReset)
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
 	StyleList(list)
 
-	for _, t := range AvailableThemes {
+	descriptions := map[string]string{
+		"Nordic Frost":     "Cool Arctic Ice Blue, Slate & Frost palette",
+		"Tokyo Night":      "Deep Tokyo Indigo Night & Soft Blue accents",
+		"Catppuccin Mocha": "Soothing Pastel Lavender & Dark Mauve palette",
+		"Charcoal Slate":   "Clean Minimalist Charcoal Monochrome palette",
+		"Dark":             "Midnight OLED Deep Black & Vivid Sky Blue palette",
+		"Light":            "Clean Paper Ivory, Deep Slate & Royal Blue palette",
+		"Developer":        "Monokai Pro Dark Charcoal, Gold & Coral palette",
+		"Hacker":           "Matrix Pitch Black & Terminal Lime Phosphor Green palette",
+		"Classic":          "Retro Turbo Pascal / DOS Royal Blue & White palette",
+		"Gen-Z":            "Cyberpunk Synthwave Neon Hot Pink & Cyan palette",
+	}
+
+	restoreScreen := func() {
+		switch ActiveScreen {
+		case "login":
+			ShowConnectionForm(app, "", "", "", "")
+		case "dblist":
+			if ActiveLoginDB != nil {
+				ShowDatabaseList(app, ActiveLoginDB)
+			} else {
+				ShowConnectionForm(app, "", "", "", "")
+			}
+		case "browser":
+			if mainFlex != nil {
+				orig := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(orig, true)
+			} else {
+				ShowConnectionForm(app, "", "", "", "")
+			}
+		default:
+			if mainFlex != nil {
+				orig := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(orig, true)
+			} else {
+				ShowConnectionForm(app, "", "", "", "")
+			}
+		}
+	}
+
+	selectedIdx := 0
+	for idx, t := range AvailableThemes {
 		theme := t
-		list.AddItem(theme.Name, "Apply "+theme.Name+" palette", 0, func() {
-			CurrentTheme = theme
-			if dataTable != nil {
-				StyleTable(dataTable)
-				StyleBox(dataTable.Box, "Query Results", false)
-			}
-			if activeSQLEditor != nil && activeSQLEditor.TextArea != nil {
-				activeSQLEditor.ApplyTheme()
-			}
+		desc := descriptions[theme.Name]
+		if desc == "" {
+			desc = "Apply " + theme.Name + " palette"
+		}
+		activeBadge := ""
+		if strings.EqualFold(theme.Name, CurrentTheme.Name) {
+			activeBadge = "  [lime::b]" + tview.Escape("[ACTIVE]") + "[-::-]"
+			selectedIdx = idx
+		}
+		mainText := fmt.Sprintf(" %s%s", theme.Name, activeBadge)
+		subText := fmt.Sprintf("   %s", desc)
+
+		list.AddItem(mainText, subText, 0, func() {
+			ApplyThemeGlobally(app, theme)
+			restoreScreen()
 			updateFooterText("Theme applied: " + CurrentTheme.Name)
-			orig := CreateLayoutWithFooter(app, mainFlex)
-			app.SetRoot(orig, true)
 		})
 	}
 
+	if selectedIdx > 0 && selectedIdx < list.GetItemCount() {
+		list.SetCurrentItem(selectedIdx)
+	}
+
 	statusBar := tview.NewTextView().
-		SetText(" [::b]ESC[::-] Cancel   |   [::b]ENTER[::-] Apply Theme").
+		SetText(" [::b]ESC[::-] Cancel   |   [::b]ENTER[::-] Apply Theme   |   [::b]↑/↓[::-] Navigate").
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
-		SetBackgroundColor(tcell.ColorReset)
+		SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	layout := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(list, 0, 1, true).
@@ -436,12 +485,11 @@ func showThemePickerModal(app *tview.Application) {
 
 	list.SetInputCapture(func(e *tcell.EventKey) *tcell.EventKey {
 		if e.Key() == tcell.KeyEscape {
-			orig := CreateLayoutWithFooter(app, mainFlex)
-			app.SetRoot(orig, true)
+			restoreScreen()
 			return nil
 		}
 		return e
 	})
 
-	app.SetRoot(CreateLayoutWithFooter(app, layout), true).SetFocus(list)
+	app.SetRoot(layout, true).SetFocus(list)
 }
