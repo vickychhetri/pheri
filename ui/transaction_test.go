@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -112,6 +113,8 @@ func TestPromptUncommittedChangesModal(t *testing.T) {
 	RecordMutationInTx()
 
 	app := tview.NewApplication()
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
 	var commitCalled, rollbackCalled, cancelCalled bool
 
 	modal := PromptUncommittedChangesModal(app, "exit Pheri",
@@ -124,9 +127,24 @@ func TestPromptUncommittedChangesModal(t *testing.T) {
 		t.Fatalf("expected modal to be non-nil")
 	}
 
-	_ = commitCalled
+	handler := modal.InputHandler()
+	if handler == nil {
+		t.Fatalf("expected modal to have an input handler")
+	}
+
+	// Pressing Enter on default button (button 0: Commit & Proceed)
+	handler(tcell.NewEventKey(tcell.KeyEnter, 0, 0), func(p tview.Primitive) {})
+	if !commitCalled {
+		t.Errorf("expected commitCalled to be true after Enter")
+	}
+
+	// Pressing Escape (Cancel)
+	handler(tcell.NewEventKey(tcell.KeyEscape, 0, 0), func(p tview.Primitive) {})
+	if !cancelCalled {
+		t.Errorf("expected cancelCalled to be true on Escape")
+	}
+
 	_ = rollbackCalled
-	_ = cancelCalled
 }
 
 func TestFooterBadgesInTransactionModes(t *testing.T) {
@@ -249,4 +267,67 @@ func TestSetOnTxStateChangedHook(t *testing.T) {
 
 	// Clean up hook
 	SetOnTxStateChangedHook(nil)
+}
+
+func TestHandleFooterClick_TogglesAutoCommit(t *testing.T) {
+	ResetTransactionState()
+	app := tview.NewApplication()
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
+	_ = CreateLayoutWithFooter(app, mainFlex)
+
+	updateFooterText("Ready")
+	plainText := footerBar.GetText(true)
+	idxF2 := strings.Index(plainText, "F2 AutoCommit")
+	if idxF2 == -1 {
+		t.Fatalf("expected 'F2 AutoCommit' to be in footer plain text: %s", plainText)
+	}
+
+	// Click on F2 AutoCommit
+	if !IsAutoCommitMode() {
+		t.Fatalf("expected AutoCommit to be ON initially")
+	}
+
+	handleFooterClick(app, idxF2+2, plainText)
+
+	if IsAutoCommitMode() {
+		t.Errorf("expected AutoCommit to be toggled OFF after clicking F2 AutoCommit")
+	}
+
+	// Reset
+	ResetTransactionState()
+}
+
+func TestFooterBar_MouseCaptureAndFocusDeflection(t *testing.T) {
+	app := tview.NewApplication()
+	tbl := tview.NewTable()
+	dataTable = tbl
+
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
+	_ = CreateLayoutWithFooter(app, mainFlex)
+
+	mouseCapture := footerBar.GetMouseCapture()
+	if mouseCapture == nil {
+		t.Fatalf("expected footerBar to have mouse capture set")
+	}
+
+	// Simulate left click on footer
+	mouseEvt := tcell.NewEventMouse(10, 10, tcell.Button1, 0)
+	action, retEvt := mouseCapture(tview.MouseLeftClick, mouseEvt)
+
+	if action != tview.MouseConsumed {
+		t.Errorf("expected MouseConsumed action, got %v", action)
+	}
+	if retEvt != nil {
+		t.Errorf("expected nil returned mouse event to prevent footer from stealing focus, got %v", retEvt)
+	}
+
+	// Test focus deflection
+	footerBar.Focus(func(p tview.Primitive) {
+		app.SetFocus(p)
+	})
+	if app.GetFocus() != tbl {
+		t.Errorf("expected focus to deflect to dataTable")
+	}
 }

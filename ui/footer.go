@@ -20,6 +20,24 @@ func CreateLayoutWithFooter(app *tview.Application, mainContent tview.Primitive)
 	footerBar.SetTextAlign(tview.AlignLeft)
 	footerBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 
+	footerBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftClick {
+			x, _ := event.Position()
+			plainText := footerBar.GetText(true)
+			handleFooterClick(app, x, plainText)
+			return tview.MouseConsumed, nil
+		}
+		return action, event
+	})
+
+	footerBar.SetFocusFunc(func() {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		} else if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+	})
+
 	updateFooterText("Ready")
 
 	commandInput = tview.NewInputField().
@@ -375,4 +393,115 @@ func ShowCommandPaletteModal(app *tview.Application) {
 	})
 
 	app.SetRoot(modal, true).SetFocus(input)
+}
+
+func handleFooterClick(app *tview.Application, clickX int, plainText string) {
+	if app == nil {
+		return
+	}
+
+	matchZone := func(needle string) (int, int) {
+		idx := strings.Index(plainText, needle)
+		if idx == -1 {
+			return -1, -1
+		}
+		return idx, idx + len(needle)
+	}
+
+	inZone := func(needle string) bool {
+		start, end := matchZone(needle)
+		return start != -1 && clickX >= start-1 && clickX <= end+1
+	}
+
+	// 1. F2 / AutoCommit / TX toggle
+	if inZone("F2 AutoCommit") || inZone("AUTOCOMMIT") || inZone("TX:") {
+		ToggleAutoCommit(app, activeGridDB)
+		return
+	}
+
+	// 2. F1 Help
+	if inZone("F1 Help") {
+		ShowComprehensiveHelpModal(app)
+		return
+	}
+
+	// 3. Ctrl+H History
+	if inZone("Ctrl+H History") {
+		showQueryHistoryModal(app, activeGridDB, activeSQLEditor)
+		return
+	}
+
+	// 4. Tab / Switch
+	if inZone("Tab/Click Switch") || inZone("Tab Switch") {
+		focusNextPanel(app)
+		return
+	}
+
+	// 5. Enter Edit
+	if inZone("Enter Edit") {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+		return
+	}
+
+	// 6. e Editor
+	if inZone("e Editor") {
+		if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+		return
+	}
+
+	// 7. Ctrl+R Run
+	if inZone("Ctrl+R Run") {
+		if activeSQLEditor != nil {
+			activeSQLEditor.OnExecute(activeSQLEditor.GetText())
+		}
+		return
+	}
+
+	// 8. F3 Schema
+	if inZone("F3 Schema") {
+		if activeGridObject != "" && activeGridDBName != "" {
+			showSchemaInspectorModal(app, activeGridDB, activeGridDBName, activeGridObject)
+		}
+		return
+	}
+
+	// 9. Ctrl+E Export
+	if inZone("Ctrl+E Export") {
+		if activeGridDB != nil && activeGridDBName != "" {
+			ShowExportWizardModal(app, activeGridDB, activeGridDBName)
+		}
+		return
+	}
+}
+
+func focusNextPanel(app *tview.Application) {
+	if app == nil {
+		return
+	}
+	f := app.GetFocus()
+	if f == nil || f == dataTable {
+		if tableList != nil {
+			app.SetFocus(tableList)
+		}
+	} else if f == tableList {
+		if dataBaseList != nil {
+			app.SetFocus(dataBaseList)
+		}
+	} else if f == dataBaseList {
+		if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+	} else if f == activeSQLEditor.Editor {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+	} else {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+	}
 }

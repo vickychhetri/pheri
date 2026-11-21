@@ -261,14 +261,25 @@ func ToggleAutoCommit(app *tview.Application, db *sql.DB) {
 		txMutex.Lock()
 		isAutoCommitMode = false
 		uncommittedTxCount = 0
-		if db != nil {
-			activeTxDB = db
-			newTx, err := db.BeginTx(context.Background(), nil)
-			if err == nil {
-				activeTx = newTx
-			}
-		}
+		activeTxDB = db
 		txMutex.Unlock()
+
+		if db != nil {
+			go func() {
+				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				newTx, err := db.BeginTx(ctx, nil)
+				if err == nil {
+					txMutex.Lock()
+					if !isAutoCommitMode && activeTx == nil {
+						activeTx = newTx
+					} else {
+						_ = newTx.Rollback()
+					}
+					txMutex.Unlock()
+				}
+			}()
+		}
 
 		notifyTxStateChanged()
 		updateFooterText("Auto-Commit disabled. Manual transaction mode ACTIVE (F2 / :commit / :rollback).")
@@ -323,7 +334,18 @@ func PromptUncommittedChangesModal(app *tview.Application, actionName string, on
 		SetBackgroundColor(tcell.ColorDarkBlue).
 		SetButtonBackgroundColor(tcell.ColorDarkCyan)
 
+	closeModal := func() {
+		if mainFlex != nil && app != nil {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+			if dataTable != nil {
+				app.SetFocus(dataTable)
+			}
+		}
+	}
+
 	modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+		closeModal()
 		switch buttonIndex {
 		case 0: // Commit & Proceed
 			if onCommit != nil {
@@ -337,7 +359,22 @@ func PromptUncommittedChangesModal(app *tview.Application, actionName string, on
 			if onCancel != nil {
 				onCancel()
 			}
+		default: // e.g. Esc key pressed
+			if onCancel != nil {
+				onCancel()
+			}
 		}
+	})
+
+	modal.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape {
+			closeModal()
+			if onCancel != nil {
+				onCancel()
+			}
+			return nil
+		}
+		return event
 	})
 
 	if app != nil {

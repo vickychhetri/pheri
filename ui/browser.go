@@ -1482,9 +1482,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	} else {
 		defer rows.Close()
 		// var tableName string
-		// Define queryBox and dataText outside the callback functions so they are in the scope
+		// Define queryBox outside the callback functions so it is in the scope
 		var queryBox *tview.TextArea
-		var dataTable *tview.Table
 
 		var name, objectType string
 		allTables = []DBObject{}
