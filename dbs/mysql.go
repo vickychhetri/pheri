@@ -201,6 +201,34 @@ func Connect(user, pass, host, port string) (*sql.DB, error) {
 	return ConnectWithConfig(cfg)
 }
 
+// TestConnection checks connectivity, latency, and retrieves server version with a 3-second timeout.
+func TestConnection(user, pass, host, port string) (time.Duration, string, error) {
+	start := time.Now()
+	cfg := DefaultConnectConfig(user, pass, host, port)
+	cfg.DialTimeout = 3 * time.Second
+	cfg.MaxOpenConns = 1
+	cfg.MaxIdleConns = 1
+
+	db, err := OpenWithConfig(cfg)
+	if err != nil {
+		return 0, "", err
+	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := db.PingContext(ctx); err != nil {
+		return 0, "", err
+	}
+	latency := time.Since(start)
+
+	var version string
+	_ = db.QueryRowContext(ctx, "SELECT VERSION()").Scan(&version)
+
+	return latency, version, nil
+}
+
 // ErrorCategory categorizes database connection errors for user presentation.
 type ErrorCategory string
 
