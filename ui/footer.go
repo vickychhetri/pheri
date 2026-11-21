@@ -65,7 +65,17 @@ func updateFooterText(status string) {
 		envColor = "yellow"
 	}
 
-	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F2[-::-] History  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, status)
+	txBadge := "[lime::b]AUTOCOMMIT: ON[-::-]"
+	if !IsAutoCommitMode() {
+		dirtyCount := GetUncommittedTxCount()
+		if dirtyCount == 0 {
+			txBadge = "[yellow::b]TX: READY[-::-]"
+		} else {
+			txBadge = fmt.Sprintf("[orange::b]TX: %d PENDING (:commit / :rollback)[-::-]", dirtyCount)
+		}
+	}
+
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
 	footerBar.SetText(text)
 }
 
@@ -98,7 +108,36 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 
 	switch parts[0] {
 	case "quit", "exit", "q":
+		if GetUncommittedTxCount() > 0 {
+			PromptUncommittedChangesModal(app, "exit Pheri",
+				func() {
+					_, _ = CommitActiveTx(app)
+					app.Stop()
+				},
+				func() {
+					_, _ = RollbackActiveTx(app)
+					app.Stop()
+				},
+				func() {
+					updateFooterText("Exit cancelled.")
+				},
+			)
+			return
+		}
 		app.Stop()
+	case "autocommit", "tx":
+		ToggleAutoCommit(app, activeGridDB)
+	case "commit", "c":
+		if count, err := CommitActiveTx(app); err == nil && count > 0 {
+			updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+		}
+	case "rollback", "rb", "abort":
+		if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+			updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+			if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+				ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+			}
+		}
 	case "help", "h":
 		ShowComprehensiveHelpModal(app)
 	case "clear", "cls":

@@ -73,6 +73,7 @@ pheri/
 │   ├── import.go         # Streaming SQL/gzip import wizard, statement splitter, safety barriers
 │   ├── processlist.go    # Live thread inspector, process list polling, instant KILL command
 │   ├── tools.go          # Health dashboard, schema diff generator, history modal, query formatter, cell inspector
+│   ├── transaction.go    # Active transaction management, auto-commit toggle, mutation counters, safety modals
 │   └── footer.go         # Status footer, keyboard hints, colon command dispatcher (:command)
 └── util/
     └── util.go           # Identifier escaping, routine metadata resolution, clipboard helpers, focus styling
@@ -168,7 +169,7 @@ Pheri executes heavy database and disk operations off the main TUI event thread 
 
 ## 6. Safety Guards & Read-Only Enforcement
 
-To prevent accidental data loss in production environments, Pheri implements a two-tier safety system:
+To prevent accidental data loss in production environments, Pheri implements a multi-tier safety system:
 
 1. **Visual Environment Guards**:
    - Tagging a connection with `-env PROD` tints borders and headers with bold red indicators, ensuring operators are always aware of high-stakes databases.
@@ -176,3 +177,10 @@ To prevent accidental data loss in production environments, Pheri implements a t
    - When `-readonly` is enabled, any query containing non-SELECT mutation keywords (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`, `RENAME`, `REPLACE`) is intercepted and blocked before execution.
    - Inline cell editing in the result grid is completely deactivated.
    - Database import actions (`F9` / `:import`) are rejected immediately.
+3. **Auto-Commit Toggle & Transaction Safety Mode (`PHERI-08`)**:
+   - By default, Pheri operates in Auto-Commit mode (`AUTOCOMMIT: ON`).
+   - Pressing `F2` or entering `:autocommit` toggles manual transaction mode (`TX: READY`), disabling instantaneous commit.
+   - All SQL editor mutations and grid inline cell updates are executed inside an active `*sql.Tx` handle, incrementing the live mutation badge (`TX: N PENDING`).
+   - Querying within an active transaction routes through `activeTx` to provide Read-Your-Own-Writes consistency.
+   - Explicit `:commit` (`:c`) and `:rollback` (`:rb`) commands permit committing or discarding changes.
+   - Dirty transaction guards intercept database switching (`UseDatabase`) and application exit (`:quit`, `exitButton`), prompting the operator to commit, rollback, or cancel before proceeding.
