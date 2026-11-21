@@ -30,6 +30,7 @@ func GetLaymanHelpGuide() string {
 
 	b.WriteString(" [aqua::b]2. GETTING AROUND (NAVIGATION & WINDOW CONTROLS)[-::-]\n")
 	b.WriteString("   [lime::b]F1 / ?[-::-]             Open this Help Guide & Command Reference\n")
+	b.WriteString("   [lime::b]: (colon)[-::-]          Open interactive Command Launcher (:command palette)\n")
 	b.WriteString("   [lime::b]Tab / Shift+Tab[-::-]    Cycle focus between Sidebar, Query Editor, and Results Grid\n")
 	b.WriteString("   [lime::b]e[-::-]                  Quick jump straight to the SQL Editor from anywhere\n")
 	b.WriteString("   [lime::b]Ctrl+B[-::-]             Toggle Sidebar (collapse for full-width editor, expand back)\n")
@@ -39,7 +40,7 @@ func GetLaymanHelpGuide() string {
 
 	b.WriteString(" [aqua::b]3. BROWSING & SEARCHING DATABASE OBJECTS (SIDEBAR)[-::-]\n")
 	b.WriteString("   [lime::b]Up / Down + Enter[-::-]  Select and switch your active database\n")
-	b.WriteString("   [lime::b]Enter on Table[-::-]     Instantly load rows into the Results Grid (LIMIT 100)\n")
+	b.WriteString("   [lime::b]Enter on Table[-::-]     Instantly load rows into the Results Grid (auto-cancels prior queries)\n")
 	b.WriteString("   [lime::b]Enter on View/Proc[-::-] Load definition (CREATE statement) into the SQL Editor\n")
 	b.WriteString("   [lime::b]Filter Search Box[-::-]  Type to search objects by name. Prefix filters supported:\n")
 	b.WriteString("     [yellow]table:name[-]     Search tables only (e.g. table:users)\n")
@@ -49,7 +50,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("     [yellow]trig:name[-]      Search triggers only (e.g. trig:audit_log)\n")
 	b.WriteString("     [yellow]db:name[-]        Search database names\n")
 	b.WriteString("   [lime::b]F3 / Ctrl+K[-::-]        Table Schema Inspector (view columns, types, keys & indexes)\n")
-	b.WriteString("   [lime::b]Ctrl+X[-::-]             Copy Table DDL and INSERT data directly to system clipboard\n\n")
+	b.WriteString("   [lime::b]Ctrl+X[-::-]             Copy Table DDL and INSERT data asynchronously to system clipboard\n\n")
 
 	b.WriteString(" [aqua::b]4. WRITING & RUNNING SQL QUERIES (SQL EDITOR)[-::-]\n")
 	b.WriteString("   [lime::b]Ctrl+R / Ctrl+Enter[-::-] Execute current SQL query\n")
@@ -73,6 +74,8 @@ func GetLaymanHelpGuide() string {
 	b.WriteString(" [aqua::b]5. VIEWING & EDITING DATA (RESULTS DATA GRID)[-::-]\n")
 	b.WriteString("   [lime::b]Arrow Keys[-::-]          Move cell cursor (Up, Down, Left, Right)\n")
 	b.WriteString("   [lime::b]Enter[-::-]               In-Place Cell Editor: Modify cell value and save to database\n")
+	b.WriteString("   [lime::b]e / E[-::-]               Jump from Results Grid straight to SQL Query Editor\n")
+	b.WriteString("   [lime::b]Ctrl+R[-::-]              Re-execute active SQL query\n")
 	b.WriteString("   [lime::b]v[-::-]                   Cell Content Inspector: View large text or pretty-printed JSON\n")
 	b.WriteString("     [gray]Inside Inspector: Press [lime]c[-] to copy content to system clipboard[-]\n")
 	b.WriteString("   [lime::b]Ctrl+N[-::-]              Next Page: Load the next 100 rows\n")

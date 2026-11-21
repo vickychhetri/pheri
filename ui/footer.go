@@ -11,8 +11,10 @@ import (
 
 var footerBar *tview.TextView
 var commandInput *tview.InputField
+var currentApp *tview.Application
 
 func CreateLayoutWithFooter(app *tview.Application, mainContent tview.Primitive) tview.Primitive {
+	currentApp = app
 	footerBar = tview.NewTextView()
 	footerBar.SetDynamicColors(true)
 	footerBar.SetTextAlign(tview.AlignLeft)
@@ -313,4 +315,64 @@ func showAboutModal(app *tview.Application) {
 
 func showGlobalHelpModal(app *tview.Application) {
 	ShowComprehensiveHelpModal(app)
+}
+
+// ShowCommandPaletteModal opens an interactive command prompt dialog for ':' commands.
+func ShowCommandPaletteModal(app *tview.Application) {
+	if app == nil {
+		return
+	}
+
+	input := tview.NewInputField().
+		SetLabel(" [aqua::b]: [-::-]").
+		SetFieldWidth(45).
+		SetPlaceholder("commit, rollback, review, autocommit, help, quit...").
+		SetFieldBackgroundColor(tcell.ColorReset).
+		SetFieldTextColor(tcell.ColorWhite).
+		SetLabelColor(CurrentTheme.BorderFocused)
+
+	hintView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetText(" [gray]Commands: [aqua]commit[-] │ [aqua]rollback[-] │ [aqua]review[-] │ [aqua]autocommit[-] │ [aqua]help[-] │ [aqua]quit[-]")
+	hintView.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	box := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true).
+		AddItem(hintView, 1, 0, false)
+	box.SetBorder(true)
+	box.SetTitle(" Command Launcher (:command) ")
+	box.SetTitleColor(CurrentTheme.TitleFocused)
+	box.SetBorderColor(CurrentTheme.BorderFocused)
+	box.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(box, 55, 0, true).
+			AddItem(nil, 0, 1, false),
+			4, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	closePalette := func() {
+		if mainFlex != nil {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+		}
+	}
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			cmd := strings.TrimSpace(input.GetText())
+			closePalette()
+			if cmd != "" {
+				handleGlobalCommand(app, cmd)
+			}
+		} else if key == tcell.KeyEscape {
+			closePalette()
+		}
+	})
+
+	app.SetRoot(modal, true).SetFocus(input)
 }
