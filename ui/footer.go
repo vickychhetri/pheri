@@ -11,12 +11,32 @@ import (
 
 var footerBar *tview.TextView
 var commandInput *tview.InputField
+var currentApp *tview.Application
 
 func CreateLayoutWithFooter(app *tview.Application, mainContent tview.Primitive) tview.Primitive {
+	currentApp = app
 	footerBar = tview.NewTextView()
 	footerBar.SetDynamicColors(true)
 	footerBar.SetTextAlign(tview.AlignLeft)
 	footerBar.SetBackgroundColor(CurrentTheme.HeaderBg)
+
+	footerBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftClick {
+			x, _ := event.Position()
+			plainText := footerBar.GetText(true)
+			handleFooterClick(app, x, plainText)
+			return tview.MouseConsumed, nil
+		}
+		return action, event
+	})
+
+	footerBar.SetFocusFunc(func() {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		} else if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+	})
 
 	updateFooterText("Ready")
 
@@ -71,11 +91,11 @@ func updateFooterText(status string) {
 		if dirtyCount == 0 {
 			txBadge = "[yellow::b]TX: READY[-::-]"
 		} else {
-			txBadge = fmt.Sprintf("[orange::b]TX: %d PENDING (:commit / :rollback)[-::-]", dirtyCount)
+			txBadge = fmt.Sprintf("[orange::b]TX: %d PENDING (F10 Commit │ Shift+F10 Rollback │ :review)[-::-]", dirtyCount)
 		}
 	}
 
-	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]Tab/Click[-::-] Switch  [aqua::b]Enter[-::-] Edit  [aqua::b]e[-::-] Editor  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]Ctrl+E[-::-] Export [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
 	footerBar.SetText(text)
 }
 
@@ -125,8 +145,44 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 			return
 		}
 		app.Stop()
-	case "autocommit", "tx":
+	case "tx":
+		if GetUncommittedTxCount() > 0 {
+			ShowTransactionReviewModal(app, activeGridDB,
+				func() {
+					if count, err := CommitActiveTx(app); err == nil && count > 0 {
+						updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+					}
+				},
+				func() {
+					if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+						updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+						if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+							ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+						}
+					}
+				},
+			)
+		} else {
+			ToggleAutoCommit(app, activeGridDB)
+		}
+	case "autocommit":
 		ToggleAutoCommit(app, activeGridDB)
+	case "review", "audit", "txstatus":
+		ShowTransactionReviewModal(app, activeGridDB,
+			func() {
+				if count, err := CommitActiveTx(app); err == nil && count > 0 {
+					updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+				}
+			},
+			func() {
+				if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+					updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+					if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+						ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+					}
+				}
+			},
+		)
 	case "commit", "c":
 		if count, err := CommitActiveTx(app); err == nil && count > 0 {
 			updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
@@ -277,4 +333,175 @@ func showAboutModal(app *tview.Application) {
 
 func showGlobalHelpModal(app *tview.Application) {
 	ShowComprehensiveHelpModal(app)
+}
+
+// ShowCommandPaletteModal opens an interactive command prompt dialog for ':' commands.
+func ShowCommandPaletteModal(app *tview.Application) {
+	if app == nil {
+		return
+	}
+
+	input := tview.NewInputField().
+		SetLabel(" [aqua::b]: [-::-]").
+		SetFieldWidth(45).
+		SetPlaceholder("commit, rollback, review, autocommit, help, quit...").
+		SetFieldBackgroundColor(tcell.ColorReset).
+		SetFieldTextColor(tcell.ColorWhite).
+		SetLabelColor(CurrentTheme.BorderFocused)
+
+	hintView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetTextAlign(tview.AlignLeft).
+		SetText(" [gray]Commands: [aqua]commit[-] │ [aqua]rollback[-] │ [aqua]review[-] │ [aqua]autocommit[-] │ [aqua]help[-] │ [aqua]quit[-]")
+	hintView.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	box := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(input, 1, 0, true).
+		AddItem(hintView, 1, 0, false)
+	box.SetBorder(true)
+	box.SetTitle(" Command Launcher (:command) ")
+	box.SetTitleColor(CurrentTheme.TitleFocused)
+	box.SetBorderColor(CurrentTheme.BorderFocused)
+	box.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	modal := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
+			AddItem(nil, 0, 1, false).
+			AddItem(box, 55, 0, true).
+			AddItem(nil, 0, 1, false),
+			4, 0, true).
+		AddItem(nil, 0, 1, false)
+
+	closePalette := func() {
+		if mainFlex != nil {
+			orig := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(orig, true)
+		}
+	}
+
+	input.SetDoneFunc(func(key tcell.Key) {
+		if key == tcell.KeyEnter {
+			cmd := strings.TrimSpace(input.GetText())
+			closePalette()
+			if cmd != "" {
+				handleGlobalCommand(app, cmd)
+			}
+		} else if key == tcell.KeyEscape {
+			closePalette()
+		}
+	})
+
+	app.SetRoot(modal, true).SetFocus(input)
+}
+
+func handleFooterClick(app *tview.Application, clickX int, plainText string) {
+	if app == nil {
+		return
+	}
+
+	matchZone := func(needle string) (int, int) {
+		idx := strings.Index(plainText, needle)
+		if idx == -1 {
+			return -1, -1
+		}
+		return idx, idx + len(needle)
+	}
+
+	inZone := func(needle string) bool {
+		start, end := matchZone(needle)
+		return start != -1 && clickX >= start-1 && clickX <= end+1
+	}
+
+	// 1. F2 / AutoCommit / TX toggle
+	if inZone("F2 AutoCommit") || inZone("AUTOCOMMIT") || inZone("TX:") {
+		ToggleAutoCommit(app, activeGridDB)
+		return
+	}
+
+	// 2. F1 Help
+	if inZone("F1 Help") {
+		ShowComprehensiveHelpModal(app)
+		return
+	}
+
+	// 3. Ctrl+H History
+	if inZone("Ctrl+H History") {
+		showQueryHistoryModal(app, activeGridDB, activeSQLEditor)
+		return
+	}
+
+	// 4. Tab / Switch
+	if inZone("Tab/Click Switch") || inZone("Tab Switch") {
+		focusNextPanel(app)
+		return
+	}
+
+	// 5. Enter Edit
+	if inZone("Enter Edit") {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+		return
+	}
+
+	// 6. e Editor
+	if inZone("e Editor") {
+		if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+		return
+	}
+
+	// 7. Ctrl+R Run
+	if inZone("Ctrl+R Run") {
+		if activeSQLEditor != nil {
+			activeSQLEditor.OnExecute(activeSQLEditor.GetText())
+		}
+		return
+	}
+
+	// 8. F3 Schema
+	if inZone("F3 Schema") {
+		if activeGridObject != "" && activeGridDBName != "" {
+			showSchemaInspectorModal(app, activeGridDB, activeGridDBName, activeGridObject)
+		}
+		return
+	}
+
+	// 9. Ctrl+E Export
+	if inZone("Ctrl+E Export") {
+		if activeGridDB != nil && activeGridDBName != "" {
+			ShowExportWizardModal(app, activeGridDB, activeGridDBName)
+		}
+		return
+	}
+}
+
+func focusNextPanel(app *tview.Application) {
+	if app == nil {
+		return
+	}
+	f := app.GetFocus()
+	if f == nil || f == dataTable {
+		if tableList != nil {
+			app.SetFocus(tableList)
+		}
+	} else if f == tableList {
+		if dataBaseList != nil {
+			app.SetFocus(dataBaseList)
+		}
+	} else if f == dataBaseList {
+		if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+			app.SetFocus(activeSQLEditor.Editor)
+		}
+	} else if f == activeSQLEditor.Editor {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+	} else {
+		if dataTable != nil {
+			app.SetFocus(dataTable)
+		}
+	}
 }

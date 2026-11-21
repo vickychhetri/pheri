@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -111,6 +113,8 @@ func TestPromptUncommittedChangesModal(t *testing.T) {
 	RecordMutationInTx()
 
 	app := tview.NewApplication()
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
 	var commitCalled, rollbackCalled, cancelCalled bool
 
 	modal := PromptUncommittedChangesModal(app, "exit Pheri",
@@ -123,9 +127,24 @@ func TestPromptUncommittedChangesModal(t *testing.T) {
 		t.Fatalf("expected modal to be non-nil")
 	}
 
-	_ = commitCalled
+	handler := modal.InputHandler()
+	if handler == nil {
+		t.Fatalf("expected modal to have an input handler")
+	}
+
+	// Pressing Enter on default button (button 0: Commit & Proceed)
+	handler(tcell.NewEventKey(tcell.KeyEnter, 0, 0), func(p tview.Primitive) {})
+	if !commitCalled {
+		t.Errorf("expected commitCalled to be true after Enter")
+	}
+
+	// Pressing Escape (Cancel)
+	handler(tcell.NewEventKey(tcell.KeyEscape, 0, 0), func(p tview.Primitive) {})
+	if !cancelCalled {
+		t.Errorf("expected cancelCalled to be true on Escape")
+	}
+
 	_ = rollbackCalled
-	_ = cancelCalled
 }
 
 func TestFooterBadgesInTransactionModes(t *testing.T) {
@@ -161,5 +180,154 @@ func TestFooterBadgesInTransactionModes(t *testing.T) {
 	footerContent = footerBar.GetText(true)
 	if !strings.Contains(footerContent, "TX: 2 PENDING") {
 		t.Errorf("footer missing TX: 2 PENDING badge: %s", footerContent)
+	}
+}
+
+func TestTxMutationRecordAuditTrail(t *testing.T) {
+	ResetTransactionState()
+	SetAutoCommitMode(false)
+
+	RecordMutationInTx("UPDATE users SET status = 'active' WHERE id = 1;", "SQL Editor")
+	RecordMutationInTx("UPDATE employees SET salary = salary * 1.1;", "Grid Cell Edit")
+
+	mutations := GetActiveTxMutations()
+	if len(mutations) != 2 {
+		t.Fatalf("expected 2 mutations recorded, got %d", len(mutations))
+	}
+
+	if mutations[0].Index != 1 || !strings.Contains(mutations[0].Statement, "users") || mutations[0].Source != "SQL Editor" {
+		t.Errorf("unexpected mutation[0]: %+v", mutations[0])
+	}
+	if mutations[1].Index != 2 || !strings.Contains(mutations[1].Statement, "employees") || mutations[1].Source != "Grid Cell Edit" {
+		t.Errorf("unexpected mutation[1]: %+v", mutations[1])
+	}
+
+	// Verify duration tracking
+	time.Sleep(5 * time.Millisecond)
+	duration := GetTxDuration()
+	if duration <= 0 {
+		t.Errorf("expected positive transaction duration, got %v", duration)
+	}
+
+	// Reset should clear audit trail
+	ResetTransactionState()
+	if len(GetActiveTxMutations()) != 0 {
+		t.Errorf("expected 0 mutations after reset")
+	}
+	if GetTxDuration() != 0 {
+		t.Errorf("expected 0 duration after reset")
+	}
+}
+
+func TestShowTransactionReviewModal(t *testing.T) {
+	ResetTransactionState()
+	SetAutoCommitMode(false)
+	RecordMutationInTx("DELETE FROM old_logs WHERE created_at < '2024-01-01';", "SQL Editor")
+
+	app := tview.NewApplication()
+	var commitCalled, rollbackCalled bool
+
+	modal := ShowTransactionReviewModal(app, nil,
+		func() { commitCalled = true },
+		func() { rollbackCalled = true },
+	)
+
+	if modal == nil {
+		t.Fatalf("expected ShowTransactionReviewModal to return non-nil flex")
+	}
+
+	_ = commitCalled
+	_ = rollbackCalled
+}
+
+func TestSetOnTxStateChangedHook(t *testing.T) {
+	ResetTransactionState()
+	var hookCallCount int
+
+	SetOnTxStateChangedHook(func() {
+		hookCallCount++
+	})
+
+	SetAutoCommitMode(false)
+	if hookCallCount == 0 {
+		t.Errorf("expected hook to be called on SetAutoCommitMode")
+	}
+
+	prev := hookCallCount
+	RecordMutationInTx("INSERT INTO test VALUES (1);", "Test")
+	if hookCallCount <= prev {
+		t.Errorf("expected hook to be called on RecordMutationInTx")
+	}
+
+	prev = hookCallCount
+	ResetTransactionState()
+	if hookCallCount <= prev {
+		t.Errorf("expected hook to be called on ResetTransactionState")
+	}
+
+	// Clean up hook
+	SetOnTxStateChangedHook(nil)
+}
+
+func TestHandleFooterClick_TogglesAutoCommit(t *testing.T) {
+	ResetTransactionState()
+	app := tview.NewApplication()
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
+	_ = CreateLayoutWithFooter(app, mainFlex)
+
+	updateFooterText("Ready")
+	plainText := footerBar.GetText(true)
+	idxF2 := strings.Index(plainText, "F2 AutoCommit")
+	if idxF2 == -1 {
+		t.Fatalf("expected 'F2 AutoCommit' to be in footer plain text: %s", plainText)
+	}
+
+	// Click on F2 AutoCommit
+	if !IsAutoCommitMode() {
+		t.Fatalf("expected AutoCommit to be ON initially")
+	}
+
+	handleFooterClick(app, idxF2+2, plainText)
+
+	if IsAutoCommitMode() {
+		t.Errorf("expected AutoCommit to be toggled OFF after clicking F2 AutoCommit")
+	}
+
+	// Reset
+	ResetTransactionState()
+}
+
+func TestFooterBar_MouseCaptureAndFocusDeflection(t *testing.T) {
+	app := tview.NewApplication()
+	tbl := tview.NewTable()
+	dataTable = tbl
+
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
+	_ = CreateLayoutWithFooter(app, mainFlex)
+
+	mouseCapture := footerBar.GetMouseCapture()
+	if mouseCapture == nil {
+		t.Fatalf("expected footerBar to have mouse capture set")
+	}
+
+	// Simulate left click on footer
+	mouseEvt := tcell.NewEventMouse(10, 10, tcell.Button1, 0)
+	action, retEvt := mouseCapture(tview.MouseLeftClick, mouseEvt)
+
+	if action != tview.MouseConsumed {
+		t.Errorf("expected MouseConsumed action, got %v", action)
+	}
+	if retEvt != nil {
+		t.Errorf("expected nil returned mouse event to prevent footer from stealing focus, got %v", retEvt)
+	}
+
+	// Test focus deflection
+	footerBar.Focus(func(p tview.Primitive) {
+		app.SetFocus(p)
+	})
+	if app.GetFocus() != tbl {
+		t.Errorf("expected focus to deflect to dataTable")
 	}
 }

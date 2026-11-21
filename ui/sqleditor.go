@@ -21,6 +21,7 @@ type SQLEditor struct {
 	IsFullscreen bool
 	OnExecute    func(query string)
 	OnNextFocus  func()
+	OnPrevFocus  func()
 	OnExit       func()
 	OnFullscreen func()
 }
@@ -123,9 +124,20 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	}
 
 	// 2. Query execution hotkeys: Ctrl+R, F5, Ctrl+Enter (received as KeyCtrlJ or ModCtrl+KeyEnter)
-	if event.Key() == tcell.KeyCtrlR || event.Key() == tcell.KeyF5 ||
-		(event.Key() == tcell.KeyEnter && (event.Modifiers()&tcell.ModCtrl != 0)) ||
-		event.Key() == tcell.KeyCtrlJ {
+	if event.Key() == tcell.KeyCtrlR || event.Key() == tcell.KeyF5 {
+		if s.OnExecute != nil {
+			s.OnExecute(s.GetText())
+		}
+		return nil
+	}
+
+	if (event.Key() == tcell.KeyEnter && (event.Modifiers()&tcell.ModCtrl != 0)) || event.Key() == tcell.KeyCtrlJ {
+		if !IsAutoCommitMode() && GetUncommittedTxCount() > 0 && strings.TrimSpace(s.GetText()) == "" {
+			if count, err := CommitActiveTx(s.App); err == nil && count > 0 {
+				updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+			}
+			return nil
+		}
 		if s.OnExecute != nil {
 			s.OnExecute(s.GetText())
 		}
@@ -137,9 +149,27 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		ShowComprehensiveHelpModal(s.App)
 		return nil
 
+	case tcell.KeyF10:
+		if count, err := CommitActiveTx(s.App); err == nil && count > 0 {
+			updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+		}
+		return nil
+
+	case tcell.KeyF22: // Shift+F10
+		if count, err := RollbackActiveTx(s.App); err == nil && count > 0 {
+			updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+		}
+		return nil
+
 	case tcell.KeyTab:
 		if s.OnNextFocus != nil {
 			s.OnNextFocus()
+		}
+		return nil
+
+	case tcell.KeyBacktab:
+		if s.OnPrevFocus != nil {
+			s.OnPrevFocus()
 		}
 		return nil
 
