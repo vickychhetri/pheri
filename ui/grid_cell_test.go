@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
@@ -329,5 +330,55 @@ func TestShowErrorModal_RestoresFooterLayout(t *testing.T) {
 	}
 	if footerBar == nil {
 		t.Errorf("expected footerBar to be initialized")
+	}
+}
+
+func TestCancelActiveQuery_ResetsIsQueryRunning(t *testing.T) {
+	isQueryRunning.Store(true)
+	if !IsQueryRunning() {
+		t.Fatalf("expected IsQueryRunning to be true initially")
+	}
+
+	CancelActiveQuery()
+
+	if IsQueryRunning() {
+		t.Errorf("expected IsQueryRunning to be false after CancelActiveQuery()")
+	}
+}
+
+func TestSetupTableInputCapture_Navigation(t *testing.T) {
+	app := tview.NewApplication()
+	tbl := tview.NewTable()
+	editor := NewSQLEditor(app)
+	activeSQLEditor = editor
+
+	dummyTableList := tview.NewList()
+	tableList = dummyTableList
+
+	setupTableInputCapture(app, tbl)
+
+	inputCapture := tbl.GetInputCapture()
+	if inputCapture == nil {
+		t.Fatalf("expected tbl input capture to be set")
+	}
+
+	// Test KeyBacktab focuses activeSQLEditor
+	backtabEvt := tcell.NewEventKey(tcell.KeyBacktab, 0, 0)
+	res := inputCapture(backtabEvt)
+	if res != nil {
+		t.Errorf("expected KeyBacktab to be handled (nil result), got %v", res)
+	}
+	if app.GetFocus() != editor.Editor {
+		t.Errorf("expected app focus to be on editor.Editor after KeyBacktab")
+	}
+
+	// Test KeyTab focuses tableList
+	tabEvt := tcell.NewEventKey(tcell.KeyTab, 0, 0)
+	resTab := inputCapture(tabEvt)
+	if resTab != nil {
+		t.Errorf("expected KeyTab to be handled (nil result), got %v", resTab)
+	}
+	if app.GetFocus() != dummyTableList {
+		t.Errorf("expected app focus to be on dummyTableList after KeyTab")
 	}
 }

@@ -77,7 +77,7 @@ func updateFooterText(status string) {
 		}
 	}
 
-	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]e[-::-] Edit  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]F4[-::-] Top  [aqua::b]Ctrl+E[-::-] Export  [aqua::b]Tab[-::-] Switch [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
+	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]Tab/Click[-::-] Switch  [aqua::b]Enter[-::-] Edit  [aqua::b]e[-::-] Editor  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]Ctrl+E[-::-] Export [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
 	footerBar.SetText(text)
 }
 

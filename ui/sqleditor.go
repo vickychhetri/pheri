@@ -21,6 +21,7 @@ type SQLEditor struct {
 	IsFullscreen bool
 	OnExecute    func(query string)
 	OnNextFocus  func()
+	OnPrevFocus  func()
 	OnExit       func()
 	OnFullscreen func()
 }
@@ -163,6 +164,12 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyTab:
 		if s.OnNextFocus != nil {
 			s.OnNextFocus()
+		}
+		return nil
+
+	case tcell.KeyBacktab:
+		if s.OnPrevFocus != nil {
+			s.OnPrevFocus()
 		}
 		return nil
 

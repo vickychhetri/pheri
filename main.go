@@ -75,6 +75,7 @@ func main() {
 
 	defer phhistory.Close()
 	app := tview.NewApplication()
+	app.EnableMouse(true)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

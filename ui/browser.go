@@ -87,6 +87,7 @@ func CancelActiveQuery() {
 	db := activeQueryDB
 	activeQueryCancel = nil
 	activeQueryDB = nil
+	isQueryRunning.Store(false)
 	activeQueryMutex.Unlock()
 
 	if cancel != nil {
@@ -1347,6 +1348,9 @@ func setEditorText(queryBox *tview.TextArea, text string) {
 }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
+	if app != nil {
+		app.EnableMouse(true)
+	}
 	if GetUncommittedTxCount() > 0 {
 		PromptUncommittedChangesModal(app, "switch databases",
 			func() {
@@ -1616,6 +1620,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		activeSQLEditor.OnNextFocus = func() {
 			app.SetFocus(runButton)
 		}
+		activeSQLEditor.OnPrevFocus = func() {
+			if tableList != nil {
+				app.SetFocus(tableList)
+			}
+		}
 		var isEditorFullscreen bool = false
 		activeSQLEditor.OnExit = func() {
 			if isEditorFullscreen {
@@ -1795,8 +1804,10 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+			if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyBacktab {
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -1808,7 +1819,13 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		commitButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				app.SetFocus(runButton)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -1820,7 +1837,13 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		rollbackButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				app.SetFocus(commitButton)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -1832,7 +1855,13 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		button1.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				app.SetFocus(rollbackButton)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -1843,7 +1872,13 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 		button2.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				app.SetFocus(button1)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
@@ -1865,11 +1900,19 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		exitButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				app.SetFocus(activeSQLEditor.Editor)
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+					app.SetFocus(activeSQLEditor.Editor)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				app.SetFocus(button2)
 				return nil
 			}
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(dataTable)
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
 				return nil
 			}
 			return event
@@ -1989,8 +2032,16 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			IsSearchStateEnabled = false
 		}
 		searchInput.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			if event.Key() == tcell.KeyTab {
-				app.SetFocus(tableList)
+			if event.Key() == tcell.KeyTab || event.Key() == tcell.KeyDown {
+				if tableList != nil {
+					app.SetFocus(tableList)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
@@ -2012,13 +2063,27 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		tableList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
-				if activeSQLEditor != nil {
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
 					app.SetFocus(activeSQLEditor.Editor)
 					return nil
 				}
 			}
 			if event.Key() == tcell.KeyTab {
-				app.SetFocus(dataBaseList)
+				if dataBaseList != nil {
+					app.SetFocus(dataBaseList)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyBacktab {
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyRight {
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
@@ -2040,16 +2105,34 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		dataBaseList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyRune && (event.Rune() == 'e' || event.Rune() == 'E') {
-				if activeSQLEditor != nil {
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
 					app.SetFocus(activeSQLEditor.Editor)
 					return nil
 				}
 			}
 			if event.Key() == tcell.KeyTab {
-				if activeSQLEditor != nil {
+				if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
 					app.SetFocus(activeSQLEditor.Editor)
 					return nil
 				}
+			}
+			if event.Key() == tcell.KeyBacktab {
+				if tableList != nil {
+					app.SetFocus(tableList)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyRight {
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
+				return nil
+			}
+			if event.Key() == tcell.KeyEscape {
+				if tableList != nil {
+					app.SetFocus(tableList)
+				}
+				return nil
 			}
 			return event
 		})
@@ -2545,6 +2628,26 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			}
 			return nil
 
+		case tcell.KeyBacktab:
+			if activeSQLEditor != nil && activeSQLEditor.Editor != nil {
+				app.SetFocus(activeSQLEditor.Editor)
+			}
+			return nil
+
+		case tcell.KeyCtrlB:
+			toggleSidebarVisibility(app)
+			return nil
+
+		case tcell.KeyCtrlE:
+			if activeGridDB != nil && activeGridDBName != "" {
+				ShowExportWizardModal(app, activeGridDB, activeGridDBName)
+			}
+			return nil
+
+		case tcell.KeyF11:
+			app.SetRoot(table, true)
+			return nil
+
 		case tcell.KeyCtrlN:
 			// Next Page
 			if activeGridObjectType == "TABLE" || activeGridObjectType == "VIEW" {
@@ -2769,14 +2872,17 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 					util.QuoteIdentifier(columnName),
 					strings.Join(whereClauses, " AND "))
 
+				ctxExec, cancelExec := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancelExec()
+
 				if !IsAutoCommitMode() {
-					tx, txErr := EnsureActiveTx(context.Background(), db)
+					tx, txErr := EnsureActiveTx(ctxExec, db)
 					if txErr != nil {
 						util.SaveLog("Tx error: " + txErr.Error())
 						showErrorModal(app, mainFlex, "Transaction failed: "+txErr.Error())
 						return nil
 					}
-					_, execErr := tx.Exec(updateQuery, queryArgs...)
+					_, execErr := tx.ExecContext(ctxExec, updateQuery, queryArgs...)
 					if execErr != nil {
 						util.SaveLog("Update error: " + execErr.Error())
 						showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
@@ -2784,7 +2890,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 					}
 					RecordMutationInTx(updateQuery, "Grid Cell Edit")
 				} else {
-					_, execErr := db.Exec(updateQuery, queryArgs...)
+					_, execErr := db.ExecContext(ctxExec, updateQuery, queryArgs...)
 					if execErr != nil {
 						util.SaveLog("Update error: " + execErr.Error())
 						showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
