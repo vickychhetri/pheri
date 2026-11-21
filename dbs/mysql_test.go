@@ -397,3 +397,10 @@ func TestCategorizeConnectionError(t *testing.T) {
 		})
 	}
 }
+
+func TestTestConnection_Unreachable(t *testing.T) {
+	_, _, err := TestConnection("invalid_user", "invalid_pass", "127.0.0.1", "54321")
+	if err == nil {
+		t.Errorf("expected error connecting to non-existent port 54321, got nil")
+	}
+}
