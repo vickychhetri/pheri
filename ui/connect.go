@@ -26,7 +26,11 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		Port = portArg
 		conn, err := dbs.Connect(userArg, passArg, hostArg, portArg)
 		if err != nil {
-			log.Printf("Error in db Connection: %v", err)
+			errInfo := dbs.CategorizeConnectionError(err)
+			log.Printf("Connection error (%s): %s - %s", errInfo.Category, errInfo.Title, errInfo.Message)
+			if errInfo.Hint != "" {
+				log.Printf("Remediation: %s", errInfo.Hint)
+			}
 			app.Stop()
 			return
 		}
@@ -90,6 +94,8 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		AddCheckbox("Read-Only Mode (Block Write Queries)", false, nil).
 		AddCheckbox("Remember Credentials", true, nil)
 
+	var flex *tview.Flex
+
 	connectAction := func() {
 		host = form.GetFormItem(1).(*tview.InputField).GetText()
 		port = form.GetFormItem(2).(*tview.InputField).GetText()
@@ -120,13 +126,27 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 		conn, err := dbs.Connect(user, pass, host, port)
 		if err != nil {
+			errInfo := dbs.CategorizeConnectionError(err)
+			errBody := fmt.Sprintf("[red::b]Connection Failed: %s[::-]\n\n[white]%s\n\n[yellow]Suggestion:[::-] %s",
+				errInfo.Title,
+				errInfo.Message,
+				errInfo.Hint,
+			)
+			if errInfo.RawErr != nil {
+				errBody += fmt.Sprintf("\n\n[gray::d]Details: %s[::-]", errInfo.RawErr.Error())
+			}
+
 			modal := tview.NewModal().
-				SetText("[red::b]✖ Connection Failed:\n\n[white]" + err.Error()).
-				AddButtons([]string{"[green]Try Again"}).
+				SetText(errBody).
+				AddButtons([]string{"Try Again"}).
 				SetBackgroundColor(tcell.ColorDarkBlue).
 				SetButtonBackgroundColor(tcell.ColorDarkCyan).
 				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-					app.SetRoot(form, true)
+					if flex != nil {
+						app.SetRoot(flex, true).SetFocus(form)
+					} else {
+						app.SetRoot(form, true)
+					}
 				})
 			app.SetRoot(modal, true)
 			return
@@ -168,7 +188,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	// Layout Flex
-	flex := tview.NewFlex().
+	flex = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(asciiBanner, 7, 0, false).
 		AddItem(tview.NewFlex().

@@ -90,12 +90,11 @@ pheri/
 - Initializes the `tview.Application` loop and launches `ui.ShowConnectionForm`.
 
 #### `dbs/mysql.go`
-- Exposes `dbs.Connect(user, pass, host, port string) (*sql.DB, error)`.
-- Builds the MySQL connection string:
-  ```go
-  dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/", user, pass, host, port)
-  ```
-- Opens `sql.DB` and executes `db.Ping()` to validate network connectivity and credentials before the main workspace loads.
+- Exposes `dbs.Connect(user, pass, host, port string) (*sql.DB, error)` and `dbs.ConnectWithConfig(cfg ConnectConfig) (*sql.DB, error)`.
+- Builds safe DSN strings using `mysql.Config` with configurable network timeouts (`timeout=5s`, `readTimeout=60s`, `writeTimeout=60s`), collation (`utf8mb4_general_ci`), and `parseTime=true`.
+- Sets connection pooling limits on `*sql.DB` (`SetMaxOpenConns(25)`, `SetMaxIdleConns(5)`, `SetConnMaxLifetime(10m)`, `SetConnMaxIdleTime(3m)`).
+- Provides `CategorizeConnectionError(err error) ConnectionErrorInfo` to diagnose connection errors (timeouts, connection refused, authentication failures, DNS issues) with user-friendly remediation hints.
+- Validates network connectivity and credentials with `db.Ping()` before the main workspace loads.
 
 #### `phhistory/`
 - **`connections.go`**: Manages `ConnectionProfile` objects stored in `~/.pheri_connections.json`. Persists environment badges (`DEV`, `STAGING`, `PROD`), host, port, user, password, and read-only flags with restrictive file permissions (`0600`).
