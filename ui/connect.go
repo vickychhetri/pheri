@@ -57,7 +57,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	// 3. Right Panel: Connection Details Form
 	form := tview.NewForm()
 	StyleBox(form.Box, "Connection Details & Authentication", false)
-	form.SetBorderPadding(1, 1, 2, 2)
+	form.SetBorderPadding(0, 0, 2, 2)
 	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
 	form.SetFieldBackgroundColor(tcell.ColorReset)
 	form.SetFieldTextColor(CurrentTheme.TextPrimary)
@@ -133,20 +133,23 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		selectedIdx := 0
 		for idx, p := range profiles {
 			pCopy := p
-			envBadge := "[green::b][DEV][-::-]"
+			envBadge := fmt.Sprintf("[green::b]%s[-::-]", tview.Escape("[DEV]"))
 			if pCopy.Environment == "STAGING" {
-				envBadge = "[yellow::b][STAGE][-::-]"
+				envBadge = fmt.Sprintf("[yellow::b]%s[-::-]", tview.Escape("[STAGE]"))
 			} else if pCopy.Environment == "PROD" {
-				envBadge = "[red::b][PROD][-::-]"
+				envBadge = fmt.Sprintf("[red::b]%s[-::-]", tview.Escape("[PROD]"))
 			}
 
 			displayName := pCopy.Name
+			subText := fmt.Sprintf("    %s@%s:%s", pCopy.User, pCopy.Host, pCopy.Port)
 			if displayName == "" {
 				displayName = fmt.Sprintf("%s@%s:%s", pCopy.User, pCopy.Host, pCopy.Port)
+				subText = fmt.Sprintf("    Port: %s │ User: %s", pCopy.Port, pCopy.User)
+			} else if displayName == fmt.Sprintf("%s@%s:%s", pCopy.User, pCopy.Host, pCopy.Port) {
+				subText = fmt.Sprintf("    Port: %s │ User: %s", pCopy.Port, pCopy.User)
 			}
 
 			mainText := fmt.Sprintf("  %s %s", envBadge, displayName)
-			subText := fmt.Sprintf("    %s@%s:%s", pCopy.User, pCopy.Host, pCopy.Port)
 
 			profileList.AddItem(mainText, subText, 0, func() {
 				populateFormWithProfile(pCopy)
@@ -313,7 +316,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 	form.
 		AddButton(" Connect ", connectAction).
-		AddButton(" Test Connection ", testConnectionAction).
+		AddButton(" Test Ping ", testConnectionAction).
 		AddButton(" Save Profile ", saveProfileAction).
 		AddButton(" Delete ", deleteProfileAction).
 		AddButton(" Clear ", clearForm).
@@ -411,6 +414,21 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	StyleBox(searchInput.Box, "Search", false)
 
 	var dbNames []string
+	backToLogin := func() {
+		if db != nil {
+			_ = db.Close()
+		}
+		User = ""
+		Pass = ""
+		Host = ""
+		Port = ""
+		user = ""
+		pass = ""
+		host = ""
+		port = ""
+		ShowConnectionForm(app, "", "", "", "")
+	}
+
 	filtered := func(filter string) {
 		list.Clear()
 		for _, name := range dbNames {
@@ -422,7 +440,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 			}
 		}
 		list.AddItem("  [ Back to Login ]", "Return to connection screen", 'b', func() {
-			ShowConnectionForm(app, user, pass, host, port)
+			backToLogin()
 		})
 	}
 
@@ -459,7 +477,8 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 				if cur >= 0 {
 					mainText, _ := list.GetItemText(cur)
 					if strings.Contains(mainText, "Back to Login") {
-						ShowConnectionForm(app, user, pass, host, port)
+						backToLogin()
+						return nil
 					} else {
 						for _, dbName := range dbNames {
 							if strings.Contains(mainText, dbName) {
@@ -473,7 +492,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 			return nil
 		}
 		if event.Key() == tcell.KeyEscape {
-			ShowConnectionForm(app, user, pass, host, port)
+			backToLogin()
 			return nil
 		}
 		return event
@@ -485,7 +504,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 			return nil
 		}
 		if event.Key() == tcell.KeyEscape {
-			ShowConnectionForm(app, user, pass, host, port)
+			backToLogin()
 			return nil
 		}
 		return event

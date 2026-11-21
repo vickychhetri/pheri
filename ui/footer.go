@@ -252,6 +252,39 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		showAboutModal(app)
 	case "theme", "colors":
 		showThemePickerModal(app)
+	case "disconnect", "connect", "login":
+		if GetUncommittedTxCount() > 0 {
+			PromptUncommittedChangesModal(app, "disconnect from server",
+				func() {
+					_, _ = CommitActiveTx(app)
+					ResetTransactionState()
+					if activeGridDB != nil {
+						_ = activeGridDB.Close()
+						activeGridDB = nil
+					}
+					ShowConnectionForm(app, "", "", "", "")
+				},
+				func() {
+					_, _ = RollbackActiveTx(app)
+					ResetTransactionState()
+					if activeGridDB != nil {
+						_ = activeGridDB.Close()
+						activeGridDB = nil
+					}
+					ShowConnectionForm(app, "", "", "", "")
+				},
+				func() {
+					updateFooterText("Disconnect cancelled.")
+				},
+			)
+			return
+		}
+		ResetTransactionState()
+		if activeGridDB != nil {
+			_ = activeGridDB.Close()
+			activeGridDB = nil
+		}
+		ShowConnectionForm(app, "", "", "", "")
 	default:
 		updateFooterText("Unknown command: " + cmd)
 	}

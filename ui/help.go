@@ -142,6 +142,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("   [yellow]:format, :fmt[-]     Auto-format SQL in Query Editor\n")
 	b.WriteString("   [yellow]:clear, :cls[-]      Clear SQL in Query Editor\n")
 	b.WriteString("   [yellow]:theme, :colors[-]   Open Color Theme Picker\n")
+	b.WriteString("   [yellow]:disconnect, :connect[-] Return to Connection & Login Screen\n")
 	b.WriteString("   [yellow]:quit, :q, :exit[-]  Exit Pheri safely\n")
 
 	return b.String()
