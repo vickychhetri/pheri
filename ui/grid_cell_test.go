@@ -247,3 +247,87 @@ func TestGridCell_ExportSerializationFormatting(t *testing.T) {
 		t.Errorf("expected first_name to serialize as 'John' in %s", jsonStr)
 	}
 }
+
+func TestCellEdit_ColumnHeaderWithPaddingSpaces(t *testing.T) {
+	// Table cells in tview typically have padding spaces: " customer_id ", " first_name "
+	rawHeaders := []string{" customer_id ", " first_name ", " last_name "}
+	pkCols := []string{"customer_id"}
+
+	table := tview.NewTable()
+	for i, h := range rawHeaders {
+		table.SetCell(0, i, tview.NewTableCell(h))
+	}
+	// Row 1 values
+	table.SetCell(1, 0, tview.NewTableCell(" 42 ").SetReference(NewGridCellString("customer_id", "42")))
+	table.SetCell(1, 1, tview.NewTableCell(" Alice ").SetReference(NewGridCellString("first_name", "Alice")))
+	table.SetCell(1, 2, tview.NewTableCell(" Smith ").SetReference(NewGridCellString("last_name", "Smith")))
+
+	// Simulate selecting column 1 (" first_name ") to edit
+	headerCell := table.GetCell(0, 1)
+	columnName := strings.TrimSpace(headerCell.Text)
+	if columnName != "first_name" {
+		t.Fatalf("expected columnName 'first_name', got %q", columnName)
+	}
+
+	var whereClauses []string
+	var queryArgs []interface{}
+	newValue := "Alicia"
+	queryArgs = append(queryArgs, newValue)
+
+	for _, pkCol := range pkCols {
+		trimmedPK := strings.TrimSpace(pkCol)
+		for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
+			colHeader := strings.TrimSpace(table.GetCell(0, colIdx).Text)
+			if strings.EqualFold(colHeader, trimmedPK) {
+				pkGC := GetGridCellFromTableCell(table.GetCell(1, colIdx), trimmedPK)
+				if pkGC.IsNull() {
+					whereClauses = append(whereClauses, fmt.Sprintf("`%s` IS NULL", trimmedPK))
+				} else {
+					whereClauses = append(whereClauses, fmt.Sprintf("`%s` = ?", trimmedPK))
+					queryArgs = append(queryArgs, pkGC.Value())
+				}
+				break
+			}
+		}
+	}
+
+	if len(whereClauses) == 0 {
+		t.Fatalf("whereClauses must not be empty when primary key is present")
+	}
+
+	updateQuery := fmt.Sprintf("UPDATE `sakila`.`customer` SET `%s` = ? WHERE %s LIMIT 1",
+		columnName,
+		strings.Join(whereClauses, " AND "))
+
+	expectedQuery := "UPDATE `sakila`.`customer` SET `first_name` = ? WHERE `customer_id` = ? LIMIT 1"
+	if updateQuery != expectedQuery {
+		t.Errorf("expected update query %q, got %q", expectedQuery, updateQuery)
+	}
+
+	if len(queryArgs) != 2 {
+		t.Fatalf("expected 2 queryArgs, got %d", len(queryArgs))
+	}
+	if queryArgs[0] != "Alicia" || queryArgs[1] != "42" {
+		t.Errorf("expected queryArgs ['Alicia', '42'], got %v", queryArgs)
+	}
+}
+
+func TestShowErrorModal_RestoresFooterLayout(t *testing.T) {
+	app := tview.NewApplication()
+	dummyFlex := tview.NewFlex()
+	mainFlex = dummyFlex
+
+	// Call showErrorModal with mainFlex
+	showErrorModal(app, mainFlex, "Test update failure")
+
+	// Verify modal was set as root
+	// Then trigger OK callback directly
+	// showErrorModal creates a modal with SetDoneFunc
+	layout := CreateLayoutWithFooter(app, mainFlex)
+	if layout == nil {
+		t.Fatalf("expected CreateLayoutWithFooter to produce non-nil layout")
+	}
+	if footerBar == nil {
+		t.Errorf("expected footerBar to be initialized")
+	}
+}

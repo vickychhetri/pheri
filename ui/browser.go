@@ -622,7 +622,8 @@ func showSuggestionBox(app *tview.Application, mainFlex *tview.Flex, editor *tvi
 		sugg := s // capture loop variable
 		list.AddItem(s, "", 0, func() {
 			onSelect(sugg)
-			app.SetRoot(mainFlex, true)
+			layout := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(layout, true)
 			app.SetFocus(editor)
 		})
 	}
@@ -636,7 +637,13 @@ func showErrorModal(app *tview.Application, layout tview.Primitive, message stri
 		SetText(message).
 		AddButtons([]string{"OK"}).
 		SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+			if layout == mainFlex || layout == nil {
+				layout = CreateLayoutWithFooter(app, mainFlex)
+			}
 			app.SetRoot(layout, true)
+			if dataTable != nil {
+				util.SetFocusWithBorder(app, dataTable)
+			}
 		})
 	app.SetRoot(modal, true)
 }
@@ -2627,7 +2634,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 
 		cell := table.GetCell(row, column)
 		headerCell := table.GetCell(0, column)
-		columnName := util.StripFormatting(headerCell.Text)
+		columnName := strings.TrimSpace(util.StripFormatting(headerCell.Text))
 		gridCell := GetGridCellFromTableCell(cell, columnName)
 
 		isNULL := gridCell.IsNull()
@@ -2711,31 +2718,33 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				}
 
 				pkCols, _ := GetPrimaryKeyColumns(db, dbName, tableName)
+				var whereClauses []string
 				if len(pkCols) > 0 {
-					var whereClauses []string
 					for _, pkCol := range pkCols {
+						trimmedPK := strings.TrimSpace(pkCol)
 						for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
-							colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
-							if colHeader == pkCol {
-								pkGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), pkCol)
+							colHeader := strings.TrimSpace(util.StripFormatting(table.GetCell(0, colIdx).Text))
+							if strings.EqualFold(colHeader, trimmedPK) {
+								pkGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), trimmedPK)
 								if pkGC.IsNull() {
-									whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(pkCol)))
+									whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(trimmedPK)))
 								} else {
-									whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(pkCol)))
+									whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(trimmedPK)))
 									queryArgs = append(queryArgs, pkGC.Value())
 								}
 								break
 							}
 						}
 					}
-					updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s",
-						util.QuoteIdentifier(tableName),
-						util.QuoteIdentifier(columnName),
-						strings.Join(whereClauses, " AND "))
-				} else {
-					var whereClauses []string
+				}
+
+				// If no primary keys matched or table has no PK, fall back to composite matching on all columns
+				if len(whereClauses) == 0 {
 					for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
-						colHeader := util.StripFormatting(table.GetCell(0, colIdx).Text)
+						colHeader := strings.TrimSpace(util.StripFormatting(table.GetCell(0, colIdx).Text))
+						if colHeader == "" {
+							continue
+						}
 						rowGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), colHeader)
 						if rowGC.IsNull() {
 							whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(colHeader)))
@@ -2744,11 +2753,21 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 							queryArgs = append(queryArgs, rowGC.Value())
 						}
 					}
-					updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s LIMIT 1",
-						util.QuoteIdentifier(tableName),
-						util.QuoteIdentifier(columnName),
-						strings.Join(whereClauses, " AND "))
 				}
+
+				if len(whereClauses) == 0 {
+					showErrorModal(app, mainFlex, "Cannot update row: unable to identify row columns for WHERE condition.")
+					return nil
+				}
+
+				targetTable := util.QuoteIdentifier(tableName)
+				if dbName != "" {
+					targetTable = fmt.Sprintf("%s.%s", util.QuoteIdentifier(dbName), util.QuoteIdentifier(tableName))
+				}
+				updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s LIMIT 1",
+					targetTable,
+					util.QuoteIdentifier(columnName),
+					strings.Join(whereClauses, " AND "))
 
 				if !IsAutoCommitMode() {
 					tx, txErr := EnsureActiveTx(context.Background(), db)
@@ -2784,6 +2803,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				layout := CreateLayoutWithFooter(app, mainFlex)
 				app.SetRoot(layout, true)
 				util.SetFocusWithBorder(app, table)
+				updateFooterText(fmt.Sprintf("Cell updated successfully in %s.%s.", tableName, columnName))
 				return nil
 
 			case tcell.KeyEscape:
@@ -2910,7 +2930,8 @@ func showExportResultsModal(app *tview.Application, table *tview.Table) {
 	})
 
 	form.AddButton("Cancel", func() {
-		app.SetRoot(mainFlex, true)
+		layout := CreateLayoutWithFooter(app, mainFlex)
+		app.SetRoot(layout, true)
 		util.SetFocusWithBorder(app, table)
 	})
 
@@ -3025,7 +3046,8 @@ func showSchemaInspectorModal(app *tview.Application, db *sql.DB, dbName, tableN
 
 	layout.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyEnter {
-			app.SetRoot(mainFlex, true)
+			fullL := CreateLayoutWithFooter(app, mainFlex)
+			app.SetRoot(fullL, true)
 			if dataTable != nil {
 				util.SetFocusWithBorder(app, dataTable)
 			} else {
