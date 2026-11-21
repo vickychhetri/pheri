@@ -45,6 +45,7 @@ func TestGetLaymanHelpGuide(t *testing.T) {
 		"Ctrl+T",
 		"Ctrl+S",
 		"F2",
+		"Ctrl+H",
 		":format",
 		":clear",
 		"Ctrl+N",
@@ -63,6 +64,9 @@ func TestGetLaymanHelpGuide(t *testing.T) {
 		":health",
 		":diff",
 		":import",
+		":autocommit",
+		":commit",
+		":rollback",
 		":quit",
 	}
 

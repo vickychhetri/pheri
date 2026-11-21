@@ -1513,6 +1513,23 @@ func setEditorText(queryBox *tview.TextArea, text string) {
 }
 
 func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
+	if GetUncommittedTxCount() > 0 {
+		PromptUncommittedChangesModal(app, "switch databases",
+			func() {
+				_, _ = CommitActiveTx(app)
+				UseDatabase(app, db, dbName)
+			},
+			func() {
+				_, _ = RollbackActiveTx(app)
+				UseDatabase(app, db, dbName)
+			},
+			func() {
+				updateFooterText("Database switch cancelled.")
+			},
+		)
+		return
+	}
+
 	runIcon := " Run "
 	saveIcon := " Save "
 	loadIcon := " Load "
@@ -1530,6 +1547,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		app.SetRoot(modal, true)
 		return
 	}
+	activeGridDB = db
+	activeGridDBName = dbName
 
 	dataBaseList = tview.NewList()
 	dataBaseList.ShowSecondaryText(false).SetHighlightFullLine(true)
@@ -1921,8 +1940,14 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
-					// Searchable Query History (F2 / :history)
+					// Auto-Commit Toggle (F2 / :autocommit)
 					if event.Key() == tcell.KeyF2 {
+						ToggleAutoCommit(app, db)
+						return nil
+					}
+
+					// Searchable Query History (Ctrl+H / :history)
+					if event.Key() == tcell.KeyCtrlH {
 						showQueryHistoryModal(app, db, activeSQLEditor)
 						return nil
 					}
@@ -2298,6 +2323,22 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		button2.SetBorderPadding(0, 0, 1, 1)
 
 		exitButton := tview.NewButton(exitIcon).SetSelectedFunc(func() {
+			if GetUncommittedTxCount() > 0 {
+				PromptUncommittedChangesModal(app, "exit Pheri",
+					func() {
+						_, _ = CommitActiveTx(app)
+						app.Stop()
+					},
+					func() {
+						_, _ = RollbackActiveTx(app)
+						app.Stop()
+					},
+					func() {
+						updateFooterText("Exit cancelled.")
+					},
+				)
+				return
+			}
 			app.Stop()
 		})
 		exitButton.SetBorderPadding(0, 0, 2, 2)
@@ -2706,33 +2747,67 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			StatementType: stmtType,
 		}
 
-		conn, err := db.Conn(ctx)
-		if err != nil {
-			result.Duration = time.Since(startTime)
-			if IsQueryInterruptedError(err, ctx) {
-				result.IsCanceled = true
-			} else {
-				result.ErrorMessage = "Failed to acquire database connection: " + err.Error()
+		var tx *sql.Tx
+		var conn *sql.Conn
+		if !IsAutoCommitMode() {
+			var errTx error
+			tx, errTx = EnsureActiveTx(ctx, db)
+			if errTx != nil {
+				result.Duration = time.Since(startTime)
+				result.ErrorMessage = "Failed to acquire active transaction: " + errTx.Error()
+				app.QueueUpdateDraw(func() {
+					renderQueryResult(app, result, table)
+					if onComplete != nil {
+						onComplete(result)
+					}
+				})
+				return
 			}
-			app.QueueUpdateDraw(func() {
-				renderQueryResult(app, result, table)
-				if onComplete != nil {
-					onComplete(result)
+			var threadID uint64
+			idRow := tx.QueryRowContext(ctx, "SELECT CONNECTION_ID()")
+			if err := idRow.Scan(&threadID); err == nil && threadID > 0 {
+				activeQueryConnID.Store(threadID)
+				result.ServerThread = threadID
+			}
+		} else {
+			var errConn error
+			conn, errConn = db.Conn(ctx)
+			if errConn != nil {
+				result.Duration = time.Since(startTime)
+				if IsQueryInterruptedError(errConn, ctx) {
+					result.IsCanceled = true
+				} else {
+					result.ErrorMessage = "Failed to acquire database connection: " + errConn.Error()
 				}
-			})
-			return
-		}
-		defer conn.Close()
+				app.QueueUpdateDraw(func() {
+					renderQueryResult(app, result, table)
+					if onComplete != nil {
+						onComplete(result)
+					}
+				})
+				return
+			}
+			defer conn.Close()
 
-		var threadID uint64
-		idRow := conn.QueryRowContext(ctx, "SELECT CONNECTION_ID()")
-		if err := idRow.Scan(&threadID); err == nil && threadID > 0 {
-			activeQueryConnID.Store(threadID)
-			result.ServerThread = threadID
+			var threadID uint64
+			idRow := conn.QueryRowContext(ctx, "SELECT CONNECTION_ID()")
+			if err := idRow.Scan(&threadID); err == nil && threadID > 0 {
+				activeQueryConnID.Store(threadID)
+				result.ServerThread = threadID
+			}
 		}
 
 		if isMutation {
-			execRes, err := conn.ExecContext(ctx, query)
+			var execRes sql.Result
+			var err error
+			if tx != nil {
+				execRes, err = tx.ExecContext(ctx, query)
+				if err == nil {
+					RecordMutationInTx()
+				}
+			} else {
+				execRes, err = conn.ExecContext(ctx, query)
+			}
 			duration := time.Since(startTime)
 			result.Duration = duration
 
@@ -2751,7 +2826,13 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 				}
 			}
 		} else {
-			rows, err := conn.QueryContext(ctx, query)
+			var rows *sql.Rows
+			var err error
+			if tx != nil {
+				rows, err = tx.QueryContext(ctx, query)
+			} else {
+				rows, err = conn.QueryContext(ctx, query)
+			}
 			duration := time.Since(startTime)
 			result.Duration = duration
 
@@ -2960,6 +3041,14 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			}
 			return nil
 
+		case event.Key() == tcell.KeyF2:
+			ToggleAutoCommit(app, activeGridDB)
+			return nil
+
+		case event.Key() == tcell.KeyCtrlH:
+			showQueryHistoryModal(app, activeGridDB, activeSQLEditor)
+			return nil
+
 		case event.Key() == tcell.KeyF4:
 			if activeGridDB != nil {
 				ShowProcessListModal(app, activeGridDB)
@@ -3161,11 +3250,27 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 						strings.Join(whereClauses, " AND "))
 				}
 
-				_, execErr := db.Exec(updateQuery, queryArgs...)
-				if execErr != nil {
-					util.SaveLog("Update error: " + execErr.Error())
-					showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
-					return nil
+				if !IsAutoCommitMode() {
+					tx, txErr := EnsureActiveTx(context.Background(), db)
+					if txErr != nil {
+						util.SaveLog("Tx error: " + txErr.Error())
+						showErrorModal(app, mainFlex, "Transaction failed: "+txErr.Error())
+						return nil
+					}
+					_, execErr := tx.Exec(updateQuery, queryArgs...)
+					if execErr != nil {
+						util.SaveLog("Update error: " + execErr.Error())
+						showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
+						return nil
+					}
+					RecordMutationInTx()
+				} else {
+					_, execErr := db.Exec(updateQuery, queryArgs...)
+					if execErr != nil {
+						util.SaveLog("Update error: " + execErr.Error())
+						showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
+						return nil
+					}
 				}
 
 				gridCell.RawValue = valToSave
