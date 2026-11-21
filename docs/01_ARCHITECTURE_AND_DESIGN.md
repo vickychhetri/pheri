@@ -98,7 +98,7 @@ pheri/
 - Validates network connectivity and credentials with `db.Ping()` before the main workspace loads.
 
 #### `phhistory/`
-- **`connections.go`**: Manages `ConnectionProfile` objects stored in `~/.pheri_connections.json`. Persists environment badges (`DEV`, `STAGING`, `PROD`), host, port, user, password, and read-only flags with restrictive file permissions (`0600`).
+- **`connections.go`**: Manages `ConnectionProfile` objects stored in `~/.pheri_connections.json`. Persists environment badges (`DEV`, `STAGING`, `PROD`), host, port, user, encrypted password strings (AES-256-GCM with machine-bound key derivation or `PHERI_MASTER_KEY` override), and read-only flags with restrictive file permissions (`0600`). Automatically migrates legacy plaintext profiles to encrypted storage on load.
 - **`phhistory.go`**: Creates and maintains the SQLite table `pheri_phhistory` storing `id`, `query_text`, `host_ip`, `db_name`, `user`, `port`, and `created_at`. Provides query recording (`SaveQuery`) and retention filtering (`FetchHistory`).
 
 #### `ui/`
