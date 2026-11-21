@@ -90,7 +90,7 @@ func TestApplyThemeGlobally(t *testing.T) {
 }
 
 func TestFormatThemeMarkup_LightAndDarkContrast(t *testing.T) {
-	sample := "[white::b]PHERI[-::-] [gray]v3.2.0[-] [lime::b]OK[-] [yellow]Warning[-] [aqua]Info[-]"
+	sample := "[white::b]PHERI[-::-] [gray]v3.3.0[-] [lime::b]OK[-] [yellow]Warning[-] [aqua]Info[-]"
 
 	// Dark theme test (Nordic Frost)
 	CurrentTheme = AvailableThemes[0]

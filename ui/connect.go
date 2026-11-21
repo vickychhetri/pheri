@@ -47,7 +47,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	header := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
-	header.SetText(FormatThemeMarkup(" [white::b]PHERI DATABASE MANAGER[-::-]  [gray]v3.2.0[-]  [gray]│[-]  [aqua::b]Terminal MySQL Client[-::-]"))
+	header.SetText(FormatThemeMarkup(" [white::b]PHERI DATABASE MANAGER[-::-]  [gray]v3.3.0[-]  [gray]│[-]  [aqua::b]Terminal MySQL Client[-::-]"))
 	header.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	// 2. Left Panel: Saved Connection Profiles List
