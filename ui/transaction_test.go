@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rivo/tview"
 )
@@ -162,4 +163,90 @@ func TestFooterBadgesInTransactionModes(t *testing.T) {
 	if !strings.Contains(footerContent, "TX: 2 PENDING") {
 		t.Errorf("footer missing TX: 2 PENDING badge: %s", footerContent)
 	}
+}
+
+func TestTxMutationRecordAuditTrail(t *testing.T) {
+	ResetTransactionState()
+	SetAutoCommitMode(false)
+
+	RecordMutationInTx("UPDATE users SET status = 'active' WHERE id = 1;", "SQL Editor")
+	RecordMutationInTx("UPDATE employees SET salary = salary * 1.1;", "Grid Cell Edit")
+
+	mutations := GetActiveTxMutations()
+	if len(mutations) != 2 {
+		t.Fatalf("expected 2 mutations recorded, got %d", len(mutations))
+	}
+
+	if mutations[0].Index != 1 || !strings.Contains(mutations[0].Statement, "users") || mutations[0].Source != "SQL Editor" {
+		t.Errorf("unexpected mutation[0]: %+v", mutations[0])
+	}
+	if mutations[1].Index != 2 || !strings.Contains(mutations[1].Statement, "employees") || mutations[1].Source != "Grid Cell Edit" {
+		t.Errorf("unexpected mutation[1]: %+v", mutations[1])
+	}
+
+	// Verify duration tracking
+	time.Sleep(5 * time.Millisecond)
+	duration := GetTxDuration()
+	if duration <= 0 {
+		t.Errorf("expected positive transaction duration, got %v", duration)
+	}
+
+	// Reset should clear audit trail
+	ResetTransactionState()
+	if len(GetActiveTxMutations()) != 0 {
+		t.Errorf("expected 0 mutations after reset")
+	}
+	if GetTxDuration() != 0 {
+		t.Errorf("expected 0 duration after reset")
+	}
+}
+
+func TestShowTransactionReviewModal(t *testing.T) {
+	ResetTransactionState()
+	SetAutoCommitMode(false)
+	RecordMutationInTx("DELETE FROM old_logs WHERE created_at < '2024-01-01';", "SQL Editor")
+
+	app := tview.NewApplication()
+	var commitCalled, rollbackCalled bool
+
+	modal := ShowTransactionReviewModal(app, nil,
+		func() { commitCalled = true },
+		func() { rollbackCalled = true },
+	)
+
+	if modal == nil {
+		t.Fatalf("expected ShowTransactionReviewModal to return non-nil flex")
+	}
+
+	_ = commitCalled
+	_ = rollbackCalled
+}
+
+func TestSetOnTxStateChangedHook(t *testing.T) {
+	ResetTransactionState()
+	var hookCallCount int
+
+	SetOnTxStateChangedHook(func() {
+		hookCallCount++
+	})
+
+	SetAutoCommitMode(false)
+	if hookCallCount == 0 {
+		t.Errorf("expected hook to be called on SetAutoCommitMode")
+	}
+
+	prev := hookCallCount
+	RecordMutationInTx("INSERT INTO test VALUES (1);", "Test")
+	if hookCallCount <= prev {
+		t.Errorf("expected hook to be called on RecordMutationInTx")
+	}
+
+	prev = hookCallCount
+	ResetTransactionState()
+	if hookCallCount <= prev {
+		t.Errorf("expected hook to be called on ResetTransactionState")
+	}
+
+	// Clean up hook
+	SetOnTxStateChangedHook(nil)
 }

@@ -184,3 +184,8 @@ To prevent accidental data loss in production environments, Pheri implements a m
    - Querying within an active transaction routes through `activeTx` to provide Read-Your-Own-Writes consistency.
    - Explicit `:commit` (`:c`) and `:rollback` (`:rb`) commands permit committing or discarding changes.
    - Dirty transaction guards intercept database switching (`UseDatabase`) and application exit (`:quit`, `exitButton`), prompting the operator to commit, rollback, or cancel before proceeding.
+4. **Explicit Transaction Controls & Visual Toolbar (`PHERI-09`)**:
+   - The query workspace toolbar features dynamic `[ Commit (N) ]` and `[ Rollback (N) ]` buttons that light up and reflect pending mutation counts in real time.
+   - Operators can commit immediately via `F10` (or `Ctrl+Enter` when focused outside the query editor) and rollback via `Shift+F10` or `Alt+Backspace`.
+   - The Transaction Review Modal (`:review`, `:tx`, `:audit`) provides an audit trail of all uncommitted mutations with exact timestamps, sources (`SQL Editor` vs `Grid Cell Edit`), and SQL statements.
+   - Performing a rollback automatically re-executes the active grid query so operators visually see reverted rows.

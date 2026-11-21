@@ -58,6 +58,7 @@ func TestGetLaymanHelpGuide(t *testing.T) {
 		"Ctrl+Y",
 		"Ctrl+W",
 		"F9",
+		"F10",
 		":help",
 		":process",
 		":explain",
@@ -67,6 +68,7 @@ func TestGetLaymanHelpGuide(t *testing.T) {
 		":autocommit",
 		":commit",
 		":rollback",
+		":review",
 		":quit",
 	}
 

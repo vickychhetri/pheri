@@ -71,7 +71,7 @@ func updateFooterText(status string) {
 		if dirtyCount == 0 {
 			txBadge = "[yellow::b]TX: READY[-::-]"
 		} else {
-			txBadge = fmt.Sprintf("[orange::b]TX: %d PENDING (:commit / :rollback)[-::-]", dirtyCount)
+			txBadge = fmt.Sprintf("[orange::b]TX: %d PENDING (F10 Commit │ Shift+F10 Rollback │ :review)[-::-]", dirtyCount)
 		}
 	}
 
@@ -125,8 +125,44 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 			return
 		}
 		app.Stop()
-	case "autocommit", "tx":
+	case "tx":
+		if GetUncommittedTxCount() > 0 {
+			ShowTransactionReviewModal(app, activeGridDB,
+				func() {
+					if count, err := CommitActiveTx(app); err == nil && count > 0 {
+						updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+					}
+				},
+				func() {
+					if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+						updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+						if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+							ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+						}
+					}
+				},
+			)
+		} else {
+			ToggleAutoCommit(app, activeGridDB)
+		}
+	case "autocommit":
 		ToggleAutoCommit(app, activeGridDB)
+	case "review", "audit", "txstatus":
+		ShowTransactionReviewModal(app, activeGridDB,
+			func() {
+				if count, err := CommitActiveTx(app); err == nil && count > 0 {
+					updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+				}
+			},
+			func() {
+				if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+					updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+					if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+						ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+					}
+				}
+			},
+		)
 	case "commit", "c":
 		if count, err := CommitActiveTx(app); err == nil && count > 0 {
 			updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))

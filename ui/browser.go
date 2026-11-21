@@ -1952,6 +1952,27 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 						return nil
 					}
 
+					// Explicit Transaction Commit (F10 / :commit)
+					if event.Key() == tcell.KeyF10 {
+						if count, err := CommitActiveTx(app); err == nil && count > 0 {
+							updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+						}
+						return nil
+					}
+
+					// Explicit Transaction Rollback (Shift+F10 / Alt+Backspace / :rollback)
+					if (event.Key() == tcell.KeyF10 && (event.Modifiers()&tcell.ModShift != 0)) ||
+						event.Key() == tcell.KeyF22 ||
+						(event.Key() == tcell.KeyBackspace && (event.Modifiers()&tcell.ModAlt != 0)) {
+						if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+							updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+							if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+								ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+							}
+						}
+						return nil
+					}
+
 					// Database Import Wizard (F9)
 					if event.Key() == tcell.KeyF9 {
 						ShowImportWizardModal(app, db, dbName)
@@ -2343,7 +2364,100 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 		exitButton.SetBorderPadding(0, 0, 2, 2)
 
+		commitButton := tview.NewButton(" Commit ")
+		commitButton.SetBorderPadding(0, 0, 1, 1)
+
+		rollbackButton := tview.NewButton(" Rollback ")
+		rollbackButton.SetBorderPadding(0, 0, 1, 1)
+
+		updateTransactionToolbarButtons := func() {
+			if IsAutoCommitMode() {
+				commitButton.SetLabel(" Commit ")
+				rollbackButton.SetLabel(" Rollback ")
+				commitButton.SetBackgroundColor(tcell.ColorDarkGray)
+				rollbackButton.SetBackgroundColor(tcell.ColorDarkGray)
+			} else {
+				count := GetUncommittedTxCount()
+				if count == 0 {
+					commitButton.SetLabel(" Commit (0) ")
+					rollbackButton.SetLabel(" Rollback (0) ")
+					commitButton.SetBackgroundColor(tcell.ColorDarkCyan)
+					rollbackButton.SetBackgroundColor(tcell.ColorDarkCyan)
+				} else {
+					commitButton.SetLabel(fmt.Sprintf(" Commit (%d) ", count))
+					rollbackButton.SetLabel(fmt.Sprintf(" Rollback (%d) ", count))
+					commitButton.SetBackgroundColor(tcell.ColorDarkGreen)
+					rollbackButton.SetBackgroundColor(tcell.ColorDarkRed)
+				}
+			}
+		}
+
+		updateTransactionToolbarButtons()
+
+		SetOnTxStateChangedHook(func() {
+			if app != nil {
+				app.QueueUpdateDraw(func() {
+					updateTransactionToolbarButtons()
+				})
+			}
+		})
+
+		commitButton.SetSelectedFunc(func() {
+			if IsAutoCommitMode() {
+				updateFooterText("Auto-Commit is ON. Press F2 or run :autocommit to enable manual transactions.")
+				return
+			}
+			if GetUncommittedTxCount() == 0 {
+				updateFooterText("No active uncommitted changes to commit.")
+				return
+			}
+			if count, err := CommitActiveTx(app); err == nil && count > 0 {
+				updateTransactionToolbarButtons()
+			}
+		})
+
+		rollbackButton.SetSelectedFunc(func() {
+			if IsAutoCommitMode() {
+				updateFooterText("Auto-Commit is ON. Press F2 or run :autocommit to enable manual transactions.")
+				return
+			}
+			if GetUncommittedTxCount() == 0 {
+				updateFooterText("No active uncommitted changes to rollback.")
+				return
+			}
+			if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+				updateTransactionToolbarButtons()
+				if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+					ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+				}
+			}
+		})
+
 		runButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(activeSQLEditor.Editor)
+				return nil
+			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(commitButton)
+				return nil
+			}
+			return event
+		})
+
+		commitButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+			if event.Key() == tcell.KeyEscape {
+				app.SetFocus(activeSQLEditor.Editor)
+				return nil
+			}
+			if event.Key() == tcell.KeyTab {
+				app.SetFocus(rollbackButton)
+				return nil
+			}
+			return event
+		})
+
+		rollbackButton.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
 				app.SetFocus(activeSQLEditor.Editor)
 				return nil
@@ -2404,6 +2518,10 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			AddItem(activeSQLEditor.Container, 0, 1, true).
 			AddItem(tview.NewFlex().SetDirection(tview.FlexColumn).
 				AddItem(runButton, 16, 0, false).
+				AddItem(nil, 1, 0, false).
+				AddItem(commitButton, 16, 0, false).
+				AddItem(nil, 1, 0, false).
+				AddItem(rollbackButton, 18, 0, false).
 				AddItem(nil, 1, 0, false).
 				AddItem(button1, 14, 0, false).
 				AddItem(nil, 1, 0, false).
@@ -2803,7 +2921,7 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			if tx != nil {
 				execRes, err = tx.ExecContext(ctx, query)
 				if err == nil {
-					RecordMutationInTx()
+					RecordMutationInTx(query, "SQL Editor")
 				}
 			} else {
 				execRes, err = conn.ExecContext(ctx, query)
@@ -3049,6 +3167,31 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			showQueryHistoryModal(app, activeGridDB, activeSQLEditor)
 			return nil
 
+		case event.Key() == tcell.KeyF10:
+			if count, err := CommitActiveTx(app); err == nil && count > 0 {
+				updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+			}
+			return nil
+
+		case (event.Key() == tcell.KeyF10 && (event.Modifiers()&tcell.ModShift != 0)) ||
+			event.Key() == tcell.KeyF22 ||
+			(event.Key() == tcell.KeyBackspace && (event.Modifiers()&tcell.ModAlt != 0)):
+			if count, err := RollbackActiveTx(app); err == nil && count > 0 {
+				updateFooterText(fmt.Sprintf("Rolled back %d mutation(s).", count))
+				if activeGridDB != nil && activeGridQuery != "" && dataTable != nil {
+					ExecuteQueryAsync(app, activeGridDB, activeGridQuery, dataTable, nil)
+				}
+			}
+			return nil
+
+		case (event.Key() == tcell.KeyEnter && (event.Modifiers()&tcell.ModCtrl != 0)) || event.Key() == tcell.KeyCtrlJ:
+			if GetUncommittedTxCount() > 0 {
+				if count, err := CommitActiveTx(app); err == nil && count > 0 {
+					updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
+				}
+				return nil
+			}
+
 		case event.Key() == tcell.KeyF4:
 			if activeGridDB != nil {
 				ShowProcessListModal(app, activeGridDB)
@@ -3263,7 +3406,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 						showErrorModal(app, mainFlex, "Update failed: "+execErr.Error())
 						return nil
 					}
-					RecordMutationInTx()
+					RecordMutationInTx(updateQuery, "Grid Cell Edit")
 				} else {
 					_, execErr := db.Exec(updateQuery, queryArgs...)
 					if execErr != nil {
