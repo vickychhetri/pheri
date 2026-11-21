@@ -121,6 +121,7 @@ function Upload-Asset($filePath, $assetName, $contentType) {
     Write-Host "  -> Uploaded successfully: $($uploadResp.browser_download_url)" -ForegroundColor Green
 }
 
+Upload-Asset -filePath "installer/Output/pheri-setup-windows-amd64.exe" -assetName "pheri-setup-windows-amd64.exe" -contentType "application/vnd.microsoft.portable-executable"
 Upload-Asset -filePath "build/pheri-windows-amd64.exe" -assetName "pheri-windows-amd64.exe" -contentType "application/vnd.microsoft.portable-executable"
 Upload-Asset -filePath "build/pheri-windows-amd64.zip" -assetName "pheri-windows-amd64.zip" -contentType "application/zip"
 Upload-Asset -filePath "build/pheri-windows-arm64.exe" -assetName "pheri-windows-arm64.exe" -contentType "application/vnd.microsoft.portable-executable"
