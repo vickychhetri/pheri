@@ -84,6 +84,9 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 	var profiles []phhistory.ConnectionProfile
 	var mainLayout *tview.Flex
+	var connectAction func()
+	var testConnectionAction func()
+	var reloadProfiles func(targetName string)
 
 	populateFormWithProfile := func(p phhistory.ConnectionProfile) {
 		form.GetFormItem(0).(*tview.InputField).SetText(p.Name)
@@ -114,7 +117,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		testStatusView.SetText(" [gray]Configuring new connection. Enter credentials and connect.[-]")
 	}
 
-	reloadProfiles := func(targetName string) {
+	reloadProfiles = func(targetName string) {
 		profileList.Clear()
 		var err error
 		profiles, err = phhistory.LoadSavedConnections()
@@ -147,7 +150,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 			profileList.AddItem(mainText, subText, 0, func() {
 				populateFormWithProfile(pCopy)
-				app.SetFocus(form)
+				connectAction()
 			})
 
 			if targetName != "" && (pCopy.Name == targetName || pCopy.ID == targetName) {
@@ -168,7 +171,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		}
 	})
 
-	connectAction := func() {
+	connectAction = func() {
 		profileName := form.GetFormItem(0).(*tview.InputField).GetText()
 		host = form.GetFormItem(1).(*tview.InputField).GetText()
 		port = form.GetFormItem(2).(*tview.InputField).GetText()
@@ -198,55 +201,56 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		phhistory.SetPort(port)
 
 		testStatusView.SetText(fmt.Sprintf(" [yellow::b]Connecting to %s@%s:%s...[-::-]", user, host, port))
-		if app != nil {
-			app.Draw()
-		}
 
-		conn, err := dbs.Connect(user, pass, host, port)
-		if err != nil {
-			errInfo := dbs.CategorizeConnectionError(err)
-			errBody := fmt.Sprintf("[red::b]Connection Failed: %s[::-]\n\n[white]%s\n\n[yellow]Suggestion:[::-] %s",
-				errInfo.Title,
-				errInfo.Message,
-				errInfo.Hint,
-			)
-			if errInfo.RawErr != nil {
-				errBody += fmt.Sprintf("\n\n[gray::d]Details: %s[::-]", errInfo.RawErr.Error())
-			}
+		go func() {
+			conn, err := dbs.Connect(user, pass, host, port)
+			if app != nil {
+				app.QueueUpdateDraw(func() {
+					if err != nil {
+						errInfo := dbs.CategorizeConnectionError(err)
+						errBody := fmt.Sprintf("[red::b]Connection Failed: %s[::-]\n\n[white]%s\n\n[yellow]Suggestion:[::-] %s",
+							errInfo.Title,
+							errInfo.Message,
+							errInfo.Hint,
+						)
+						if errInfo.RawErr != nil {
+							errBody += fmt.Sprintf("\n\n[gray::d]Details: %s[::-]", errInfo.RawErr.Error())
+						}
+						testStatusView.SetText(fmt.Sprintf(" [red::b]Connection Failed: %s[::-] [white]%s[-]", errInfo.Title, errInfo.Message))
 
-			modal := tview.NewModal().
-				SetText(errBody).
-				AddButtons([]string{"Try Again"}).
-				SetBackgroundColor(tcell.ColorDarkBlue).
-				SetButtonBackgroundColor(tcell.ColorDarkCyan).
-				SetDoneFunc(func(buttonIndex int, buttonLabel string) {
-					if mainLayout != nil {
-						app.SetRoot(mainLayout, true).SetFocus(form)
-					} else {
-						app.SetRoot(form, true)
+						modal := tview.NewModal().
+							SetText(errBody).
+							AddButtons([]string{"Try Again"}).
+							SetBackgroundColor(tcell.ColorDarkBlue).
+							SetButtonBackgroundColor(tcell.ColorDarkCyan).
+							SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+								if mainLayout != nil {
+									app.SetRoot(mainLayout, true).SetFocus(form)
+								} else {
+									app.SetRoot(form, true)
+								}
+							})
+						app.SetRoot(modal, true)
+						return
 					}
+
+					if remember {
+						_ = phhistory.SaveNamedConnectionProfile(profileName, host, port, user, pass, envTag, readOnly)
+					}
+
+					ShowDatabaseList(app, conn)
 				})
-			app.SetRoot(modal, true)
-			return
-		}
-
-		if remember {
-			_ = phhistory.SaveNamedConnectionProfile(profileName, host, port, user, pass, envTag, readOnly)
-		}
-
-		ShowDatabaseList(app, conn)
+			}
+		}()
 	}
 
-	testConnectionAction := func() {
+	testConnectionAction = func() {
 		h := form.GetFormItem(1).(*tview.InputField).GetText()
 		p := form.GetFormItem(2).(*tview.InputField).GetText()
 		u := form.GetFormItem(3).(*tview.InputField).GetText()
 		pw := form.GetFormItem(4).(*tview.InputField).GetText()
 
 		testStatusView.SetText(fmt.Sprintf(" [yellow::b]Testing connection to %s:%s...[-::-]", h, p))
-		if app != nil {
-			app.Draw()
-		}
 
 		go func() {
 			latency, version, err := dbs.TestConnection(u, pw, h, p)
