@@ -3,6 +3,7 @@ package dbs
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net"
 	"strings"
@@ -42,8 +43,8 @@ func TestDefaultConnectConfig(t *testing.T) {
 	if cfg.MaxIdleConns != 5 {
 		t.Errorf("expected MaxIdleConns 5, got %d", cfg.MaxIdleConns)
 	}
-	if cfg.ConnMaxLifetime != 10*time.Minute {
-		t.Errorf("expected ConnMaxLifetime 10m, got %v", cfg.ConnMaxLifetime)
+	if cfg.ConnMaxLifetime != 5*time.Minute {
+		t.Errorf("expected ConnMaxLifetime 5m, got %v", cfg.ConnMaxLifetime)
 	}
 	if cfg.ConnMaxIdleTime != 3*time.Minute {
 		t.Errorf("expected ConnMaxIdleTime 3m, got %v", cfg.ConnMaxIdleTime)
@@ -177,6 +178,56 @@ func TestOpenWithConfig_PoolSettings(t *testing.T) {
 	stats := db.Stats()
 	if stats.MaxOpenConnections != 17 {
 		t.Errorf("expected MaxOpenConnections 17, got %d", stats.MaxOpenConnections)
+	}
+}
+
+func TestConfigurePoolLimits(t *testing.T) {
+	// 1. Test nil db does not panic
+	ConfigurePoolLimits(nil, 25, 5, 5*time.Minute, 3*time.Minute)
+
+	// 2. Test valid db with explicit limits
+	cfg := DefaultConnectConfig("root", "test", "127.0.0.1", "3306")
+	db, err := sql.Open("mysql", BuildDSN(cfg))
+	if err != nil {
+		t.Fatalf("failed to open sql.DB: %v", err)
+	}
+	defer db.Close()
+
+	ConfigurePoolLimits(db, 30, 8, 12*time.Minute, 4*time.Minute)
+	stats := db.Stats()
+	if stats.MaxOpenConnections != 30 {
+		t.Errorf("expected MaxOpenConnections 30, got %d", stats.MaxOpenConnections)
+	}
+
+	// 3. Test non-positive parameters fallback to defaults
+	ConfigurePoolLimits(db, 0, -1, 0, -5*time.Second)
+	statsDefault := db.Stats()
+	if statsDefault.MaxOpenConnections != DefaultMaxOpenConns {
+		t.Errorf("expected default MaxOpenConnections %d, got %d", DefaultMaxOpenConns, statsDefault.MaxOpenConnections)
+	}
+}
+
+func TestGetPoolStats(t *testing.T) {
+	// 1. Test nil db returns zero struct without panicking
+	zeroStats := GetPoolStats(nil)
+	if zeroStats.MaxOpenConnections != 0 {
+		t.Errorf("expected zero struct for nil db, got %v", zeroStats)
+	}
+
+	// 2. Test configured db
+	cfg := DefaultConnectConfig("root", "test", "127.0.0.1", "3306")
+	db, err := OpenWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("OpenWithConfig returned error: %v", err)
+	}
+	defer db.Close()
+
+	poolStats := GetPoolStats(db)
+	if poolStats.MaxOpenConnections != DefaultMaxOpenConns {
+		t.Errorf("expected MaxOpenConnections %d, got %d", DefaultMaxOpenConns, poolStats.MaxOpenConnections)
+	}
+	if poolStats.OpenConnections < 0 {
+		t.Errorf("expected non-negative OpenConnections, got %d", poolStats.OpenConnections)
 	}
 }
 

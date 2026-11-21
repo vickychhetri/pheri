@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"mysql-tui/dbs"
 	"mysql-tui/phhistory"
 	"mysql-tui/util"
 	"os"
@@ -870,9 +871,7 @@ func exportAllObjects(outputFile string, progressChan chan string, dbName string
 		db.Close()
 	}()
 
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(5)
-	db.SetConnMaxLifetime(time.Minute * 5)
+	dbs.ConfigurePoolLimits(db, 10, 5, 5*time.Minute, 2*time.Minute)
 
 	type fileWriters struct {
 		table, view, viewddl, procedure, function, trigger, event *bufio.Writer
@@ -1396,21 +1395,6 @@ func escapeString(str string) string {
 		}
 	}
 	return buf.String()
-}
-
-func createDbPool(conns []string) []*sql.DB {
-	var pool []*sql.DB
-	for _, dsn := range conns {
-		db, err := sql.Open("mysql", dsn)
-		if err != nil {
-			log.Fatalf("Failed to open DB: %v", err)
-		}
-		if err := db.Ping(); err != nil {
-			log.Fatalf("Cannot connect to DB: %v", err)
-		}
-		pool = append(pool, db)
-	}
-	return pool
 }
 
 func getDDLFromShowCreate(db *sql.DB, query string) (string, error) {
