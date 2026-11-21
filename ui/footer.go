@@ -41,11 +41,11 @@ func CreateLayoutWithFooter(app *tview.Application, mainContent tview.Primitive)
 	updateFooterText("Ready")
 
 	commandInput = tview.NewInputField().
-		SetLabel(" [white::b]: [-::-]").
+		SetLabel(" : ").
 		SetFieldWidth(40).
 		SetPlaceholder("Enter command (:help, :use <db>, :export, :quit)...").
-		SetFieldBackgroundColor(tcell.ColorReset).
-		SetFieldTextColor(tcell.ColorWhite).
+		SetFieldBackgroundColor(CurrentTheme.FieldBg).
+		SetFieldTextColor(CurrentTheme.TextPrimary).
 		SetLabelColor(CurrentTheme.BorderFocused)
 
 	commandInput.SetDoneFunc(func(key tcell.Key) {
@@ -96,7 +96,7 @@ func updateFooterText(status string) {
 	}
 
 	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] %s [gray]│[-] [aqua::b]F1[-::-] Help  [aqua::b]F2[-::-] AutoCommit  [aqua::b]Ctrl+H[-::-] History  [aqua::b]Tab/Click[-::-] Switch  [aqua::b]Enter[-::-] Edit  [aqua::b]e[-::-] Editor  [aqua::b]Ctrl+R[-::-] Run  [aqua::b]F3[-::-] Schema  [aqua::b]Ctrl+E[-::-] Export [gray]│[-] [white]%s", envColor, ActiveEnv, txBadge, status)
-	footerBar.SetText(text)
+	footerBar.SetText(FormatThemeMarkup(text))
 }
 
 func UpdateFooterRunningQuery(elapsed time.Duration) {
@@ -116,7 +116,7 @@ func UpdateFooterRunningQuery(elapsed time.Duration) {
 	}
 
 	text := fmt.Sprintf(" [white::b]PHERI[-::-] [%s::b]%s[-::-] [gray]│[-] [yellow::b]Executing Query... (%0.1fs)%s[-::-] [gray]│[-] [aqua::b]Ctrl+C / Esc:[-] Cancel (Server Kill)", envColor, ActiveEnv, elapsed.Seconds(), threadInfo)
-	footerBar.SetText(text)
+	footerBar.SetText(FormatThemeMarkup(text))
 }
 
 func handleGlobalCommand(app *tview.Application, cmd string) {
@@ -252,6 +252,39 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		showAboutModal(app)
 	case "theme", "colors":
 		showThemePickerModal(app)
+	case "disconnect", "connect", "login":
+		if GetUncommittedTxCount() > 0 {
+			PromptUncommittedChangesModal(app, "disconnect from server",
+				func() {
+					_, _ = CommitActiveTx(app)
+					ResetTransactionState()
+					if activeGridDB != nil {
+						_ = activeGridDB.Close()
+						activeGridDB = nil
+					}
+					ShowConnectionForm(app, "", "", "", "")
+				},
+				func() {
+					_, _ = RollbackActiveTx(app)
+					ResetTransactionState()
+					if activeGridDB != nil {
+						_ = activeGridDB.Close()
+						activeGridDB = nil
+					}
+					ShowConnectionForm(app, "", "", "", "")
+				},
+				func() {
+					updateFooterText("Disconnect cancelled.")
+				},
+			)
+			return
+		}
+		ResetTransactionState()
+		if activeGridDB != nil {
+			_ = activeGridDB.Close()
+			activeGridDB = nil
+		}
+		ShowConnectionForm(app, "", "", "", "")
 	default:
 		updateFooterText("Unknown command: " + cmd)
 	}
@@ -282,14 +315,15 @@ func showAboutModal(app *tview.Application) {
 		SetDynamicColors(true).
 		SetScrollable(true).
 		SetWrap(true).
-		SetText(aboutText)
+		SetText(FormatThemeMarkup(aboutText))
 	view.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	view.SetTextColor(CurrentTheme.TextPrimary)
 	StyleModalBox(view.Box, "About Pheri")
 
 	statusBar := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(" [yellow::b]ESC / ENTER[-::-] Close About ")
+		SetText(FormatThemeMarkup(" [yellow::b]ESC / ENTER[-::-] Close About "))
 	statusBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow).

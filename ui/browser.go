@@ -1387,6 +1387,8 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	}
 	activeGridDB = db
 	activeGridDBName = dbName
+	ActiveLoginDB = db
+	ActiveScreen = "browser"
 
 	dataBaseList = tview.NewList()
 	dataBaseList.ShowSecondaryText(false).SetHighlightFullLine(true)
@@ -2007,6 +2009,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 		})
 
 		searchInput := tview.NewInputField()
+		SchemaSearchInput = searchInput
 		searchInput.SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
 			SetFieldTextColor(CurrentTheme.TextPrimary).
 			SetLabel(" Filter: ").
@@ -2584,9 +2587,14 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		for cIdx, val := range row {
 			cellStyle := tcell.StyleDefault.
 				Foreground(CurrentTheme.TextPrimary).
-				Background(tcell.ColorReset)
+				Background(CurrentTheme.SurfaceBg)
 			if (rIdx+1)%2 == 0 {
-				cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
+				if CurrentTheme.IsLight {
+					cellStyle = cellStyle.Background(tcell.NewRGBColor(241, 245, 249)).
+						Foreground(CurrentTheme.TextPrimary)
+				} else {
+					cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
+				}
 			}
 			cell := tview.NewTableCell(" " + val + " ").
 				SetStyle(cellStyle).

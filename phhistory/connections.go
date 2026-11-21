@@ -288,6 +288,11 @@ func LoadSavedConnections() ([]ConnectionProfile, error) {
 
 // SaveConnectionProfile adds or updates a saved profile, encrypting credentials on disk.
 func SaveConnectionProfile(host, port, user, pass, env string, readOnly bool) error {
+	return SaveNamedConnectionProfile("", host, port, user, pass, env, readOnly)
+}
+
+// SaveNamedConnectionProfile adds or updates a profile with an optional custom display name.
+func SaveNamedConnectionProfile(customName, host, port, user, pass, env string, readOnly bool) error {
 	if env == "" {
 		env = "DEV"
 	}
@@ -295,11 +300,19 @@ func SaveConnectionProfile(host, port, user, pass, env string, readOnly bool) er
 	profiles, _ := LoadSavedConnections()
 
 	id := fmt.Sprintf("%s@%s:%s", user, host, port)
-	name := fmt.Sprintf("%s@%s:%s", user, host, port)
+	name := strings.TrimSpace(customName)
+	if name == "" {
+		name = fmt.Sprintf("%s@%s:%s", user, host, port)
+	}
 
 	updated := false
 	for i, p := range profiles {
-		if p.ID == id {
+		if p.ID == id || (customName != "" && p.Name == customName) {
+			profiles[i].ID = id
+			profiles[i].Name = name
+			profiles[i].Host = host
+			profiles[i].Port = port
+			profiles[i].User = user
 			profiles[i].Pass = pass
 			profiles[i].Environment = env
 			profiles[i].ReadOnly = readOnly

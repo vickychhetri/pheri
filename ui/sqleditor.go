@@ -34,12 +34,13 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 		SetBorder(true).
 		SetTitleAlign(tview.AlignLeft)
 
-	// Professional dark theme styling using CurrentTheme
-	textArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(tcell.ColorReset))
+	// Professional theme styling using CurrentTheme
+	textArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(CurrentTheme.SurfaceBg))
 	textArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
-	textArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(tcell.ColorReset))
+	textArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(CurrentTheme.SurfaceBg))
 	textArea.SetBorderColor(CurrentTheme.BorderInactive).
 		SetTitleColor(CurrentTheme.TitleInactive)
+	textArea.SetBackgroundColor(CurrentTheme.SurfaceBg)
 
 	// Direct 2-way integration with the OS system clipboard
 	textArea.SetClipboard(
@@ -105,11 +106,12 @@ func (s *SQLEditor) ApplyTheme() {
 	if s.TextArea == nil {
 		return
 	}
-	s.TextArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(tcell.ColorReset))
+	s.TextArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(CurrentTheme.SurfaceBg))
 	s.TextArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
-	s.TextArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(tcell.ColorReset))
+	s.TextArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(CurrentTheme.SurfaceBg))
 	s.TextArea.SetBorderColor(CurrentTheme.BorderInactive)
 	s.TextArea.SetTitleColor(CurrentTheme.TitleInactive)
+	s.TextArea.SetBackgroundColor(CurrentTheme.SurfaceBg)
 }
 
 // handleInput intercepts specialized hotkeys (execution, autocomplete, snippets, navigation)
@@ -293,7 +295,7 @@ func (s *SQLEditor) ShowTableSuggestionsModal() {
 	list := tview.NewList()
 	list.ShowSecondaryText(false)
 	StyleModalBox(list.Box, fmt.Sprintf("Table Autocomplete [Filter: '%s']", currentWord))
-	list.SetBackgroundColor(tcell.ColorReset)
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
 	StyleList(list)
 
 	restoreView := func() {
@@ -350,7 +352,7 @@ func (s *SQLEditor) ShowSnippetsModal() {
 
 	list := tview.NewList()
 	StyleModalBox(list.Box, "SQL Query Snippets (Ctrl+S)")
-	list.SetBackgroundColor(tcell.ColorReset)
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
 	StyleList(list)
 
 	restoreView := func() {

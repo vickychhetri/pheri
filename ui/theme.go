@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"database/sql"
 	"fmt"
+	"mysql-tui/phhistory"
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
@@ -11,8 +13,10 @@ import (
 // UITheme defines a cohesive, production-grade terminal color palette.
 type UITheme struct {
 	Name           string
+	IsLight        bool
 	Bg             tcell.Color
 	SurfaceBg      tcell.Color
+	FieldBg        tcell.Color
 	HeaderBg       tcell.Color
 	HeaderFg       tcell.Color
 	SelectedBg     tcell.Color
@@ -34,8 +38,10 @@ type UITheme struct {
 var AvailableThemes = []UITheme{
 	{
 		Name:           "Nordic Frost",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(24, 28, 36),
+		FieldBg:        tcell.NewRGBColor(32, 38, 48),
 		HeaderBg:       tcell.NewRGBColor(46, 52, 64),
 		HeaderFg:       tcell.NewRGBColor(236, 239, 244),
 		SelectedBg:     tcell.NewRGBColor(59, 66, 82),
@@ -54,8 +60,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Tokyo Night",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(26, 27, 38),
+		FieldBg:        tcell.NewRGBColor(34, 36, 54),
 		HeaderBg:       tcell.NewRGBColor(36, 40, 59),
 		HeaderFg:       tcell.NewRGBColor(192, 202, 245),
 		SelectedBg:     tcell.NewRGBColor(45, 53, 80),
@@ -74,8 +82,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Catppuccin Mocha",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(24, 24, 37),
+		FieldBg:        tcell.NewRGBColor(34, 34, 52),
 		HeaderBg:       tcell.NewRGBColor(49, 50, 68),
 		HeaderFg:       tcell.NewRGBColor(205, 214, 244),
 		SelectedBg:     tcell.NewRGBColor(69, 71, 90),
@@ -94,8 +104,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Charcoal Slate",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(20, 22, 26),
+		FieldBg:        tcell.NewRGBColor(28, 32, 38),
 		HeaderBg:       tcell.NewRGBColor(38, 42, 50),
 		HeaderFg:       tcell.NewRGBColor(240, 240, 240),
 		SelectedBg:     tcell.NewRGBColor(55, 62, 74),
@@ -112,10 +124,322 @@ var AvailableThemes = []UITheme{
 		AccentDanger:   tcell.NewRGBColor(220, 100, 100),
 		AccentInfo:     tcell.NewRGBColor(110, 190, 200),
 	},
+	{
+		Name:           "Dark",
+		IsLight:        false,
+		Bg:             tcell.ColorReset,
+		SurfaceBg:      tcell.NewRGBColor(18, 20, 28),
+		FieldBg:        tcell.NewRGBColor(26, 30, 42),
+		HeaderBg:       tcell.NewRGBColor(28, 32, 44),
+		HeaderFg:       tcell.NewRGBColor(245, 247, 250),
+		SelectedBg:     tcell.NewRGBColor(46, 52, 70),
+		SelectedFg:     tcell.NewRGBColor(255, 255, 255),
+		BorderInactive: tcell.NewRGBColor(50, 58, 76),
+		BorderFocused:  tcell.NewRGBColor(96, 165, 250), // Vivid Sky Blue
+		TitleInactive:  tcell.NewRGBColor(135, 145, 165),
+		TitleFocused:   tcell.NewRGBColor(245, 247, 250),
+		TextPrimary:    tcell.NewRGBColor(235, 240, 248),
+		TextSecondary:  tcell.NewRGBColor(148, 163, 184),
+		AccentPrimary:  tcell.NewRGBColor(96, 165, 250),
+		AccentSuccess:  tcell.NewRGBColor(52, 211, 153),
+		AccentWarning:  tcell.NewRGBColor(251, 191, 36),
+		AccentDanger:   tcell.NewRGBColor(248, 113, 113),
+		AccentInfo:     tcell.NewRGBColor(56, 189, 248),
+	},
+	{
+		Name:           "Light",
+		IsLight:        true,
+		Bg:             tcell.NewRGBColor(248, 250, 252),
+		SurfaceBg:      tcell.NewRGBColor(255, 255, 255),
+		FieldBg:        tcell.NewRGBColor(241, 245, 249),
+		HeaderBg:       tcell.NewRGBColor(226, 232, 240),
+		HeaderFg:       tcell.NewRGBColor(15, 23, 42),
+		SelectedBg:     tcell.NewRGBColor(219, 234, 254),
+		SelectedFg:     tcell.NewRGBColor(29, 78, 216),
+		BorderInactive: tcell.NewRGBColor(203, 213, 225),
+		BorderFocused:  tcell.NewRGBColor(37, 99, 235), // Crisp Royal Blue
+		TitleInactive:  tcell.NewRGBColor(71, 85, 105),
+		TitleFocused:   tcell.NewRGBColor(15, 23, 42),
+		TextPrimary:    tcell.NewRGBColor(15, 23, 42),
+		TextSecondary:  tcell.NewRGBColor(71, 85, 105),
+		AccentPrimary:  tcell.NewRGBColor(29, 78, 216),
+		AccentSuccess:  tcell.NewRGBColor(21, 128, 61),
+		AccentWarning:  tcell.NewRGBColor(180, 83, 9),
+		AccentDanger:   tcell.NewRGBColor(185, 28, 28),
+		AccentInfo:     tcell.NewRGBColor(3, 105, 161),
+	},
+	{
+		Name:           "Developer",
+		IsLight:        false,
+		Bg:             tcell.ColorReset,
+		SurfaceBg:      tcell.NewRGBColor(34, 31, 38),
+		FieldBg:        tcell.NewRGBColor(44, 40, 50),
+		HeaderBg:       tcell.NewRGBColor(45, 42, 50),
+		HeaderFg:       tcell.NewRGBColor(252, 252, 250),
+		SelectedBg:     tcell.NewRGBColor(64, 60, 72),
+		SelectedFg:     tcell.NewRGBColor(255, 216, 102), // Monokai Amber
+		BorderInactive: tcell.NewRGBColor(78, 74, 88),
+		BorderFocused:  tcell.NewRGBColor(255, 97, 136), // Monokai Coral/Magenta
+		TitleInactive:  tcell.NewRGBColor(147, 146, 150),
+		TitleFocused:   tcell.NewRGBColor(255, 216, 102),
+		TextPrimary:    tcell.NewRGBColor(248, 248, 242),
+		TextSecondary:  tcell.NewRGBColor(147, 146, 150),
+		AccentPrimary:  tcell.NewRGBColor(120, 220, 232),
+		AccentSuccess:  tcell.NewRGBColor(169, 220, 103),
+		AccentWarning:  tcell.NewRGBColor(255, 216, 102),
+		AccentDanger:   tcell.NewRGBColor(255, 97, 136),
+		AccentInfo:     tcell.NewRGBColor(171, 157, 242),
+	},
+	{
+		Name:           "Hacker",
+		IsLight:        false,
+		Bg:             tcell.ColorReset,
+		SurfaceBg:      tcell.NewRGBColor(5, 12, 6),
+		FieldBg:        tcell.NewRGBColor(10, 22, 12),
+		HeaderBg:       tcell.NewRGBColor(12, 28, 14),
+		HeaderFg:       tcell.NewRGBColor(0, 255, 100),
+		SelectedBg:     tcell.NewRGBColor(0, 60, 25),
+		SelectedFg:     tcell.NewRGBColor(255, 255, 255),
+		BorderInactive: tcell.NewRGBColor(20, 60, 30),
+		BorderFocused:  tcell.NewRGBColor(0, 255, 120), // Matrix Lime Phosphor
+		TitleInactive:  tcell.NewRGBColor(50, 130, 65),
+		TitleFocused:   tcell.NewRGBColor(0, 255, 120),
+		TextPrimary:    tcell.NewRGBColor(0, 255, 100),
+		TextSecondary:  tcell.NewRGBColor(60, 160, 80),
+		AccentPrimary:  tcell.NewRGBColor(0, 255, 120),
+		AccentSuccess:  tcell.NewRGBColor(0, 255, 80),
+		AccentWarning:  tcell.NewRGBColor(180, 255, 0),
+		AccentDanger:   tcell.NewRGBColor(255, 60, 60),
+		AccentInfo:     tcell.NewRGBColor(40, 255, 200),
+	},
+	{
+		Name:           "Classic",
+		IsLight:        false,
+		Bg:             tcell.ColorReset,
+		SurfaceBg:      tcell.NewRGBColor(0, 0, 128), // Turbo Pascal / DOS Navy
+		FieldBg:        tcell.NewRGBColor(0, 0, 96),
+		HeaderBg:       tcell.NewRGBColor(0, 0, 168),
+		HeaderFg:       tcell.NewRGBColor(255, 255, 255),
+		SelectedBg:     tcell.NewRGBColor(0, 168, 168), // Retro Cyan Highlight
+		SelectedFg:     tcell.NewRGBColor(0, 0, 0),
+		BorderInactive: tcell.NewRGBColor(85, 85, 255),
+		BorderFocused:  tcell.NewRGBColor(255, 255, 85), // Classic Yellow Border
+		TitleInactive:  tcell.NewRGBColor(170, 170, 255),
+		TitleFocused:   tcell.NewRGBColor(255, 255, 85),
+		TextPrimary:    tcell.NewRGBColor(255, 255, 255),
+		TextSecondary:  tcell.NewRGBColor(170, 170, 255),
+		AccentPrimary:  tcell.NewRGBColor(85, 255, 255),
+		AccentSuccess:  tcell.NewRGBColor(85, 255, 85),
+		AccentWarning:  tcell.NewRGBColor(255, 255, 85),
+		AccentDanger:   tcell.NewRGBColor(255, 85, 85),
+		AccentInfo:     tcell.NewRGBColor(255, 85, 255),
+	},
+	{
+		Name:           "Gen-Z",
+		IsLight:        false,
+		Bg:             tcell.ColorReset,
+		SurfaceBg:      tcell.NewRGBColor(24, 15, 42), // Cyber Synthwave Ultraviolet
+		FieldBg:        tcell.NewRGBColor(34, 20, 60),
+		HeaderBg:       tcell.NewRGBColor(40, 22, 68),
+		HeaderFg:       tcell.NewRGBColor(255, 42, 133), // Hot Neon Pink
+		SelectedBg:     tcell.NewRGBColor(78, 30, 115),
+		SelectedFg:     tcell.NewRGBColor(0, 240, 255), // Fluorescent Cyan
+		BorderInactive: tcell.NewRGBColor(88, 45, 126),
+		BorderFocused:  tcell.NewRGBColor(0, 240, 255),
+		TitleInactive:  tcell.NewRGBColor(170, 120, 210),
+		TitleFocused:   tcell.NewRGBColor(255, 42, 133),
+		TextPrimary:    tcell.NewRGBColor(240, 230, 255),
+		TextSecondary:  tcell.NewRGBColor(160, 130, 195),
+		AccentPrimary:  tcell.NewRGBColor(0, 240, 255),
+		AccentSuccess:  tcell.NewRGBColor(57, 255, 176),
+		AccentWarning:  tcell.NewRGBColor(255, 222, 89),
+		AccentDanger:   tcell.NewRGBColor(255, 42, 109),
+		AccentInfo:     tcell.NewRGBColor(185, 103, 255),
+	},
 }
 
-// CurrentTheme is the active theme, defaulting to Nordic Frost.
+// CurrentTheme is the active theme, defaulting to Nordic Frost or restored from saved config.
 var CurrentTheme = AvailableThemes[0]
+
+// ActiveScreen tracks the current major screen: "login", "dblist", or "browser".
+var ActiveScreen = "login"
+
+// ActiveLoginDB holds reference to the current SQL DB instance.
+var ActiveLoginDB *sql.DB
+
+// SchemaSearchInput holds reference to the sidebar search input.
+var SchemaSearchInput *tview.InputField
+
+func init() {
+	savedTheme := phhistory.GetThemePreference()
+	if savedTheme != "" {
+		for _, t := range AvailableThemes {
+			if strings.EqualFold(t.Name, savedTheme) {
+				CurrentTheme = t
+				break
+			}
+		}
+	}
+}
+
+// FormatThemeMarkup replaces low-contrast color tags with high-contrast variants when CurrentTheme.IsLight is true.
+func FormatThemeMarkup(text string) string {
+	if !CurrentTheme.IsLight {
+		return text
+	}
+	replacer := strings.NewReplacer(
+		"[white::b]", "[#0f172a::b]",
+		"[white::-]", "[#0f172a::-]",
+		"[white]", "[#0f172a]",
+		"[gray::b]", "[#475569::b]",
+		"[gray::-]", "[#475569::-]",
+		"[gray]", "[#475569]",
+		"[yellow::b]", "[#b45309::b]",
+		"[yellow::-]", "[#b45309::-]",
+		"[yellow]", "[#b45309]",
+		"[lime::b]", "[#15803d::b]",
+		"[lime::-]", "[#15803d::-]",
+		"[lime]", "[#15803d]",
+		"[green::b]", "[#166534::b]",
+		"[green::-]", "[#166534::-]",
+		"[green]", "[#166534]",
+		"[aqua::b]", "[#1d4ed8::b]",
+		"[aqua::-]", "[#1d4ed8::-]",
+		"[aqua]", "[#1d4ed8]",
+		"[cyan::b]", "[#0369a1::b]",
+		"[cyan::-]", "[#0369a1::-]",
+		"[cyan]", "[#0369a1]",
+		"[orange::b]", "[#c2410c::b]",
+		"[orange::-]", "[#c2410c::-]",
+		"[orange]", "[#c2410c]",
+		"[purple::b]", "[#7e22ce::b]",
+		"[purple::-]", "[#7e22ce::-]",
+		"[purple]", "[#7e22ce]",
+		"[magenta::b]", "[#9333ea::b]",
+		"[magenta::-]", "[#9333ea::-]",
+		"[magenta]", "[#9333ea]",
+	)
+	return replacer.Replace(text)
+}
+
+// ApplyThemeGlobally applies the selected theme across all active UI components,
+// updates global tview defaults, and persists the choice to disk.
+func ApplyThemeGlobally(app *tview.Application, theme UITheme) {
+	CurrentTheme = theme
+	_ = phhistory.SaveThemePreference(theme.Name)
+
+	// 1. Update tview global style defaults
+	tview.Styles.PrimitiveBackgroundColor = CurrentTheme.SurfaceBg
+	tview.Styles.ContrastBackgroundColor = CurrentTheme.HeaderBg
+	tview.Styles.MoreContrastBackgroundColor = CurrentTheme.SelectedBg
+	tview.Styles.BorderColor = CurrentTheme.BorderInactive
+	tview.Styles.TitleColor = CurrentTheme.TitleInactive
+	tview.Styles.GraphicsColor = CurrentTheme.BorderFocused
+	tview.Styles.PrimaryTextColor = CurrentTheme.TextPrimary
+	tview.Styles.SecondaryTextColor = CurrentTheme.TextSecondary
+	tview.Styles.TertiaryTextColor = CurrentTheme.AccentPrimary
+	tview.Styles.InverseTextColor = CurrentTheme.SelectedFg
+
+	// 2. Refresh SQL editor
+	if activeSQLEditor != nil && activeSQLEditor.TextArea != nil {
+		activeSQLEditor.ApplyTheme()
+	}
+
+	// 3. Refresh schema objects list
+	if tableList != nil {
+		RefreshTableListTheme(tableList)
+	}
+
+	// 4. Refresh database switcher list
+	if dataBaseList != nil {
+		RefreshDatabaseListTheme(dataBaseList)
+	}
+
+	// 5. Refresh sidebar search input
+	if SchemaSearchInput != nil {
+		SchemaSearchInput.SetFieldBackgroundColor(CurrentTheme.FieldBg).
+			SetFieldTextColor(CurrentTheme.TextPrimary).
+			SetLabelColor(CurrentTheme.AccentPrimary).
+			SetPlaceholderTextColor(CurrentTheme.TextSecondary)
+	}
+
+	// 6. Refresh data table and cell styles
+	if dataTable != nil {
+		RefreshTableTheme(dataTable)
+	}
+
+	// 7. Refresh footer and command input
+	if footerBar != nil {
+		footerBar.SetBackgroundColor(CurrentTheme.HeaderBg)
+	}
+	if commandInput != nil {
+		commandInput.SetFieldBackgroundColor(CurrentTheme.FieldBg)
+		commandInput.SetFieldTextColor(CurrentTheme.TextPrimary)
+		commandInput.SetLabelColor(CurrentTheme.BorderFocused)
+	}
+}
+
+// RefreshTableTheme re-styles the entire Table, including background, borders, and all cells.
+func RefreshTableTheme(table *tview.Table) {
+	if table == nil {
+		return
+	}
+	table.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleTable(table)
+	StyleBox(table.Box, "Query Results", table.HasFocus())
+
+	rowCount := table.GetRowCount()
+	colCount := table.GetColumnCount()
+	headerStyle := tcell.StyleDefault.
+		Background(CurrentTheme.HeaderBg).
+		Foreground(CurrentTheme.HeaderFg).
+		Bold(true)
+
+	for r := 0; r < rowCount; r++ {
+		for c := 0; c < colCount; c++ {
+			cell := table.GetCell(r, c)
+			if cell == nil {
+				continue
+			}
+			if r == 0 {
+				cell.SetStyle(headerStyle)
+			} else {
+				cellStyle := tcell.StyleDefault.
+					Foreground(CurrentTheme.TextPrimary).
+					Background(CurrentTheme.SurfaceBg)
+				if (r+1)%2 == 0 {
+					if CurrentTheme.IsLight {
+						cellStyle = cellStyle.Background(tcell.NewRGBColor(241, 245, 249)).
+							Foreground(CurrentTheme.TextPrimary)
+					} else {
+						cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
+					}
+				}
+				cell.SetStyle(cellStyle)
+			}
+		}
+	}
+}
+
+// RefreshTableListTheme re-styles the schema objects list.
+func RefreshTableListTheme(list *tview.List) {
+	if list == nil {
+		return
+	}
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleList(list)
+	StyleBox(list.Box, "Schema Objects", list.HasFocus())
+}
+
+// RefreshDatabaseListTheme re-styles the database switcher list.
+func RefreshDatabaseListTheme(list *tview.List) {
+	if list == nil {
+		return
+	}
+	list.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	StyleList(list)
+	StyleBox(list.Box, "Databases", list.HasFocus())
+}
 
 // StyleBox applies consistent, professional border and title styles to any tview Box.
 func StyleBox(box *tview.Box, title string, focused bool) {
@@ -175,20 +499,22 @@ func StyleModalBox(box *tview.Box, title string) {
 
 // FormatSchemaObjectBadge returns an aligned, color-coded badge for schema objects.
 func FormatSchemaObjectBadge(objectType string) string {
+	var rawBadge string
 	switch strings.ToUpper(strings.TrimSpace(objectType)) {
 	case "TABLE":
-		return "[aqua::b]TABLE[-::-]"
+		rawBadge = "[aqua::b]TABLE[-::-]"
 	case "VIEW":
-		return "[purple::b]VIEW [-::-]"
+		rawBadge = "[purple::b]VIEW [-::-]"
 	case "PROCEDURE", "PROC":
-		return "[yellow::b]PROC [-::-]"
+		rawBadge = "[yellow::b]PROC [-::-]"
 	case "FUNCTION", "FUNC":
-		return "[lime::b]FUNC [-::-]"
+		rawBadge = "[lime::b]FUNC [-::-]"
 	case "TRIGGER", "TRIG":
-		return "[red::b]TRIG [-::-]"
+		rawBadge = "[red::b]TRIG [-::-]"
 	case "EVENT":
-		return "[blue::b]EVENT[-::-]"
+		rawBadge = "[blue::b]EVENT[-::-]"
 	default:
-		return fmt.Sprintf("[gray::b]%-5s[-::-]", objectType)
+		rawBadge = fmt.Sprintf("[gray::b]%-5s[-::-]", objectType)
 	}
+	return FormatThemeMarkup(rawBadge)
 }

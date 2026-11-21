@@ -61,3 +61,21 @@ func TestConnectionErrorPresentationFormatting(t *testing.T) {
 		})
 	}
 }
+
+func TestShowConnectionForm_SplitPaneLayout(t *testing.T) {
+	app := tview.NewApplication()
+	ShowConnectionForm(app, "", "", "", "")
+
+	if ActiveEnv != "DEV" {
+		t.Errorf("expected ActiveEnv to be reset to DEV, got %s", ActiveEnv)
+	}
+	if ActiveReadOnly != false {
+		t.Errorf("expected ActiveReadOnly to be reset to false")
+	}
+
+	// Verify focus is assigned to profile list on initial launch
+	focus := app.GetFocus()
+	if focus == nil {
+		t.Fatalf("expected non-nil focus on initial split-pane render")
+	}
+}
