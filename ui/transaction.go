@@ -194,14 +194,6 @@ func CommitActiveTx(app *tview.Application) (int, error) {
 	activeTx = nil
 	txMutations = nil
 	txStartTime = time.Time{}
-
-	// If still in manual mode, immediately begin a fresh transaction
-	if !isAutoCommitMode && activeTxDB != nil {
-		newTx, beginErr := activeTxDB.BeginTx(context.Background(), nil)
-		if beginErr == nil {
-			activeTx = newTx
-		}
-	}
 	txMutex.Unlock()
 
 	notifyTxStateChanged()
@@ -233,14 +225,6 @@ func RollbackActiveTx(app *tview.Application) (int, error) {
 	activeTx = nil
 	txMutations = nil
 	txStartTime = time.Time{}
-
-	// If still in manual mode, immediately begin a fresh transaction
-	if !isAutoCommitMode && activeTxDB != nil {
-		newTx, beginErr := activeTxDB.BeginTx(context.Background(), nil)
-		if beginErr == nil {
-			activeTx = newTx
-		}
-	}
 	txMutex.Unlock()
 
 	notifyTxStateChanged()
@@ -263,23 +247,6 @@ func ToggleAutoCommit(app *tview.Application, db *sql.DB) {
 		uncommittedTxCount = 0
 		activeTxDB = db
 		txMutex.Unlock()
-
-		if db != nil {
-			go func() {
-				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-				defer cancel()
-				newTx, err := db.BeginTx(ctx, nil)
-				if err == nil {
-					txMutex.Lock()
-					if !isAutoCommitMode && activeTx == nil {
-						activeTx = newTx
-					} else {
-						_ = newTx.Rollback()
-					}
-					txMutex.Unlock()
-				}
-			}()
-		}
 
 		notifyTxStateChanged()
 		updateFooterText("Auto-Commit disabled. Manual transaction mode ACTIVE (F2 / :commit / :rollback).")
@@ -438,6 +405,9 @@ func ShowTransactionReviewModal(app *tview.Application, db *sql.DB, onCommit fun
 		if mainFlex != nil && app != nil {
 			orig := CreateLayoutWithFooter(app, mainFlex)
 			app.SetRoot(orig, true)
+			if dataTable != nil {
+				app.SetFocus(dataTable)
+			}
 		}
 	}
 

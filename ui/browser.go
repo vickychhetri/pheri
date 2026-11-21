@@ -1765,9 +1765,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 
 		SetOnTxStateChangedHook(func() {
 			if app != nil {
-				app.QueueUpdateDraw(func() {
-					updateTransactionToolbarButtons()
-				})
+				go func() {
+					app.QueueUpdateDraw(func() {
+						updateTransactionToolbarButtons()
+					})
+				}()
 			}
 		})
 
