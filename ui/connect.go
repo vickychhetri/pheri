@@ -47,7 +47,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	header := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
-	header.SetText(" [white::b]PHERI DATABASE MANAGER[-::-]  [gray]v3.2.0[-]  [gray]│[-]  [aqua::b]Terminal MySQL Client[-::-]")
+	header.SetText(FormatThemeMarkup(" [white::b]PHERI DATABASE MANAGER[-::-]  [gray]v3.2.0[-]  [gray]│[-]  [aqua::b]Terminal MySQL Client[-::-]"))
 	header.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	// 2. Left Panel: Saved Connection Profiles List
@@ -61,7 +61,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	StyleBox(form.Box, "Connection Details & Authentication", false)
 	form.SetBorderPadding(0, 0, 2, 2)
 	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
-	form.SetFieldBackgroundColor(tcell.ColorReset)
+	form.SetFieldBackgroundColor(CurrentTheme.FieldBg)
 	form.SetFieldTextColor(CurrentTheme.TextPrimary)
 	form.SetLabelColor(CurrentTheme.AccentPrimary)
 	form.SetButtonBackgroundColor(CurrentTheme.SelectedBg)
@@ -82,7 +82,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
 	testStatusView.SetBackgroundColor(CurrentTheme.HeaderBg)
-	testStatusView.SetText(" [gray]Ready. Select a profile or enter connection credentials.[-]")
+	testStatusView.SetText(FormatThemeMarkup(" [gray]Ready. Select a profile or enter connection credentials.[-]"))
 
 	var profiles []phhistory.ConnectionProfile
 	var mainLayout *tview.Flex
@@ -105,7 +105,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		}
 		form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(envIdx)
 		form.GetFormItem(6).(*tview.Checkbox).SetChecked(p.ReadOnly)
-		testStatusView.SetText(fmt.Sprintf(" [gray]Loaded profile '%s'. Press [aqua]Connect[gray] or [yellow]Test Connection[gray].[-]", p.Name))
+		testStatusView.SetText(FormatThemeMarkup(fmt.Sprintf(" [gray]Loaded profile '%s'. Press [aqua]Connect[gray] or [yellow]Test Connection[gray].[-]", p.Name)))
 	}
 
 	clearForm := func() {
@@ -116,7 +116,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		form.GetFormItem(4).(*tview.InputField).SetText("")
 		form.GetFormItem(5).(*tview.DropDown).SetCurrentOption(0)
 		form.GetFormItem(6).(*tview.Checkbox).SetChecked(false)
-		testStatusView.SetText(" [gray]Configuring new connection. Enter credentials and connect.[-]")
+		testStatusView.SetText(FormatThemeMarkup(" [gray]Configuring new connection. Enter credentials and connect.[-]"))
 	}
 
 	reloadProfiles = func(targetName string) {
@@ -205,7 +205,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 		phhistory.SetHost(host)
 		phhistory.SetPort(port)
 
-		testStatusView.SetText(fmt.Sprintf(" [yellow::b]Connecting to %s@%s:%s...[-::-]", user, host, port))
+		testStatusView.SetText(FormatThemeMarkup(fmt.Sprintf(" [yellow::b]Connecting to %s@%s:%s...[-::-]", user, host, port)))
 
 		go func() {
 			conn, err := dbs.Connect(user, pass, host, port)
@@ -221,7 +221,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 						if errInfo.RawErr != nil {
 							errBody += fmt.Sprintf("\n\n[gray::d]Details: %s[::-]", errInfo.RawErr.Error())
 						}
-						testStatusView.SetText(fmt.Sprintf(" [red::b]Connection Failed: %s[::-] [white]%s[-]", errInfo.Title, errInfo.Message))
+						testStatusView.SetText(FormatThemeMarkup(fmt.Sprintf(" [red::b]Connection Failed: %s[::-] [white]%s[-]", errInfo.Title, errInfo.Message)))
 
 						modal := tview.NewModal().
 							SetText(errBody).
@@ -267,13 +267,13 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 						if errInfo.Hint != "" {
 							hintStr = fmt.Sprintf(" (Hint: %s)", errInfo.Hint)
 						}
-						testStatusView.SetText(fmt.Sprintf(" [red::b]Connection Failed: %s[::-] [white]%s%s[-]", errInfo.Title, errInfo.Message, hintStr))
+						testStatusView.SetText(FormatThemeMarkup(fmt.Sprintf(" [red::b]Connection Failed: %s[::-] [white]%s%s[-]", errInfo.Title, errInfo.Message, hintStr)))
 					} else {
 						verStr := ""
 						if version != "" {
 							verStr = fmt.Sprintf(" │ MySQL %s", version)
 						}
-						testStatusView.SetText(fmt.Sprintf(" [lime::b]Connection Successful![-::-] [white]Latency: %dms%s[-]", latency.Milliseconds(), verStr))
+						testStatusView.SetText(FormatThemeMarkup(fmt.Sprintf(" [lime::b]Connection Successful![-::-] [white]Latency: %dms%s[-]", latency.Milliseconds(), verStr)))
 					}
 				})
 			}
@@ -371,7 +371,7 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 
 	// 5. Status Footer
 	footer := tview.NewTextView().
-		SetText(" [white::b]PHERI[-::-] [gray]│[-] [aqua::b]Tab / Shift+Tab[-::-] Switch Panels  [gray]│[-] [aqua::b]↑/↓[-::-] Select Profile  [gray]│[-] [aqua::b]Enter[-::-] Connect  [gray]│[-] [aqua::b]t[-::-] Test Ping  [gray]│[-] [aqua::b]n[-::-] New  [gray]│[-] [aqua::b]F12[-::-] Theme  [gray]│[-] [aqua::b]F1[-::-] Help  [gray]│[-] [aqua::b]Esc[-::-] Quit").
+		SetText(FormatThemeMarkup(" [white::b]PHERI[-::-] [gray]│[-] [aqua::b]Tab / Shift+Tab[-::-] Switch Panels  [gray]│[-] [aqua::b]↑/↓[-::-] Select Profile  [gray]│[-] [aqua::b]Enter[-::-] Connect  [gray]│[-] [aqua::b]t[-::-] Test Ping  [gray]│[-] [aqua::b]n[-::-] New  [gray]│[-] [aqua::b]F12[-::-] Theme  [gray]│[-] [aqua::b]F1[-::-] Help  [gray]│[-] [aqua::b]Esc[-::-] Quit")).
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
 		SetBackgroundColor(CurrentTheme.HeaderBg)
@@ -419,7 +419,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 		SetLabelColor(CurrentTheme.AccentPrimary).
 		SetFieldWidth(30).
 		SetPlaceholder("Type database name...").
-		SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
+		SetFieldBackgroundColor(CurrentTheme.FieldBg).
 		SetFieldTextColor(CurrentTheme.TextPrimary)
 	StyleBox(searchInput.Box, "Search", false)
 
@@ -472,7 +472,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	})
 
 	statusBar := tview.NewTextView().
-		SetText(" [cyan]↑/↓ / TAB[-] Navigate List • [lime]ENTER[-] Open Database • [aqua]F12[-] Theme • [yellow]ESC[-] Back to Login").
+		SetText(FormatThemeMarkup(" [cyan]↑/↓ / TAB[-] Navigate List • [lime]ENTER[-] Open Database • [aqua]F12[-] Theme • [yellow]ESC[-] Back to Login")).
 		SetTextAlign(tview.AlignCenter).
 		SetDynamicColors(true).
 		SetBackgroundColor(CurrentTheme.HeaderBg)

@@ -13,8 +13,10 @@ import (
 // UITheme defines a cohesive, production-grade terminal color palette.
 type UITheme struct {
 	Name           string
+	IsLight        bool
 	Bg             tcell.Color
 	SurfaceBg      tcell.Color
+	FieldBg        tcell.Color
 	HeaderBg       tcell.Color
 	HeaderFg       tcell.Color
 	SelectedBg     tcell.Color
@@ -36,8 +38,10 @@ type UITheme struct {
 var AvailableThemes = []UITheme{
 	{
 		Name:           "Nordic Frost",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(24, 28, 36),
+		FieldBg:        tcell.NewRGBColor(32, 38, 48),
 		HeaderBg:       tcell.NewRGBColor(46, 52, 64),
 		HeaderFg:       tcell.NewRGBColor(236, 239, 244),
 		SelectedBg:     tcell.NewRGBColor(59, 66, 82),
@@ -56,8 +60,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Tokyo Night",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(26, 27, 38),
+		FieldBg:        tcell.NewRGBColor(34, 36, 54),
 		HeaderBg:       tcell.NewRGBColor(36, 40, 59),
 		HeaderFg:       tcell.NewRGBColor(192, 202, 245),
 		SelectedBg:     tcell.NewRGBColor(45, 53, 80),
@@ -76,8 +82,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Catppuccin Mocha",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(24, 24, 37),
+		FieldBg:        tcell.NewRGBColor(34, 34, 52),
 		HeaderBg:       tcell.NewRGBColor(49, 50, 68),
 		HeaderFg:       tcell.NewRGBColor(205, 214, 244),
 		SelectedBg:     tcell.NewRGBColor(69, 71, 90),
@@ -96,8 +104,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Charcoal Slate",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(20, 22, 26),
+		FieldBg:        tcell.NewRGBColor(28, 32, 38),
 		HeaderBg:       tcell.NewRGBColor(38, 42, 50),
 		HeaderFg:       tcell.NewRGBColor(240, 240, 240),
 		SelectedBg:     tcell.NewRGBColor(55, 62, 74),
@@ -116,8 +126,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Dark",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(18, 20, 28),
+		FieldBg:        tcell.NewRGBColor(26, 30, 42),
 		HeaderBg:       tcell.NewRGBColor(28, 32, 44),
 		HeaderFg:       tcell.NewRGBColor(245, 247, 250),
 		SelectedBg:     tcell.NewRGBColor(46, 52, 70),
@@ -136,28 +148,32 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Light",
-		Bg:             tcell.ColorReset,
-		SurfaceBg:      tcell.NewRGBColor(245, 247, 250),
-		HeaderBg:       tcell.NewRGBColor(220, 226, 235),
+		IsLight:        true,
+		Bg:             tcell.NewRGBColor(248, 250, 252),
+		SurfaceBg:      tcell.NewRGBColor(255, 255, 255),
+		FieldBg:        tcell.NewRGBColor(241, 245, 249),
+		HeaderBg:       tcell.NewRGBColor(226, 232, 240),
 		HeaderFg:       tcell.NewRGBColor(15, 23, 42),
-		SelectedBg:     tcell.NewRGBColor(195, 210, 235),
-		SelectedFg:     tcell.NewRGBColor(10, 20, 40),
-		BorderInactive: tcell.NewRGBColor(180, 190, 205),
-		BorderFocused:  tcell.NewRGBColor(25, 100, 230), // Crisp Royal Blue
-		TitleInactive:  tcell.NewRGBColor(90, 105, 125),
+		SelectedBg:     tcell.NewRGBColor(219, 234, 254),
+		SelectedFg:     tcell.NewRGBColor(29, 78, 216),
+		BorderInactive: tcell.NewRGBColor(203, 213, 225),
+		BorderFocused:  tcell.NewRGBColor(37, 99, 235), // Crisp Royal Blue
+		TitleInactive:  tcell.NewRGBColor(71, 85, 105),
 		TitleFocused:   tcell.NewRGBColor(15, 23, 42),
-		TextPrimary:    tcell.NewRGBColor(20, 30, 45),
-		TextSecondary:  tcell.NewRGBColor(90, 105, 125),
-		AccentPrimary:  tcell.NewRGBColor(25, 100, 230),
-		AccentSuccess:  tcell.NewRGBColor(20, 140, 60),
-		AccentWarning:  tcell.NewRGBColor(180, 95, 0),
-		AccentDanger:   tcell.NewRGBColor(200, 30, 30),
-		AccentInfo:     tcell.NewRGBColor(0, 120, 180),
+		TextPrimary:    tcell.NewRGBColor(15, 23, 42),
+		TextSecondary:  tcell.NewRGBColor(71, 85, 105),
+		AccentPrimary:  tcell.NewRGBColor(29, 78, 216),
+		AccentSuccess:  tcell.NewRGBColor(21, 128, 61),
+		AccentWarning:  tcell.NewRGBColor(180, 83, 9),
+		AccentDanger:   tcell.NewRGBColor(185, 28, 28),
+		AccentInfo:     tcell.NewRGBColor(3, 105, 161),
 	},
 	{
 		Name:           "Developer",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(34, 31, 38),
+		FieldBg:        tcell.NewRGBColor(44, 40, 50),
 		HeaderBg:       tcell.NewRGBColor(45, 42, 50),
 		HeaderFg:       tcell.NewRGBColor(252, 252, 250),
 		SelectedBg:     tcell.NewRGBColor(64, 60, 72),
@@ -176,8 +192,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Hacker",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(5, 12, 6),
+		FieldBg:        tcell.NewRGBColor(10, 22, 12),
 		HeaderBg:       tcell.NewRGBColor(12, 28, 14),
 		HeaderFg:       tcell.NewRGBColor(0, 255, 100),
 		SelectedBg:     tcell.NewRGBColor(0, 60, 25),
@@ -196,8 +214,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Classic",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(0, 0, 128), // Turbo Pascal / DOS Navy
+		FieldBg:        tcell.NewRGBColor(0, 0, 96),
 		HeaderBg:       tcell.NewRGBColor(0, 0, 168),
 		HeaderFg:       tcell.NewRGBColor(255, 255, 255),
 		SelectedBg:     tcell.NewRGBColor(0, 168, 168), // Retro Cyan Highlight
@@ -216,8 +236,10 @@ var AvailableThemes = []UITheme{
 	},
 	{
 		Name:           "Gen-Z",
+		IsLight:        false,
 		Bg:             tcell.ColorReset,
 		SurfaceBg:      tcell.NewRGBColor(24, 15, 42), // Cyber Synthwave Ultraviolet
+		FieldBg:        tcell.NewRGBColor(34, 20, 60),
 		HeaderBg:       tcell.NewRGBColor(40, 22, 68),
 		HeaderFg:       tcell.NewRGBColor(255, 42, 133), // Hot Neon Pink
 		SelectedBg:     tcell.NewRGBColor(78, 30, 115),
@@ -260,6 +282,46 @@ func init() {
 	}
 }
 
+// FormatThemeMarkup replaces low-contrast color tags with high-contrast variants when CurrentTheme.IsLight is true.
+func FormatThemeMarkup(text string) string {
+	if !CurrentTheme.IsLight {
+		return text
+	}
+	replacer := strings.NewReplacer(
+		"[white::b]", "[#0f172a::b]",
+		"[white::-]", "[#0f172a::-]",
+		"[white]", "[#0f172a]",
+		"[gray::b]", "[#475569::b]",
+		"[gray::-]", "[#475569::-]",
+		"[gray]", "[#475569]",
+		"[yellow::b]", "[#b45309::b]",
+		"[yellow::-]", "[#b45309::-]",
+		"[yellow]", "[#b45309]",
+		"[lime::b]", "[#15803d::b]",
+		"[lime::-]", "[#15803d::-]",
+		"[lime]", "[#15803d]",
+		"[green::b]", "[#166534::b]",
+		"[green::-]", "[#166534::-]",
+		"[green]", "[#166534]",
+		"[aqua::b]", "[#1d4ed8::b]",
+		"[aqua::-]", "[#1d4ed8::-]",
+		"[aqua]", "[#1d4ed8]",
+		"[cyan::b]", "[#0369a1::b]",
+		"[cyan::-]", "[#0369a1::-]",
+		"[cyan]", "[#0369a1]",
+		"[orange::b]", "[#c2410c::b]",
+		"[orange::-]", "[#c2410c::-]",
+		"[orange]", "[#c2410c]",
+		"[purple::b]", "[#7e22ce::b]",
+		"[purple::-]", "[#7e22ce::-]",
+		"[purple]", "[#7e22ce]",
+		"[magenta::b]", "[#9333ea::b]",
+		"[magenta::-]", "[#9333ea::-]",
+		"[magenta]", "[#9333ea]",
+	)
+	return replacer.Replace(text)
+}
+
 // ApplyThemeGlobally applies the selected theme across all active UI components,
 // updates global tview defaults, and persists the choice to disk.
 func ApplyThemeGlobally(app *tview.Application, theme UITheme) {
@@ -295,7 +357,7 @@ func ApplyThemeGlobally(app *tview.Application, theme UITheme) {
 
 	// 5. Refresh sidebar search input
 	if SchemaSearchInput != nil {
-		SchemaSearchInput.SetFieldBackgroundColor(CurrentTheme.SurfaceBg).
+		SchemaSearchInput.SetFieldBackgroundColor(CurrentTheme.FieldBg).
 			SetFieldTextColor(CurrentTheme.TextPrimary).
 			SetLabelColor(CurrentTheme.AccentPrimary).
 			SetPlaceholderTextColor(CurrentTheme.TextSecondary)
@@ -311,6 +373,8 @@ func ApplyThemeGlobally(app *tview.Application, theme UITheme) {
 		footerBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 	}
 	if commandInput != nil {
+		commandInput.SetFieldBackgroundColor(CurrentTheme.FieldBg)
+		commandInput.SetFieldTextColor(CurrentTheme.TextPrimary)
 		commandInput.SetLabelColor(CurrentTheme.BorderFocused)
 	}
 }
@@ -344,7 +408,12 @@ func RefreshTableTheme(table *tview.Table) {
 					Foreground(CurrentTheme.TextPrimary).
 					Background(CurrentTheme.SurfaceBg)
 				if (r+1)%2 == 0 {
-					cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
+					if CurrentTheme.IsLight {
+						cellStyle = cellStyle.Background(tcell.NewRGBColor(241, 245, 249)).
+							Foreground(CurrentTheme.TextPrimary)
+					} else {
+						cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
+					}
 				}
 				cell.SetStyle(cellStyle)
 			}
@@ -430,20 +499,22 @@ func StyleModalBox(box *tview.Box, title string) {
 
 // FormatSchemaObjectBadge returns an aligned, color-coded badge for schema objects.
 func FormatSchemaObjectBadge(objectType string) string {
+	var rawBadge string
 	switch strings.ToUpper(strings.TrimSpace(objectType)) {
 	case "TABLE":
-		return "[aqua::b]TABLE[-::-]"
+		rawBadge = "[aqua::b]TABLE[-::-]"
 	case "VIEW":
-		return "[purple::b]VIEW [-::-]"
+		rawBadge = "[purple::b]VIEW [-::-]"
 	case "PROCEDURE", "PROC":
-		return "[yellow::b]PROC [-::-]"
+		rawBadge = "[yellow::b]PROC [-::-]"
 	case "FUNCTION", "FUNC":
-		return "[lime::b]FUNC [-::-]"
+		rawBadge = "[lime::b]FUNC [-::-]"
 	case "TRIGGER", "TRIG":
-		return "[red::b]TRIG [-::-]"
+		rawBadge = "[red::b]TRIG [-::-]"
 	case "EVENT":
-		return "[blue::b]EVENT[-::-]"
+		rawBadge = "[blue::b]EVENT[-::-]"
 	default:
-		return fmt.Sprintf("[gray::b]%-5s[-::-]", objectType)
+		rawBadge = fmt.Sprintf("[gray::b]%-5s[-::-]", objectType)
 	}
+	return FormatThemeMarkup(rawBadge)
 }

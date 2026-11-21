@@ -155,14 +155,15 @@ func ShowComprehensiveHelpModal(app *tview.Application) {
 		SetScrollable(true).
 		SetWrap(true)
 	view.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	view.SetTextColor(CurrentTheme.TextPrimary)
 	StyleModalBox(view.Box, "Pheri User Guide & Command Reference")
 
-	view.SetText(GetLaymanHelpGuide())
+	view.SetText(FormatThemeMarkup(GetLaymanHelpGuide()))
 
 	statusBar := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(" [yellow::b]ESC / ENTER[-::-] Close Guide  [gray]│[-] [aqua::b]↑ / ↓ / PgUp / PgDn[-::-] Scroll Guide  [gray]│[-] [white::b]:help[-::-] command ")
+		SetText(FormatThemeMarkup(" [yellow::b]ESC / ENTER[-::-] Close Guide  [gray]│[-] [aqua::b]↑ / ↓ / PgUp / PgDn[-::-] Scroll Guide  [gray]│[-] [white::b]:help[-::-] command "))
 	statusBar.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	contentFlex := tview.NewFlex().SetDirection(tview.FlexRow).

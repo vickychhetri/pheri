@@ -94,18 +94,21 @@ func ShowExportWizardModal(app *tview.Application, db *sql.DB, dbName string) {
 // FormatExportItemLabel generates a high-contrast, theme-aware label for export items.
 func FormatExportItemLabel(item ExportItem) string {
 	badge := FormatSchemaObjectBadge(item.Type)
+	var raw string
 	if item.Selected {
-		return fmt.Sprintf(" %s %s  [white::b]%s[-::-]",
+		raw = fmt.Sprintf(" %s %s  [white::b]%s[-::-]",
 			fmt.Sprintf("[lime::b]%s[-::-]", tview.Escape("[X]")),
 			badge,
 			item.Name,
 		)
+	} else {
+		raw = fmt.Sprintf(" %s [gray::d]%-5s[-::-]  [gray]%s[-::-]",
+			fmt.Sprintf("[gray::d]%s[-::-]", tview.Escape("[ ]")),
+			item.Type,
+			item.Name,
+		)
 	}
-	return fmt.Sprintf(" %s [gray::d]%-5s[-::-]  [gray]%s[-::-]",
-		fmt.Sprintf("[gray::d]%s[-::-]", tview.Escape("[ ]")),
-		item.Type,
-		item.Name,
-	)
+	return FormatThemeMarkup(raw)
 }
 
 // filterExportItems filters items by case-insensitive name match or prefix (table:, view:, proc:, func:, trig:, event:).
@@ -157,8 +160,8 @@ func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items [
 	filterInput := tview.NewInputField().
 		SetLabel(" [aqua::b]Search:[-::-] ").
 		SetPlaceholder("Type object name or filter (table:, view:, proc:, func:, trig:)...").
-		SetFieldBackgroundColor(tcell.ColorReset).
-		SetFieldTextColor(tcell.ColorWhite).
+		SetFieldBackgroundColor(CurrentTheme.FieldBg).
+		SetFieldTextColor(CurrentTheme.TextPrimary).
 		SetPlaceholderTextColor(CurrentTheme.TextSecondary)
 	filterInput.SetLabelColor(CurrentTheme.BorderFocused)
 
@@ -330,7 +333,7 @@ func showItemSelector(app *tview.Application, db *sql.DB, dbName string, items [
 	hint := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter).
-		SetText(" [yellow::b]SPACE[-::-] Toggle  [gray]│[-] [lime::b]a[-::-] Select All  [gray]│[-] [lime::b]n[-::-] Deselect All  [gray]│[-] [lime::b]i[-::-] Invert  [gray]│[-] [aqua::b]/ or Tab[-::-] Search  [gray]│[-] [aqua::b]ENTER[-::-] Continue  [gray]│[-] [white::b]ESC[-::-] Cancel ")
+		SetText(FormatThemeMarkup(" [yellow::b]SPACE[-::-] Toggle  [gray]│[-] [lime::b]a[-::-] Select All  [gray]│[-] [lime::b]n[-::-] Deselect All  [gray]│[-] [lime::b]i[-::-] Invert  [gray]│[-] [aqua::b]/ or Tab[-::-] Search  [gray]│[-] [aqua::b]ENTER[-::-] Continue  [gray]│[-] [white::b]ESC[-::-] Cancel "))
 	hint.SetBackgroundColor(CurrentTheme.HeaderBg)
 
 	filterBar := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -406,7 +409,8 @@ func showExportSettingsForm(app *tview.Application, db *sql.DB, dbName string, i
 	})
 
 	form.SetBackgroundColor(CurrentTheme.SurfaceBg)
-	form.SetFieldBackgroundColor(tcell.ColorReset)
+	form.SetFieldBackgroundColor(CurrentTheme.FieldBg)
+	form.SetFieldTextColor(CurrentTheme.TextPrimary)
 	form.SetLabelColor(CurrentTheme.TextPrimary)
 	form.SetButtonBackgroundColor(CurrentTheme.SelectedBg)
 	form.SetButtonTextColor(CurrentTheme.SelectedFg)
