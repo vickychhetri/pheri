@@ -72,6 +72,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("   [lime::b]Ctrl+X[-::-]             Copy Table DDL and INSERT data asynchronously to system clipboard\n\n")
 
 	b.WriteString(" [aqua::b]4. WRITING & RUNNING SQL QUERIES (SQL EDITOR)[-::-]\n")
+	b.WriteString("   [lime::b]Line Numbers Margin[-::-]   Synchronized gutter (1 │, 2 │, ...) tracks active line & Ln/Col telemetry\n")
 	b.WriteString("   [lime::b]Ctrl+R / Ctrl+Enter[-::-] Execute current SQL query\n")
 	b.WriteString("   [lime::b]Ctrl+C / Esc[-::-]        Cancel Query: Safely abort running query if stuck or slow\n")
 	b.WriteString("   [lime::b]Ctrl+T[-::-]              Table Autocomplete: Search and insert table names at cursor\n")

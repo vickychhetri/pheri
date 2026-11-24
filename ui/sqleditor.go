@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -10,36 +11,158 @@ import (
 	"github.com/rivo/tview"
 )
 
-// SQLEditor is a professional, high-performance interactive SQL query editor
-// built on top of tview.TextArea with native multiline editing, cursor navigation,
-// undo/redo, system clipboard integration, autocomplete, and snippet templating.
-type SQLEditor struct {
-	App          *tview.Application
-	TextArea     *tview.TextArea
-	Editor       *tview.TextArea // Aliased to TextArea for backward compatibility
-	Container    *tview.Flex
-	IsFullscreen bool
-	OnExecute    func(query string)
-	OnNextFocus  func()
-	OnPrevFocus  func()
-	OnExit       func()
-	OnFullscreen func()
+// lineNumberGutter renders synchronized 1-based line numbers and highlights the active cursor line
+// along the left margin of SQLEditor.
+type lineNumberGutter struct {
+	*tview.Box
+	editor *SQLEditor
 }
 
-// NewSQLEditor creates and initializes a professional SQL query editor.
+// CountEditorLines returns the total number of logical lines (\n-delimited) in text (minimum 1).
+func CountEditorLines(text string) int {
+	if text == "" {
+		return 1
+	}
+	return strings.Count(text, "\n") + 1
+}
+
+// CalculateGutterWidth computes the fixed column width needed for right-aligned line numbers and separator.
+func CalculateGutterWidth(totalLines int) int {
+	if totalLines < 1 {
+		totalLines = 1
+	}
+	digits := len(strconv.Itoa(totalLines))
+	if digits < 2 {
+		digits = 2
+	}
+	// Format: " " + <digits> + " │ "
+	return digits + 4
+}
+
+// FormatGutterLine formats a single gutter row string right-aligned to numDigits width.
+func FormatGutterLine(lineNum, totalLines, numDigits int) string {
+	if numDigits < 2 {
+		numDigits = 2
+	}
+	if lineNum < 1 || lineNum > totalLines {
+		return fmt.Sprintf(" %*s │ ", numDigits, "")
+	}
+	return fmt.Sprintf(" %*d │ ", numDigits, lineNum)
+}
+
+func newLineNumberGutter(editor *SQLEditor) *lineNumberGutter {
+	g := &lineNumberGutter{
+		Box:    tview.NewBox().SetBackgroundColor(CurrentTheme.SurfaceBg),
+		editor: editor,
+	}
+	g.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if (action == tview.MouseLeftClick || action == tview.MouseLeftDown) && editor != nil && editor.App != nil && editor.TextArea != nil {
+			editor.App.SetFocus(editor.TextArea)
+			return tview.MouseConsumed, nil
+		}
+		return action, event
+	})
+	return g
+}
+
+// Draw renders the synchronized line number margin alongside TextArea.
+func (g *lineNumberGutter) Draw(screen tcell.Screen) {
+	g.Box.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	g.Box.DrawForSubclass(screen, g)
+
+	if g.editor == nil || g.editor.TextArea == nil {
+		return
+	}
+
+	x, y, width, height := g.GetInnerRect()
+	if width <= 0 || height <= 0 {
+		return
+	}
+
+	rowOffset, _ := g.editor.TextArea.GetOffset()
+	fromRow, _, toRow, _ := g.editor.TextArea.GetCursor()
+	totalLines := CountEditorLines(g.editor.TextArea.GetText())
+	numDigits := len(strconv.Itoa(totalLines))
+	if numDigits < 2 {
+		numDigits = 2
+	}
+
+	inactiveStyle := tcell.StyleDefault.
+		Foreground(CurrentTheme.TextSecondary).
+		Background(CurrentTheme.SurfaceBg)
+	activeBg := CurrentTheme.HeaderBg
+	activeStyle := tcell.StyleDefault.
+		Foreground(CurrentTheme.AccentPrimary).
+		Background(activeBg).
+		Bold(true)
+	sepInactiveStyle := tcell.StyleDefault.
+		Foreground(CurrentTheme.BorderInactive).
+		Background(CurrentTheme.SurfaceBg)
+	sepActiveStyle := tcell.StyleDefault.
+		Foreground(CurrentTheme.BorderFocused).
+		Background(activeBg)
+
+	for row := 0; row < height; row++ {
+		lineNum := rowOffset + row + 1
+		isActive := lineNum >= 1 && lineNum <= totalLines && (lineNum-1) >= fromRow && (lineNum-1) <= toRow
+		text := FormatGutterLine(lineNum, totalLines, numDigits)
+
+		lineStyle := inactiveStyle
+		sepStyle := sepInactiveStyle
+		if isActive {
+			lineStyle = activeStyle
+			sepStyle = sepActiveStyle
+		}
+
+		col := 0
+		for _, r := range text {
+			if col >= width {
+				break
+			}
+			st := lineStyle
+			if r == '│' {
+				st = sepStyle
+			}
+			screen.SetContent(x+col, y+row, r, nil, st)
+			col++
+		}
+		for col < width {
+			screen.SetContent(x+col, y+row, ' ', nil, lineStyle)
+			col++
+		}
+	}
+}
+
+// SQLEditor is a professional, high-performance interactive SQL query editor
+// built on top of tview.TextArea with native multiline editing, synchronized line numbers,
+// cursor navigation, undo/redo, system clipboard integration, autocomplete, and snippet templating.
+type SQLEditor struct {
+	App             *tview.Application
+	TextArea        *tview.TextArea
+	Editor          *tview.TextArea // Aliased to TextArea for backward compatibility
+	Gutter          *lineNumberGutter
+	Container       *tview.Flex
+	IsFullscreen    bool
+	OnExecute       func(query string)
+	OnNextFocus     func()
+	OnPrevFocus     func()
+	OnExit          func()
+	OnFullscreen    func()
+	lastGutterWidth int
+}
+
+// NewSQLEditor creates and initializes a professional SQL query editor with a synchronized line numbers gutter.
 func NewSQLEditor(app *tview.Application) *SQLEditor {
 	textArea := tview.NewTextArea()
 	textArea.
 		SetPlaceholder("Type or paste SQL query here... (e.g. SELECT * FROM table LIMIT 100;)").
-		SetBorder(true).
-		SetTitleAlign(tview.AlignLeft)
+		SetWrap(false)
+	textArea.SetBorder(false)
 
 	// Professional theme styling using CurrentTheme
 	textArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(CurrentTheme.SurfaceBg))
 	textArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
 	textArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(CurrentTheme.SurfaceBg))
-	textArea.SetBorderColor(CurrentTheme.BorderInactive).
-		SetTitleColor(CurrentTheme.TitleInactive)
 	textArea.SetBackgroundColor(CurrentTheme.SurfaceBg)
 
 	// Direct 2-way integration with the OS system clipboard
@@ -56,52 +179,74 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 		},
 	)
 
-	sqlEditor := &SQLEditor{
-		App:       app,
-		TextArea:  textArea,
-		Editor:    textArea,
-		Container: tview.NewFlex().SetDirection(tview.FlexRow).AddItem(textArea, 0, 1, true),
-	}
+	initialWidth := CalculateGutterWidth(1)
+	container := tview.NewFlex().SetDirection(tview.FlexColumn)
+	container.
+		SetBorder(true).
+		SetTitleAlign(tview.AlignLeft).
+		SetBackgroundColor(CurrentTheme.SurfaceBg)
 
-	// Dynamic cursor telemetry and status header
-	updateTitle := func(focused bool) {
+	sqlEditor := &SQLEditor{
+		App:             app,
+		TextArea:        textArea,
+		Editor:          textArea,
+		Container:       container,
+		lastGutterWidth: initialWidth,
+	}
+	sqlEditor.Gutter = newLineNumberGutter(sqlEditor)
+
+	container.
+		AddItem(sqlEditor.Gutter, initialWidth, 0, false).
+		AddItem(textArea, 0, 1, true)
+
+	// Dynamic cursor telemetry, gutter width resizing, and unified border header
+	syncEditorState := func(focused bool) {
 		fromRow, fromCol, _, _ := textArea.GetCursor()
-		textLen := textArea.GetTextLength()
-		title := fmt.Sprintf(" [ SQL Query Editor ]  Ln %d, Col %d | %d chars ",
-			fromRow+1, fromCol+1, textLen)
-		textArea.SetTitle(title)
+		text := textArea.GetText()
+		textLen := len(text)
+		totalLines := CountEditorLines(text)
+
+		gutterWidth := CalculateGutterWidth(totalLines)
+		if gutterWidth != sqlEditor.lastGutterWidth {
+			sqlEditor.lastGutterWidth = gutterWidth
+			container.ResizeItem(sqlEditor.Gutter, gutterWidth, 0)
+		}
+
+		title := fmt.Sprintf(" [ SQL Query Editor ]  Ln %d, Col %d | %d lines | %d chars ",
+			fromRow+1, fromCol+1, totalLines, textLen)
+		container.SetTitle(title)
 		if focused {
-			textArea.SetBorderColor(CurrentTheme.BorderFocused)
-			textArea.SetTitleColor(CurrentTheme.TitleFocused)
+			container.SetBorderColor(CurrentTheme.BorderFocused)
+			container.SetTitleColor(CurrentTheme.TitleFocused)
 		} else {
-			textArea.SetBorderColor(CurrentTheme.BorderInactive)
-			textArea.SetTitleColor(CurrentTheme.TitleInactive)
+			container.SetBorderColor(CurrentTheme.BorderInactive)
+			container.SetTitleColor(CurrentTheme.TitleInactive)
 		}
 	}
 
 	textArea.SetMovedFunc(func() {
-		updateTitle(textArea.HasFocus())
+		syncEditorState(textArea.HasFocus())
 	})
 
 	textArea.SetChangedFunc(func() {
-		updateTitle(textArea.HasFocus())
+		syncEditorState(textArea.HasFocus())
 	})
 
 	textArea.SetFocusFunc(func() {
-		updateTitle(true)
+		syncEditorState(true)
 	})
 
 	textArea.SetBlurFunc(func() {
-		updateTitle(false)
+		syncEditorState(false)
 	})
 
 	textArea.SetInputCapture(sqlEditor.handleInput)
-	updateTitle(false)
+	syncEditorState(false)
 
 	return sqlEditor
 }
 
-// ApplyTheme synchronizes the SQL editor's palette with CurrentTheme.
+// ApplyTheme synchronizes the SQL editor, line-number gutter, and container palette with CurrentTheme.
 func (s *SQLEditor) ApplyTheme() {
 	if s.TextArea == nil {
 		return
@@ -109,9 +254,21 @@ func (s *SQLEditor) ApplyTheme() {
 	s.TextArea.SetTextStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextPrimary).Background(CurrentTheme.SurfaceBg))
 	s.TextArea.SetSelectedStyle(tcell.StyleDefault.Foreground(CurrentTheme.SelectedFg).Background(CurrentTheme.SelectedBg))
 	s.TextArea.SetPlaceholderStyle(tcell.StyleDefault.Foreground(CurrentTheme.TextSecondary).Background(CurrentTheme.SurfaceBg))
-	s.TextArea.SetBorderColor(CurrentTheme.BorderInactive)
-	s.TextArea.SetTitleColor(CurrentTheme.TitleInactive)
 	s.TextArea.SetBackgroundColor(CurrentTheme.SurfaceBg)
+
+	if s.Gutter != nil {
+		s.Gutter.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	}
+	if s.Container != nil {
+		s.Container.SetBackgroundColor(CurrentTheme.SurfaceBg)
+		if s.TextArea.HasFocus() {
+			s.Container.SetBorderColor(CurrentTheme.BorderFocused)
+			s.Container.SetTitleColor(CurrentTheme.TitleFocused)
+		} else {
+			s.Container.SetBorderColor(CurrentTheme.BorderInactive)
+			s.Container.SetTitleColor(CurrentTheme.TitleInactive)
+		}
+	}
 }
 
 // handleInput intercepts specialized hotkeys (execution, autocomplete, snippets, navigation)
