@@ -326,6 +326,12 @@ func cloneQueryResultForSort(res *QueryResult) *QueryResult {
 	}
 	copied := *res
 	copied.Columns = append([]string(nil), res.Columns...)
+	if res.ForeignKeys != nil {
+		copied.ForeignKeys = make(map[string]util.ForeignKeyRef, len(res.ForeignKeys))
+		for k, v := range res.ForeignKeys {
+			copied.ForeignKeys[k] = v
+		}
+	}
 	copied.Rows = make([][]string, len(res.Rows))
 	for i, row := range res.Rows {
 		copied.Rows[i] = append([]string(nil), row...)

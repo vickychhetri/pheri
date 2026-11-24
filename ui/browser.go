@@ -69,6 +69,7 @@ type QueryResult struct {
 	Columns       []string
 	Rows          [][]string
 	RawRows       [][]*string
+	ForeignKeys   map[string]util.ForeignKeyRef
 	Duration      time.Duration
 	RowCount      int
 	RowsAffected  int64
@@ -1565,6 +1566,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				isEditingEnabled = false
 				activeGridObjectType = ""
 				activeGridSort.Reset(query, false)
+				ClearNavHistory()
 				ExecuteQueryAsync(app, db, query, dataTable, func(res *QueryResult) {
 					phhistory.SaveQuery(query, dbName)
 					app.SetFocus(dataTable)
@@ -1585,6 +1587,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			isEditingEnabled = false
 			activeGridObjectType = ""
 			activeGridSort.Reset(cleanQuery, false)
+			ClearNavHistory()
 			ExecuteQueryAsync(app, db, cleanQuery, dataTable, func(res *QueryResult) {
 				phhistory.SaveQuery(cleanQuery, dbName)
 				app.SetFocus(dataTable)
@@ -2238,6 +2241,7 @@ func openTableOrView(app *tview.Application, db *sql.DB, queryBox *tview.TextAre
 
 	query := BuildBrowseQuery(dbName, objName, "", SortNone, gridPageSize, 0)
 	activeGridSort.Reset(query, true)
+	ClearNavHistory()
 	setEditorText(queryBox, query)
 	util.SaveLog(objType + ": " + query)
 	phhistory.SaveQuery(query, dbName)
@@ -2319,6 +2323,8 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 	UpdateFooterRunningQuery(0)
 
 	startTime := time.Now()
+	fkTargetDB := activeGridDBName
+	fkTargetTable := activeGridObject
 
 	// Live progress ticker
 	tickerDone := make(chan struct{})
@@ -2512,6 +2518,9 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 						}
 					}
 					result.RowCount = len(result.Rows)
+					if fkTargetDB != "" && fkTargetTable != "" && !result.IsCanceled {
+						result.ForeignKeys = GetCachedForeignKeys(ctx, db, fkTargetDB, fkTargetTable)
+					}
 				}
 			}
 		}
@@ -2600,7 +2609,20 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	activeGridSort.PendingRestoreCol = -1
 	activeGridSort.mu.Unlock()
 
-	// Set column headers with professional styling & dynamic sort indicators
+	if res.ForeignKeys != nil {
+		activeGridForeignKeys = res.ForeignKeys
+	} else {
+		activeGridForeignKeys = nil
+	}
+
+	fkNavMutex.Lock()
+	navRestoreRow := pendingNavRestoreRow
+	navRestoreCol := pendingNavRestoreCol
+	pendingNavRestoreRow = -1
+	pendingNavRestoreCol = -1
+	fkNavMutex.Unlock()
+
+	// Set column headers with professional styling, sort & FK indicators
 	headerStyle := tcell.StyleDefault.
 		Background(CurrentTheme.HeaderBg).
 		Foreground(CurrentTheme.HeaderFg).
@@ -2609,12 +2631,25 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		Background(CurrentTheme.HeaderBg).
 		Foreground(CurrentTheme.AccentPrimary).
 		Bold(true)
+	fkHeaderStyle := tcell.StyleDefault.
+		Background(CurrentTheme.HeaderBg).
+		Foreground(CurrentTheme.AccentInfo).
+		Bold(true)
 
 	for i, col := range res.Columns {
+		_, isFK := activeGridForeignKeys[col]
 		label := " " + col + " "
 		style := headerStyle
+		if isFK {
+			label = fmt.Sprintf(" %s ↗ ", col)
+			style = fkHeaderStyle
+		}
 		if sortCol != "" && col == sortCol && sortDir != SortNone {
-			label = fmt.Sprintf(" %s %s ", col, sortDir.Indicator())
+			if isFK {
+				label = fmt.Sprintf(" %s ↗ %s ", col, sortDir.Indicator())
+			} else {
+				label = fmt.Sprintf(" %s %s ", col, sortDir.Indicator())
+			}
 			style = sortedHeaderStyle
 		}
 		table.SetCell(0, i,
@@ -2625,7 +2660,7 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 				SetReference(col))
 	}
 
-	// Set rows with clean theme colors
+	// Set rows with clean theme colors & FK reference highlights
 	for rIdx, row := range res.Rows {
 		for cIdx, val := range row {
 			cellStyle := tcell.StyleDefault.
@@ -2639,9 +2674,6 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 					cellStyle = cellStyle.Foreground(CurrentTheme.TextSecondary)
 				}
 			}
-			cell := tview.NewTableCell(" " + val + " ").
-				SetStyle(cellStyle).
-				SetAlign(tview.AlignLeft)
 
 			var rawVal *string
 			if rIdx < len(res.RawRows) && cIdx < len(res.RawRows[rIdx]) {
@@ -2651,6 +2683,21 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 			if cIdx < len(res.Columns) {
 				colName = res.Columns[cIdx]
 			}
+
+			_, isFKCol := activeGridForeignKeys[colName]
+			isCellNull := (rIdx < len(res.RawRows) && cIdx < len(res.RawRows[rIdx]) && rawVal == nil) ||
+				(rIdx >= len(res.RawRows) && val == "[gray::i]NULL[-::-]")
+
+			displayText := " " + val + " "
+			if isFKCol && !isCellNull {
+				displayText = " " + val + " ↗ "
+				cellStyle = cellStyle.Foreground(CurrentTheme.AccentInfo)
+			}
+
+			cell := tview.NewTableCell(displayText).
+				SetStyle(cellStyle).
+				SetAlign(tview.AlignLeft)
+
 			cell.SetReference(NewGridCell(colName, rawVal))
 			table.SetCell(rIdx+1, cIdx, cell)
 		}
@@ -2665,7 +2712,11 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		})
 	}
 
-	// Restore selection to the sorted column when re-rendered via header/cell sort
+	// Restore selection after FK navigation return or column sort
+	if navRestoreCol >= 0 && navRestoreRow >= 0 && navRestoreCol < len(res.Columns) {
+		restoreRow = navRestoreRow
+		restoreCol = navRestoreCol
+	}
 	if restoreCol >= 0 && restoreCol < len(res.Columns) {
 		maxRow := table.GetRowCount() - 1
 		if restoreRow < 0 {
@@ -2680,20 +2731,30 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 	if sortCol != "" && sortDir != SortNone {
 		sortBadge = fmt.Sprintf(" | Sort: %s %s", sortCol, sortDir.Indicator())
 	}
-	titleStr := fmt.Sprintf(" [ Query Results: %d rows | %s | Page %d%s ] ",
-		res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1, sortBadge)
+	navBadge := ""
+	if depth := NavHistoryDepth(); depth > 0 {
+		navBadge = fmt.Sprintf(" | Backspace: Return (%d)", depth)
+	}
+	titleStr := fmt.Sprintf(" [ Query Results: %d rows | %s | Page %d%s%s ] ",
+		res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1, sortBadge, navBadge)
 	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
 	footerMsg := fmt.Sprintf("Fetched %d row(s) in %s", res.RowCount, res.Duration.Round(time.Microsecond))
 	if sortCol != "" && sortDir != SortNone {
-		footerMsg += fmt.Sprintf(" │ Sorted by %s (%s) — 's'/Enter on header to toggle", sortCol, sortDir.SQLKeyword())
+		footerMsg += fmt.Sprintf(" │ Sorted by %s (%s) — 's'/Enter on header", sortCol, sortDir.SQLKeyword())
+	}
+	if len(activeGridForeignKeys) > 0 {
+		footerMsg += " │ FK '↗': f/Ctrl+J Jump"
+	}
+	if NavHistoryDepth() > 0 {
+		footerMsg += " │ Backspace: Return"
 	}
 	updateFooterText(footerMsg)
 	setupTableInputCapture(app, table)
 }
 
 // getHeaderColumnName resolves the underlying SQL column identifier from a header TableCell,
-// ignoring directional sort indicators (▲ / ▼) and tview formatting tags.
+// ignoring directional sort indicators (▲ / ▼), FK markers (↗), and tview formatting tags.
 func getHeaderColumnName(headerCell *tview.TableCell) string {
 	if headerCell == nil {
 		return ""
@@ -2702,11 +2763,132 @@ func getHeaderColumnName(headerCell *tview.TableCell) string {
 		return ref
 	}
 	clean := strings.TrimSpace(util.StripFormatting(headerCell.Text))
-	clean = strings.TrimSuffix(clean, " ▲")
-	clean = strings.TrimSuffix(clean, " ▼")
-	clean = strings.TrimSuffix(clean, "▲")
-	clean = strings.TrimSuffix(clean, "▼")
+	for _, suffix := range []string{" ▲", " ▼", "▲", "▼", " ↗", "↗"} {
+		clean = strings.TrimSuffix(clean, suffix)
+	}
 	return strings.TrimSpace(clean)
+}
+
+// triggerForeignKeyJump follows the foreign key relationship of the currently selected Data Grid cell.
+// Returns true if the selected column is an FK column (even if NULL/blocked), or false if not an FK column.
+func triggerForeignKeyJump(app *tview.Application, table *tview.Table) bool {
+	if table == nil || len(activeGridForeignKeys) == 0 {
+		return false
+	}
+	r, c := table.GetSelection()
+	if r <= 0 || c < 0 {
+		return false
+	}
+	colName := getHeaderColumnName(table.GetCell(0, c))
+	ref, isFK := activeGridForeignKeys[colName]
+	if !isFK {
+		return false
+	}
+
+	if isQueryRunning.Load() {
+		updateFooterText("A query is currently running. Cancel it before following foreign key.")
+		return true
+	}
+
+	cell := table.GetCell(r, c)
+	gc := GetGridCellFromTableCell(cell, colName)
+	if gc.IsNull() {
+		updateFooterText(fmt.Sprintf("Cannot follow NULL foreign key in column '%s'.", colName))
+		return true
+	}
+
+	if activeGridDB == nil {
+		updateFooterText("Database connection is not active.")
+		return true
+	}
+
+	sortCol, sortDir, _, _ := activeGridSort.Snapshot()
+	PushNavBreadcrumb(NavBreadcrumb{
+		DBName:        activeGridDBName,
+		TableName:     activeGridObject,
+		ObjectType:    activeGridObjectType,
+		Query:         activeGridQuery,
+		Page:          currentGridPage,
+		CursorRow:     r,
+		CursorCol:     c,
+		EditingActive: isEditingEnabled,
+		SortColumn:    sortCol,
+		SortDir:       sortDir,
+	})
+
+	targetQuery := util.BuildForeignKeyTargetQuery(ref, gc.Value())
+	targetDB := ref.ReferencedSchema
+	if targetDB == "" {
+		targetDB = activeGridDBName
+	}
+
+	activeGridDBName = targetDB
+	activeGridObject = ref.ReferencedTable
+	activeGridObjectType = "TABLE"
+	currentGridPage = 0
+	activeGridSort.Reset(targetQuery, false)
+
+	if activeSQLEditor != nil {
+		activeSQLEditor.SetText(targetQuery)
+	}
+
+	isEditingEnabled = true
+	_ = EnableCellEditing(app, table, activeGridDB, activeGridDBName, activeGridObject)
+
+	ExecuteQueryAsync(app, activeGridDB, targetQuery, table, func(res *QueryResult) {
+		if app != nil {
+			app.SetFocus(table)
+		}
+	})
+	return true
+}
+
+// navigateBackFromFK pops the top FK navigation breadcrumb and restores the prior table, query, and cursor cell.
+func navigateBackFromFK(app *tview.Application, table *tview.Table) bool {
+	crumb, ok := PopNavBreadcrumb()
+	if !ok {
+		return false
+	}
+	if isQueryRunning.Load() {
+		CancelActiveQuery()
+	}
+
+	activeGridDBName = crumb.DBName
+	activeGridObject = crumb.TableName
+	activeGridObjectType = crumb.ObjectType
+	currentGridPage = crumb.Page
+
+	isBrowse := crumb.ObjectType == "TABLE" || crumb.ObjectType == "VIEW"
+	activeGridSort.mu.Lock()
+	activeGridSort.Column = crumb.SortColumn
+	activeGridSort.Direction = crumb.SortDir
+	activeGridSort.BaseQuery = crumb.Query
+	activeGridSort.IsTableBrowse = isBrowse
+	activeGridSort.OriginalResult = nil
+	activeGridSort.mu.Unlock()
+
+	fkNavMutex.Lock()
+	pendingNavRestoreRow = crumb.CursorRow
+	pendingNavRestoreCol = crumb.CursorCol
+	fkNavMutex.Unlock()
+
+	if activeSQLEditor != nil {
+		activeSQLEditor.SetText(crumb.Query)
+	}
+
+	isEditingEnabled = crumb.EditingActive
+	if crumb.EditingActive && activeGridDB != nil {
+		_ = EnableCellEditing(app, table, activeGridDB, activeGridDBName, activeGridObject)
+	}
+
+	if activeGridDB != nil && crumb.Query != "" {
+		ExecuteQueryAsync(app, activeGridDB, crumb.Query, table, func(res *QueryResult) {
+			if app != nil {
+				app.SetFocus(table)
+			}
+		})
+	}
+	return true
 }
 
 // triggerColumnSort cycles sorting (Unsorted -> ASC -> DESC -> Unsorted) for the specified column
@@ -2836,6 +3018,27 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			return nil
 		}
 
+		// Follow Foreign Key relationship with 'f' or 'F'
+		if event.Key() == tcell.KeyRune && (event.Rune() == 'f' || event.Rune() == 'F') {
+			if !triggerForeignKeyJump(app, table) {
+				r, c := table.GetSelection()
+				if r <= 0 {
+					updateFooterText("Select a non-NULL data cell to follow foreign key.")
+				} else {
+					colName := getHeaderColumnName(table.GetCell(0, c))
+					updateFooterText(fmt.Sprintf("Column '%s' is not a foreign key.", colName))
+				}
+			}
+			return nil
+		}
+
+		// Return from FK traversal with Backspace
+		if event.Key() == tcell.KeyBackspace || event.Key() == tcell.KeyBackspace2 {
+			if navigateBackFromFK(app, table) {
+				return nil
+			}
+		}
+
 		// Inspect cell with 'v' or 'V'
 		if event.Key() == tcell.KeyRune && (event.Rune() == 'v' || event.Rune() == 'V') {
 			r, c := table.GetSelection()
@@ -2860,7 +3063,12 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			}
 		}
 
-		// Ctrl+Enter: Commit active transaction if pending
+		// Ctrl+J on an FK cell follows FK; otherwise Ctrl+Enter / Ctrl+J commits active transaction if pending
+		if event.Key() == tcell.KeyCtrlJ {
+			if triggerForeignKeyJump(app, table) {
+				return nil
+			}
+		}
 		if (event.Key() == tcell.KeyEnter && (event.Modifiers()&tcell.ModCtrl != 0)) || event.Key() == tcell.KeyCtrlJ {
 			if GetUncommittedTxCount() > 0 {
 				if count, err := CommitActiveTx(app); err == nil && count > 0 {
