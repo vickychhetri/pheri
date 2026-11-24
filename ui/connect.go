@@ -404,6 +404,47 @@ func ShowConnectionForm(app *tview.Application, userArg, passArg, hostArg, portA
 	app.SetRoot(mainLayout, true).SetFocus(profileList)
 }
 
+// attemptBackToLogin enforces the uncommitted transaction exit barrier before closing the active
+// database connection and returning to the login screen. Returns true if logout proceeded immediately,
+// or false if blocked by pending uncommitted changes.
+func attemptBackToLogin(app *tview.Application, db *sql.DB) bool {
+	performLogout := func() {
+		ResetTransactionState()
+		if db != nil {
+			_ = db.Close()
+		}
+		User = ""
+		Pass = ""
+		Host = ""
+		Port = ""
+		user = ""
+		pass = ""
+		host = ""
+		port = ""
+		if app != nil {
+			ShowConnectionForm(app, "", "", "", "")
+		}
+	}
+
+	if GetUncommittedTxCount() > 0 {
+		PromptUncommittedChangesModal(app, "exit to connection screen",
+			func() {
+				_, _ = CommitActiveTx(app)
+				performLogout()
+			},
+			func() {
+				_, _ = RollbackActiveTx(app)
+				performLogout()
+			},
+			nil,
+		)
+		return false
+	}
+
+	performLogout()
+	return true
+}
+
 func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 	ActiveScreen = "dblist"
 	ActiveLoginDB = db
@@ -425,18 +466,7 @@ func ShowDatabaseList(app *tview.Application, db *sql.DB) {
 
 	var dbNames []string
 	backToLogin := func() {
-		if db != nil {
-			_ = db.Close()
-		}
-		User = ""
-		Pass = ""
-		Host = ""
-		Port = ""
-		user = ""
-		pass = ""
-		host = ""
-		port = ""
-		ShowConnectionForm(app, "", "", "", "")
+		attemptBackToLogin(app, db)
 	}
 
 	filtered := func(filter string) {

@@ -79,3 +79,33 @@ func TestShowConnectionForm_SplitPaneLayout(t *testing.T) {
 		t.Fatalf("expected non-nil focus on initial split-pane render")
 	}
 }
+
+func TestAttemptBackToLogin_UncommittedBarrier(t *testing.T) {
+	defer ResetTransactionState()
+
+	app := tview.NewApplication()
+	ResetTransactionState()
+
+	// Clean state (0 uncommitted mutations) should allow immediate logout
+	User = "tester"
+	Host = "127.0.0.1"
+	if ok := attemptBackToLogin(app, nil); !ok {
+		t.Errorf("expected attemptBackToLogin to proceed when uncommitted count is 0")
+	}
+	if User != "" || Host != "" {
+		t.Errorf("expected credentials to be cleared on clean logout, got User=%q Host=%q", User, Host)
+	}
+
+	// Dirty state (>0 uncommitted mutations) should block immediate logout and show barrier modal
+	SetAutoCommitMode(false)
+	RecordMutationInTx("UPDATE orders SET status = 'shipped'", "SQL Editor")
+	User = "tester"
+	Host = "127.0.0.1"
+
+	if ok := attemptBackToLogin(app, nil); ok {
+		t.Errorf("expected attemptBackToLogin to be blocked when uncommitted mutations exist")
+	}
+	if User != "tester" || Host != "127.0.0.1" {
+		t.Errorf("expected credentials NOT to be cleared while barrier modal is active")
+	}
+}

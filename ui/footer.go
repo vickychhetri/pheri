@@ -252,6 +252,16 @@ func handleGlobalCommand(app *tview.Application, cmd string) {
 		showAboutModal(app)
 	case "theme", "colors":
 		showThemePickerModal(app)
+	case "use":
+		if len(parts) < 2 {
+			updateFooterText("Usage: :use <database_name>")
+			return
+		}
+		if activeGridDB == nil {
+			updateFooterText("No active database connection.")
+			return
+		}
+		UseDatabase(app, activeGridDB, parts[1])
 	case "disconnect", "connect", "login":
 		if GetUncommittedTxCount() > 0 {
 			PromptUncommittedChangesModal(app, "disconnect from server",
