@@ -199,21 +199,7 @@ func filterTableList(
 
 					switch objType {
 					case "TABLE", "VIEW":
-						query := fmt.Sprintf("SELECT * FROM %s.%s LIMIT 100",
-							util.QuoteIdentifier(dbName),
-							util.QuoteIdentifier(objName))
-						setEditorText(queryBox, query)
-						phhistory.SaveQuery(query, dbName)
-						err := ExecuteQuery(app, db, query, dataTable)
-						if err != nil {
-							showErrorModal(app, mainFlex, "Executing Fail: "+err.Error())
-						}
-
-						if objType == "TABLE" {
-							isEditingEnabled = true
-							_ = EnableCellEditing(app, dataTable, db, dbName, objName)
-						}
-						app.SetFocus(dataTable)
+						openTableOrView(app, db, queryBox, dataTable, dbName, objName, objType)
 
 					case "PROCEDURE":
 						query := `SELECT routine_name, data_type, is_deterministic, security_type, definer, routine_definition 
@@ -1556,27 +1542,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					app.SetFocus(activeSQLEditor.Editor)
 
 				case "TABLE", "VIEW":
-					activeGridObject = currentName
-					activeGridObjectType = currentobjectType
-					activeGridDBName = dbName
-					currentGridPage = 0
-
-					query := fmt.Sprintf("SELECT * FROM %s.%s LIMIT 100",
-						util.QuoteIdentifier(dbName),
-						util.QuoteIdentifier(currentName))
-					setEditorText(queryBox, query)
-					util.SaveLog("TABLE,VIEW: " + query)
-					phhistory.SaveQuery(query, dbName)
-					err = ExecuteQuery(app, db, query, dataTable)
-					if err != nil {
-						showErrorModal(app, mainFlex, "Executing Fail: "+err.Error())
-					}
-
-					if currentobjectType == "TABLE" {
-						isEditingEnabled = true
-						_ = EnableCellEditing(app, dataTable, db, dbName, currentName)
-					}
-					app.SetFocus(dataTable)
+					openTableOrView(app, db, queryBox, dataTable, dbName, currentName, currentobjectType)
 				}
 			})
 		}
@@ -1594,9 +1560,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 					updateFooterText("SQL query is empty. Press 'e' or click in editor to type a query.")
 					return
 				}
+				isEditingEnabled = false
+				activeGridObjectType = ""
+				activeGridSort.Reset(query, false)
 				ExecuteQueryAsync(app, db, query, dataTable, func(res *QueryResult) {
 					phhistory.SaveQuery(query, dbName)
-					isEditingEnabled = false
 					app.SetFocus(dataTable)
 				})
 			})
@@ -1612,9 +1580,11 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				updateFooterText("SQL query is empty. Type a query to execute.")
 				return
 			}
+			isEditingEnabled = false
+			activeGridObjectType = ""
+			activeGridSort.Reset(cleanQuery, false)
 			ExecuteQueryAsync(app, db, cleanQuery, dataTable, func(res *QueryResult) {
 				phhistory.SaveQuery(cleanQuery, dbName)
-				isEditingEnabled = false
 				app.SetFocus(dataTable)
 			})
 		}
@@ -2240,6 +2210,35 @@ func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
 	return cols[0], nil
 }
 
+// openTableOrView initializes browse/sort state for a selected table or view and loads page 0.
+func openTableOrView(app *tview.Application, db *sql.DB, queryBox *tview.TextArea, dataTable *tview.Table, dbName, objName, objType string) {
+	activeGridObject = objName
+	activeGridObjectType = objType
+	activeGridDBName = dbName
+	currentGridPage = 0
+
+	query := BuildBrowseQuery(dbName, objName, "", SortNone, gridPageSize, 0)
+	activeGridSort.Reset(query, true)
+	setEditorText(queryBox, query)
+	util.SaveLog(objType + ": " + query)
+	phhistory.SaveQuery(query, dbName)
+
+	err := ExecuteQuery(app, db, query, dataTable)
+	if err != nil {
+		showErrorModal(app, mainFlex, "Executing Fail: "+err.Error())
+	}
+
+	if objType == "TABLE" {
+		isEditingEnabled = true
+		_ = EnableCellEditing(app, dataTable, db, dbName, objName)
+	} else {
+		isEditingEnabled = false
+	}
+	if app != nil {
+		app.SetFocus(dataTable)
+	}
+}
+
 // Fetch data and show in table asynchronously with cancellation, live timing, and pagination
 func ExecuteQuery(app *tview.Application, db *sql.DB, query string, table *tview.Table) error {
 	ExecuteQueryAsync(app, db, query, table, nil)
@@ -2569,17 +2568,42 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		return
 	}
 
-	// Set column headers with professional styling
+	// Cache original unsorted result for fallback in-memory sorting (e.g. SHOW, DESCRIBE)
+	activeGridSort.mu.Lock()
+	if activeGridSort.Direction == SortNone {
+		activeGridSort.OriginalResult = cloneQueryResultForSort(res)
+	}
+	sortCol := activeGridSort.Column
+	sortDir := activeGridSort.Direction
+	restoreRow := activeGridSort.PendingRestoreRow
+	restoreCol := activeGridSort.PendingRestoreCol
+	activeGridSort.PendingRestoreRow = -1
+	activeGridSort.PendingRestoreCol = -1
+	activeGridSort.mu.Unlock()
+
+	// Set column headers with professional styling & dynamic sort indicators
 	headerStyle := tcell.StyleDefault.
 		Background(CurrentTheme.HeaderBg).
 		Foreground(CurrentTheme.HeaderFg).
 		Bold(true)
+	sortedHeaderStyle := tcell.StyleDefault.
+		Background(CurrentTheme.HeaderBg).
+		Foreground(CurrentTheme.AccentPrimary).
+		Bold(true)
+
 	for i, col := range res.Columns {
+		label := " " + col + " "
+		style := headerStyle
+		if sortCol != "" && col == sortCol && sortDir != SortNone {
+			label = fmt.Sprintf(" %s %s ", col, sortDir.Indicator())
+			style = sortedHeaderStyle
+		}
 		table.SetCell(0, i,
-			tview.NewTableCell(" "+col+" ").
-				SetStyle(headerStyle).
+			tview.NewTableCell(label).
+				SetStyle(style).
 				SetAlign(tview.AlignCenter).
-				SetSelectable(false))
+				SetSelectable(true).
+				SetReference(col))
 	}
 
 	// Set rows with clean theme colors
@@ -2613,12 +2637,118 @@ func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Ta
 		}
 	}
 
-	titleStr := fmt.Sprintf(" [ Query Results: %d rows | %s | Page %d ] ",
-		res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1)
+	table.SetSelectable(true, true)
+	if !isEditingEnabled {
+		table.SetSelectedFunc(func(row int, column int) {
+			if row == 0 {
+				triggerColumnSort(app, table, column)
+			}
+		})
+	}
+
+	// Restore selection to the sorted column when re-rendered via header/cell sort
+	if restoreCol >= 0 && restoreCol < len(res.Columns) {
+		maxRow := table.GetRowCount() - 1
+		if restoreRow < 0 {
+			restoreRow = 0
+		} else if restoreRow > maxRow {
+			restoreRow = maxRow
+		}
+		table.Select(restoreRow, restoreCol)
+	}
+
+	sortBadge := ""
+	if sortCol != "" && sortDir != SortNone {
+		sortBadge = fmt.Sprintf(" | Sort: %s %s", sortCol, sortDir.Indicator())
+	}
+	titleStr := fmt.Sprintf(" [ Query Results: %d rows | %s | Page %d%s ] ",
+		res.RowCount, res.Duration.Round(time.Microsecond), currentGridPage+1, sortBadge)
 	table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
 
-	updateFooterText(fmt.Sprintf("Fetched %d row(s) in %s", res.RowCount, res.Duration.Round(time.Microsecond)))
+	footerMsg := fmt.Sprintf("Fetched %d row(s) in %s", res.RowCount, res.Duration.Round(time.Microsecond))
+	if sortCol != "" && sortDir != SortNone {
+		footerMsg += fmt.Sprintf(" │ Sorted by %s (%s) — 's'/Enter on header to toggle", sortCol, sortDir.SQLKeyword())
+	}
+	updateFooterText(footerMsg)
 	setupTableInputCapture(app, table)
+}
+
+// getHeaderColumnName resolves the underlying SQL column identifier from a header TableCell,
+// ignoring directional sort indicators (▲ / ▼) and tview formatting tags.
+func getHeaderColumnName(headerCell *tview.TableCell) string {
+	if headerCell == nil {
+		return ""
+	}
+	if ref, ok := headerCell.GetReference().(string); ok && ref != "" {
+		return ref
+	}
+	clean := strings.TrimSpace(util.StripFormatting(headerCell.Text))
+	clean = strings.TrimSuffix(clean, " ▲")
+	clean = strings.TrimSuffix(clean, " ▼")
+	clean = strings.TrimSuffix(clean, "▲")
+	clean = strings.TrimSuffix(clean, "▼")
+	return strings.TrimSpace(clean)
+}
+
+// triggerColumnSort cycles sorting (Unsorted -> ASC -> DESC -> Unsorted) for the specified column
+// and re-executes the active query or performs a safe in-memory fallback sort for non-SELECT outputs.
+func triggerColumnSort(app *tview.Application, table *tview.Table, col int) {
+	if table == nil || col < 0 {
+		return
+	}
+	if isQueryRunning.Load() {
+		updateFooterText("A query is currently running. Cancel it before sorting.")
+		return
+	}
+	headerCell := table.GetCell(0, col)
+	colName := getHeaderColumnName(headerCell)
+	if colName == "" {
+		return
+	}
+
+	curRow, _ := table.GetSelection()
+	activeGridSort.mu.Lock()
+	activeGridSort.PendingRestoreRow = curRow
+	activeGridSort.PendingRestoreCol = col
+	activeGridSort.mu.Unlock()
+
+	newCol, newDir := activeGridSort.Toggle(colName)
+	_, _, baseQuery, isBrowse := activeGridSort.Snapshot()
+
+	if isBrowse && activeGridDB != nil && activeGridDBName != "" && activeGridObject != "" {
+		currentGridPage = 0
+		sortedQuery := BuildBrowseQuery(activeGridDBName, activeGridObject, newCol, newDir, gridPageSize, 0)
+		if activeSQLEditor != nil {
+			activeSQLEditor.SetText(sortedQuery)
+		}
+		ExecuteQueryAsync(app, activeGridDB, sortedQuery, table, func(res *QueryResult) {
+			if app != nil {
+				app.SetFocus(table)
+			}
+		})
+		return
+	}
+
+	if rewritten, ok := ApplySortToSQLQuery(baseQuery, newCol, newDir); ok && activeGridDB != nil {
+		if activeSQLEditor != nil {
+			activeSQLEditor.SetText(rewritten)
+		}
+		ExecuteQueryAsync(app, activeGridDB, rewritten, table, func(res *QueryResult) {
+			if app != nil {
+				app.SetFocus(table)
+			}
+		})
+		return
+	}
+
+	// Fallback in-memory sort for non-SELECT results (e.g. SHOW, DESCRIBE, EXPLAIN) or offline test tables
+	activeGridSort.mu.Lock()
+	origRes := activeGridSort.OriginalResult
+	activeGridSort.mu.Unlock()
+	if origRes != nil {
+		sortedRes := SortQueryResultInMemory(origRes, col, newDir)
+		renderQueryResult(app, sortedRes, table)
+	}
 }
 
 func setupTableInputCapture(app *tview.Application, table *tview.Table) {
@@ -2658,29 +2788,32 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			return nil
 
 		case tcell.KeyCtrlN:
-			// Next Page
+			// Next Page (preserving active sort order)
 			if activeGridObjectType == "TABLE" || activeGridObjectType == "VIEW" {
 				currentGridPage++
 				offset := currentGridPage * gridPageSize
-				pageQuery := fmt.Sprintf("SELECT * FROM %s.%s LIMIT %d OFFSET %d",
-					util.QuoteIdentifier(activeGridDBName),
-					util.QuoteIdentifier(activeGridObject),
-					gridPageSize, offset)
+				sortCol, sortDir, _, _ := activeGridSort.Snapshot()
+				pageQuery := BuildBrowseQuery(activeGridDBName, activeGridObject, sortCol, sortDir, gridPageSize, offset)
 				ExecuteQuery(app, activeGridDB, pageQuery, table)
 			}
 			return nil
 
 		case tcell.KeyCtrlP:
-			// Previous Page
+			// Previous Page (preserving active sort order)
 			if currentGridPage > 0 && (activeGridObjectType == "TABLE" || activeGridObjectType == "VIEW") {
 				currentGridPage--
 				offset := currentGridPage * gridPageSize
-				pageQuery := fmt.Sprintf("SELECT * FROM %s.%s LIMIT %d OFFSET %d",
-					util.QuoteIdentifier(activeGridDBName),
-					util.QuoteIdentifier(activeGridObject),
-					gridPageSize, offset)
+				sortCol, sortDir, _, _ := activeGridSort.Snapshot()
+				pageQuery := BuildBrowseQuery(activeGridDBName, activeGridObject, sortCol, sortDir, gridPageSize, offset)
 				ExecuteQuery(app, activeGridDB, pageQuery, table)
 			}
+			return nil
+		}
+
+		// Cycle sort on active column with 's' or 'S'
+		if event.Key() == tcell.KeyRune && (event.Rune() == 's' || event.Rune() == 'S') {
+			_, c := table.GetSelection()
+			triggerColumnSort(app, table, c)
 			return nil
 		}
 
@@ -2689,11 +2822,7 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			r, c := table.GetSelection()
 			cell := table.GetCell(r, c)
 			if cell != nil {
-				headerCell := table.GetCell(0, c)
-				colName := ""
-				if headerCell != nil {
-					colName = util.StripFormatting(headerCell.Text)
-				}
+				colName := getHeaderColumnName(table.GetCell(0, c))
 				gc := GetGridCellFromTableCell(cell, colName)
 				inspectText := gc.Value()
 				if gc.IsNull() {
@@ -2736,7 +2865,11 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 
 	table.SetSelectedFunc(func(row int, column int) {
 		if row == 0 {
-			return // Skip header row
+			triggerColumnSort(app, table, column)
+			return
+		}
+		if !isEditingEnabled {
+			return
 		}
 
 		if ActiveReadOnly {
@@ -2745,8 +2878,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 		}
 
 		cell := table.GetCell(row, column)
-		headerCell := table.GetCell(0, column)
-		columnName := strings.TrimSpace(util.StripFormatting(headerCell.Text))
+		columnName := getHeaderColumnName(table.GetCell(0, column))
 		gridCell := GetGridCellFromTableCell(cell, columnName)
 
 		isNULL := gridCell.IsNull()
