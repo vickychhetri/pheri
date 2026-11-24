@@ -1,12 +1,14 @@
 package util
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log"
 	"os"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/atotto/clipboard"
@@ -33,6 +35,93 @@ func SetClipboardText(text string) error {
 func QuoteIdentifier(name string) string {
 	escaped := strings.ReplaceAll(name, "`", "``")
 	return "`" + escaped + "`"
+}
+
+// ForeignKeyRef describes a foreign key relationship from a source column to a referenced parent column.
+type ForeignKeyRef struct {
+	ConstraintName   string
+	ColumnName       string
+	ReferencedSchema string
+	ReferencedTable  string
+	ReferencedColumn string
+}
+
+// GetTableForeignKeys fetches all foreign key constraints for a table from INFORMATION_SCHEMA.KEY_COLUMN_USAGE.
+func GetTableForeignKeys(ctx context.Context, db *sql.DB, dbName, tableName string) (map[string]ForeignKeyRef, error) {
+	if db == nil || dbName == "" || tableName == "" {
+		return nil, nil
+	}
+
+	query := `
+		SELECT
+			CONSTRAINT_NAME,
+			COLUMN_NAME,
+			REFERENCED_TABLE_SCHEMA,
+			REFERENCED_TABLE_NAME,
+			REFERENCED_COLUMN_NAME
+		FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+		WHERE TABLE_SCHEMA = ?
+		  AND TABLE_NAME = ?
+		  AND REFERENCED_TABLE_NAME IS NOT NULL
+		ORDER BY ORDINAL_POSITION
+	`
+
+	rows, err := db.QueryContext(ctx, query, dbName, tableName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	fks := make(map[string]ForeignKeyRef)
+	for rows.Next() {
+		var ref ForeignKeyRef
+		var refSchema, refTable, refCol sql.NullString
+		if scanErr := rows.Scan(&ref.ConstraintName, &ref.ColumnName, &refSchema, &refTable, &refCol); scanErr != nil {
+			continue
+		}
+		if !refTable.Valid || !refCol.Valid || refTable.String == "" || refCol.String == "" {
+			continue
+		}
+		ref.ReferencedSchema = refSchema.String
+		if ref.ReferencedSchema == "" {
+			ref.ReferencedSchema = dbName
+		}
+		ref.ReferencedTable = refTable.String
+		ref.ReferencedColumn = refCol.String
+		if _, exists := fks[ref.ColumnName]; !exists {
+			fks[ref.ColumnName] = ref
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return fks, nil
+}
+
+// FormatSQLValueLiteral safely formats a scalar value for SQL equality predicates.
+// Clean integers without leading zeros remain unquoted; strings are escaped and single-quoted.
+func FormatSQLValueLiteral(val string) string {
+	if val != "" && !(len(val) > 1 && val[0] == '0') && !strings.HasPrefix(val, "-0") {
+		if _, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return val
+		}
+	}
+	escaped := strings.ReplaceAll(val, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `'`, `''`)
+	return "'" + escaped + "'"
+}
+
+// BuildForeignKeyTargetQuery constructs a SELECT query targeting the referenced row(s) of a foreign key.
+func BuildForeignKeyTargetQuery(ref ForeignKeyRef, val string) string {
+	targetTable := QuoteIdentifier(ref.ReferencedTable)
+	if ref.ReferencedSchema != "" {
+		targetTable = QuoteIdentifier(ref.ReferencedSchema) + "." + targetTable
+	}
+	return fmt.Sprintf("SELECT * FROM %s WHERE %s = %s LIMIT 100",
+		targetTable,
+		QuoteIdentifier(ref.ReferencedColumn),
+		FormatSQLValueLiteral(val),
+	)
 }
 
 func GetFullReturnType(db *sql.DB, objName string, dbName string) (string, error) {
