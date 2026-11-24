@@ -29,10 +29,25 @@ import (
 )
 
 var dataTable *tview.Table
+var resultsContainer *tview.Flex
+var resultTabBar *tview.TextView
 var dataBaseList *tview.List
 var tableList *tview.List
 var allDatabases []string
 var activeSQLEditor *SQLEditor
+
+type batchTabHitbox struct {
+	StartX int
+	EndX   int
+	Index  int
+}
+
+var (
+	batchTabMutex    sync.RWMutex
+	activeBatchTabs  []BatchResultTab
+	activeBatchTabIx int
+	batchTabBounds   []batchTabHitbox
+)
 
 // var allTables []string
 type DBObject struct {
@@ -1555,7 +1570,7 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			SetSelectedFunc(func() {
 				query := ""
 				if activeSQLEditor != nil {
-					query = strings.TrimSpace(activeSQLEditor.GetText())
+					query = strings.TrimSpace(activeSQLEditor.GetExecutableText())
 				} else if queryBox != nil {
 					query = strings.TrimSpace(queryBox.GetText())
 				}
@@ -2133,15 +2148,48 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 			return event
 		})
 
+		resultTabBar = tview.NewTextView().
+			SetDynamicColors(true).
+			SetWrap(false)
+		resultTabBar.SetBackgroundColor(CurrentTheme.SurfaceBg)
+		resultTabBar.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+			if action == tview.MouseLeftClick && event != nil {
+				rx, _, _, _ := resultTabBar.GetInnerRect()
+				x, _ := event.Position()
+				relX := x - rx
+				batchTabMutex.RLock()
+				var matchedIdx = -1
+				for _, box := range batchTabBounds {
+					if relX >= box.StartX && relX <= box.EndX {
+						matchedIdx = box.Index
+						break
+					}
+				}
+				batchTabMutex.RUnlock()
+				if matchedIdx >= 0 {
+					switchBatchResultTab(app, dataTable, matchedIdx)
+					if app != nil && dataTable != nil {
+						app.SetFocus(dataTable)
+					}
+					return action, nil
+				}
+			}
+			return action, event
+		})
+
+		resultsContainer = tview.NewFlex().SetDirection(tview.FlexRow).
+			AddItem(resultTabBar, 0, 0, false).
+			AddItem(dataTable, 0, 1, false)
+
 		mainLeftPanel = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(searchInput, 1, 0, false).
 			AddItem(tableList, 0, 1, true).
 			AddItem(dataBaseList, 0, 1, true)
 
-		// Center panel: Query + Data Table
+		// Center panel: Query + Tabbed Data Results
 		mainCenterPanel = tview.NewFlex().SetDirection(tview.FlexRow).
 			AddItem(queryPanel, 9, 0, true).
-			AddItem(dataTable, 0, 1, false)
+			AddItem(resultsContainer, 0, 1, false)
 
 		// Main layout
 		mainFlex = tview.NewFlex().
@@ -2234,6 +2282,7 @@ func GetPrimaryKeyColumn(db *sql.DB, dbName, tableName string) (string, error) {
 
 // openTableOrView initializes browse/sort state for a selected table or view and loads page 0.
 func openTableOrView(app *tview.Application, db *sql.DB, queryBox *tview.TextArea, dataTable *tview.Table, dbName, objName, objType string) {
+	clearBatchResultTabs()
 	activeGridObject = objName
 	activeGridObjectType = objType
 	activeGridDBName = dbName
@@ -2295,10 +2344,27 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 		return
 	}
 
+	chunks := SplitSQLStatements(cleanQuery)
+	if len(chunks) == 0 {
+		updateFooterText("SQL query is empty (comments only). Type a SQL statement to execute.")
+		if onComplete != nil {
+			onComplete(&QueryResult{ErrorMessage: "empty query"})
+		}
+		return
+	}
+
+	if len(chunks) > 1 {
+		executeBatchAsync(app, db, cleanQuery, chunks, table, onComplete)
+		return
+	}
+
+	clearBatchResultTabs()
+	singleSQL := chunks[0].SQL
+
 	activeGridQuery = query
 	activeGridDB = db
 
-	isMutation, stmtType := ClassifySQLStatement(query)
+	isMutation, stmtType := ClassifySQLStatement(singleSQL)
 
 	if isMutation && ActiveReadOnly {
 		showErrorModal(app, mainFlex, fmt.Sprintf("Action Blocked: %s statement not allowed in READ-ONLY Mode.", stmtType))
@@ -2425,12 +2491,12 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			var execRes sql.Result
 			var err error
 			if tx != nil {
-				execRes, err = tx.ExecContext(ctx, query)
+				execRes, err = tx.ExecContext(ctx, singleSQL)
 				if err == nil {
-					RecordMutationInTx(query, "SQL Editor")
+					RecordMutationInTx(singleSQL, "SQL Editor")
 				}
 			} else {
-				execRes, err = conn.ExecContext(ctx, query)
+				execRes, err = conn.ExecContext(ctx, singleSQL)
 			}
 			duration := time.Since(startTime)
 			result.Duration = duration
@@ -2453,9 +2519,9 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			var rows *sql.Rows
 			var err error
 			if tx != nil {
-				rows, err = tx.QueryContext(ctx, query)
+				rows, err = tx.QueryContext(ctx, singleSQL)
 			} else {
-				rows, err = conn.QueryContext(ctx, query)
+				rows, err = conn.QueryContext(ctx, singleSQL)
 			}
 			duration := time.Since(startTime)
 			result.Duration = duration
@@ -2468,59 +2534,9 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 				}
 			} else {
 				defer rows.Close()
-
-				cols, err := rows.Columns()
-				if err != nil {
-					result.ErrorMessage = err.Error()
-				} else {
-					result.Columns = cols
-					scanValues := make([]interface{}, len(cols))
-					rawValues := make([]sql.RawBytes, len(cols))
-					for i := range rawValues {
-						scanValues[i] = &rawValues[i]
-					}
-
-					for rows.Next() {
-						if ctx.Err() == context.Canceled {
-							result.IsCanceled = true
-							break
-						}
-						if scanErr := rows.Scan(scanValues...); scanErr != nil {
-							if IsQueryInterruptedError(scanErr, ctx) {
-								result.IsCanceled = true
-								break
-							}
-							continue
-						}
-
-						rowStrings := make([]string, len(cols))
-						rawRow := make([]*string, len(cols))
-						for i, col := range rawValues {
-							if col == nil {
-								rawRow[i] = nil
-								rowStrings[i] = "[gray::i]NULL[-::-]"
-							} else {
-								sVal := string(col)
-								rawRow[i] = &sVal
-								if sVal == "" {
-									rowStrings[i] = "[gray::i]EMPTY[-::-]"
-								} else {
-									rowStrings[i] = tview.Escape(sVal)
-								}
-							}
-						}
-						result.Rows = append(result.Rows, rowStrings)
-						result.RawRows = append(result.RawRows, rawRow)
-					}
-					if rows.Err() != nil {
-						if IsQueryInterruptedError(rows.Err(), ctx) {
-							result.IsCanceled = true
-						}
-					}
-					result.RowCount = len(result.Rows)
-					if fkTargetDB != "" && fkTargetTable != "" && !result.IsCanceled {
-						result.ForeignKeys = GetCachedForeignKeys(ctx, db, fkTargetDB, fkTargetTable)
-					}
+				scanRowsToQueryResult(ctx, rows, result)
+				if fkTargetDB != "" && fkTargetTable != "" && !result.IsCanceled && result.ErrorMessage == "" {
+					result.ForeignKeys = GetCachedForeignKeys(ctx, db, fkTargetDB, fkTargetTable)
 				}
 			}
 		}
@@ -2536,6 +2552,475 @@ func ExecuteQueryAsync(app *tview.Application, db *sql.DB, query string, table *
 			}
 		})
 	}()
+}
+
+// scanRowsToQueryResult consumes sql.Rows into structured QueryResult cells, preserving NULL/EMPTY badges.
+func scanRowsToQueryResult(ctx context.Context, rows *sql.Rows, result *QueryResult) {
+	if rows == nil || result == nil {
+		return
+	}
+	cols, err := rows.Columns()
+	if err != nil {
+		result.ErrorMessage = err.Error()
+		return
+	}
+	result.Columns = cols
+	if len(cols) == 0 {
+		return
+	}
+
+	scanValues := make([]interface{}, len(cols))
+	rawValues := make([]sql.RawBytes, len(cols))
+	for i := range rawValues {
+		scanValues[i] = &rawValues[i]
+	}
+
+	for rows.Next() {
+		if ctx.Err() == context.Canceled {
+			result.IsCanceled = true
+			break
+		}
+		if scanErr := rows.Scan(scanValues...); scanErr != nil {
+			if IsQueryInterruptedError(scanErr, ctx) {
+				result.IsCanceled = true
+				break
+			}
+			continue
+		}
+
+		rowStrings := make([]string, len(cols))
+		rawRow := make([]*string, len(cols))
+		for i, col := range rawValues {
+			if col == nil {
+				rawRow[i] = nil
+				rowStrings[i] = "[gray::i]NULL[-::-]"
+			} else {
+				sVal := string(col)
+				rawRow[i] = &sVal
+				if sVal == "" {
+					rowStrings[i] = "[gray::i]EMPTY[-::-]"
+				} else {
+					rowStrings[i] = tview.Escape(sVal)
+				}
+			}
+		}
+		result.Rows = append(result.Rows, rowStrings)
+		result.RawRows = append(result.RawRows, rawRow)
+	}
+	if rows.Err() != nil {
+		if IsQueryInterruptedError(rows.Err(), ctx) {
+			result.IsCanceled = true
+		} else if result.ErrorMessage == "" {
+			result.ErrorMessage = rows.Err().Error()
+		}
+	}
+	result.RowCount = len(result.Rows)
+}
+
+// executeBatchAsync executes a multi-statement SQL batch sequentially on one transaction or connection,
+// enforcing pre-flight Read-Only guards, fail-fast error attribution, and tabbed result grid rendering.
+func executeBatchAsync(app *tview.Application, db *sql.DB, rawScript string, chunks []SQLStatementChunk, table *tview.Table, onComplete func(res *QueryResult)) {
+	if blockedChunk, blocked := ValidateBatchReadOnly(chunks, ActiveReadOnly); blocked {
+		msg := fmt.Sprintf("Action Blocked: Stmt #%d (Ln %d, %s) not allowed in READ-ONLY Mode.",
+			blockedChunk.Index, blockedChunk.StartLine, blockedChunk.StatementType)
+		showErrorModal(app, mainFlex, msg)
+		if onComplete != nil {
+			onComplete(&QueryResult{
+				ErrorMessage:  "read-only mode enabled",
+				IsMutation:    true,
+				StatementType: blockedChunk.StatementType,
+			})
+		}
+		return
+	}
+
+	thisSeq := atomic.AddUint64(&activeQuerySequence, 1)
+	activeGridQuery = rawScript
+	activeGridDB = db
+
+	activeQueryMutex.Lock()
+	ctx, cancel := context.WithCancel(context.Background())
+	activeQueryCancel = cancel
+	activeQueryDB = db
+	isQueryRunning.Store(true)
+	activeQueryMutex.Unlock()
+
+	if table != nil {
+		table.Clear()
+		table.SetBorders(false)
+		table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]Executing batch (%d statements)... [aqua](Ctrl+C / Esc: Cancel)[-::-]", len(chunks))).
+			SetAlign(tview.AlignCenter).
+			SetSelectable(false))
+	}
+	UpdateFooterRunningQuery(0)
+
+	startTime := time.Now()
+	var currentProgress atomic.Value
+	currentProgress.Store(fmt.Sprintf("1/%d: %s", len(chunks), chunks[0].StatementType))
+
+	tickerDone := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-tickerDone:
+				return
+			case t := <-ticker.C:
+				elapsed := t.Sub(startTime)
+				label, _ := currentProgress.Load().(string)
+				app.QueueUpdateDraw(func() {
+					if isQueryRunning.Load() && table != nil {
+						UpdateFooterRunningQuery(elapsed)
+						table.SetCell(0, 0, tview.NewTableCell(fmt.Sprintf("[yellow::b]Executing batch [%s]... (%0.1fs) [aqua::b](Ctrl+C / Esc: Cancel)[-::-]", label, elapsed.Seconds())).
+							SetAlign(tview.AlignCenter).
+							SetSelectable(false))
+					}
+				})
+			}
+		}
+	}()
+
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				util.SaveLog(fmt.Sprintf("Batch execution panic recovered: %v", r))
+			}
+			close(tickerDone)
+			activeQueryMutex.Lock()
+			if thisSeq == atomic.LoadUint64(&activeQuerySequence) {
+				activeQueryCancel = nil
+				activeQueryDB = nil
+				isQueryRunning.Store(false)
+			}
+			activeQueryMutex.Unlock()
+			activeQueryConnID.Store(0)
+		}()
+
+		records := make([]BatchStatementRecord, len(chunks))
+		for i, c := range chunks {
+			records[i] = BatchStatementRecord{
+				Chunk:  c,
+				Status: "SKIPPED",
+			}
+		}
+
+		var tx *sql.Tx
+		var conn *sql.Conn
+		var serverThread uint64
+
+		if !IsAutoCommitMode() {
+			var errTx error
+			tx, errTx = EnsureActiveTx(ctx, db)
+			if errTx != nil {
+				records[0].Status = "ERROR"
+				records[0].ErrorMessage = "Failed to acquire active transaction: " + errTx.Error()
+				finishBatchExecution(app, thisSeq, records, time.Since(startTime), table, onComplete)
+				return
+			}
+			_ = tx.QueryRowContext(ctx, "SELECT CONNECTION_ID()").Scan(&serverThread)
+			if serverThread > 0 {
+				activeQueryConnID.Store(serverThread)
+			}
+		} else {
+			var errConn error
+			conn, errConn = db.Conn(ctx)
+			if errConn != nil {
+				if IsQueryInterruptedError(errConn, ctx) {
+					records[0].Status = "CANCELED"
+				} else {
+					records[0].Status = "ERROR"
+					records[0].ErrorMessage = "Failed to acquire database connection: " + errConn.Error()
+				}
+				finishBatchExecution(app, thisSeq, records, time.Since(startTime), table, onComplete)
+				return
+			}
+			defer conn.Close()
+
+			_ = conn.QueryRowContext(ctx, "SELECT CONNECTION_ID()").Scan(&serverThread)
+			if serverThread > 0 {
+				activeQueryConnID.Store(serverThread)
+			}
+		}
+
+		for i, chunk := range chunks {
+			if ctx.Err() == context.Canceled {
+				records[i].Status = "CANCELED"
+				break
+			}
+			currentProgress.Store(fmt.Sprintf("%d/%d: %s", chunk.Index, len(chunks), chunk.StatementType))
+
+			rec := executeBatchChunk(ctx, tx, conn, chunk, serverThread)
+			records[i] = rec
+			if rec.Status == "ERROR" || rec.Status == "CANCELED" {
+				break
+			}
+		}
+
+		finishBatchExecution(app, thisSeq, records, time.Since(startTime), table, onComplete)
+	}()
+}
+
+func executeBatchChunk(ctx context.Context, tx *sql.Tx, conn *sql.Conn, chunk SQLStatementChunk, serverThread uint64) BatchStatementRecord {
+	stmtStart := time.Now()
+	rec := BatchStatementRecord{
+		Chunk:  chunk,
+		Status: "OK",
+	}
+
+	isExec := chunk.IsMutation || strings.EqualFold(chunk.StatementType, "USE")
+	stmtResult := &QueryResult{
+		IsMutation:    chunk.IsMutation,
+		StatementType: chunk.StatementType,
+		ServerThread:  serverThread,
+	}
+
+	if isExec {
+		var execRes sql.Result
+		var err error
+		if tx != nil {
+			execRes, err = tx.ExecContext(ctx, chunk.SQL)
+			if err == nil && chunk.IsMutation {
+				RecordMutationInTx(chunk.SQL, fmt.Sprintf("SQL Batch #%d", chunk.Index))
+			}
+		} else {
+			execRes, err = conn.ExecContext(ctx, chunk.SQL)
+		}
+		rec.Duration = time.Since(stmtStart)
+		stmtResult.Duration = rec.Duration
+
+		if err != nil {
+			if IsQueryInterruptedError(err, ctx) {
+				rec.Status = "CANCELED"
+				stmtResult.IsCanceled = true
+			} else {
+				rec.Status = "ERROR"
+				rec.ErrorMessage = fmt.Sprintf("Stmt #%d (Ln %d): %s", chunk.Index, chunk.StartLine, err.Error())
+				stmtResult.ErrorMessage = rec.ErrorMessage
+			}
+		} else if execRes != nil {
+			if rowsAff, errAff := execRes.RowsAffected(); errAff == nil {
+				rec.RowsAffected = rowsAff
+				stmtResult.RowsAffected = rowsAff
+			}
+			if lastID, errID := execRes.LastInsertId(); errID == nil && lastID > 0 {
+				rec.LastInsertID = lastID
+				stmtResult.LastInsertID = lastID
+			}
+		}
+		rec.Result = stmtResult
+		return rec
+	}
+
+	var rows *sql.Rows
+	var err error
+	if tx != nil {
+		rows, err = tx.QueryContext(ctx, chunk.SQL)
+	} else {
+		rows, err = conn.QueryContext(ctx, chunk.SQL)
+	}
+	if err != nil {
+		rec.Duration = time.Since(stmtStart)
+		stmtResult.Duration = rec.Duration
+		if IsQueryInterruptedError(err, ctx) {
+			rec.Status = "CANCELED"
+			stmtResult.IsCanceled = true
+		} else {
+			rec.Status = "ERROR"
+			rec.ErrorMessage = fmt.Sprintf("Stmt #%d (Ln %d): %s", chunk.Index, chunk.StartLine, err.Error())
+			stmtResult.ErrorMessage = rec.ErrorMessage
+		}
+		rec.Result = stmtResult
+		return rec
+	}
+	defer rows.Close()
+
+	scanRowsToQueryResult(ctx, rows, stmtResult)
+	rec.Duration = time.Since(stmtStart)
+	stmtResult.Duration = rec.Duration
+	rec.RowsFetched = stmtResult.RowCount
+
+	if stmtResult.IsCanceled {
+		rec.Status = "CANCELED"
+	} else if stmtResult.ErrorMessage != "" {
+		rec.Status = "ERROR"
+		rec.ErrorMessage = fmt.Sprintf("Stmt #%d (Ln %d): %s", chunk.Index, chunk.StartLine, stmtResult.ErrorMessage)
+		stmtResult.ErrorMessage = rec.ErrorMessage
+	}
+	rec.Result = stmtResult
+	return rec
+}
+
+func finishBatchExecution(app *tview.Application, seq uint64, records []BatchStatementRecord, totalDuration time.Duration, table *tview.Table, onComplete func(res *QueryResult)) {
+	tabs, defaultIdx := BuildBatchResultTabs(records, totalDuration)
+
+	var failedErr string
+	var wasCanceled bool
+	okCount := 0
+	for _, rec := range records {
+		switch rec.Status {
+		case "OK":
+			okCount++
+		case "ERROR":
+			if failedErr == "" {
+				failedErr = rec.ErrorMessage
+			}
+		case "CANCELED":
+			wasCanceled = true
+		}
+	}
+
+	app.QueueUpdateDraw(func() {
+		if seq != atomic.LoadUint64(&activeQuerySequence) {
+			return
+		}
+		batchTabMutex.Lock()
+		activeBatchTabs = tabs
+		activeBatchTabIx = defaultIdx
+		batchTabMutex.Unlock()
+
+		if resultsContainer != nil && resultTabBar != nil {
+			resultsContainer.ResizeItem(resultTabBar, 1, 0)
+		}
+		switchBatchResultTab(app, table, defaultIdx)
+
+		if wasCanceled {
+			updateFooterText(fmt.Sprintf("Batch canceled after %d/%d statement(s) (%s) │ Tabs: Click / [ / ] / Alt+←/→",
+				okCount, len(records), totalDuration.Round(time.Millisecond)))
+		} else if failedErr != "" {
+			updateFooterText(fmt.Sprintf("Batch failed: %s │ Tabs: Click / [ / ] / Alt+←/→", failedErr))
+		} else {
+			updateFooterText(fmt.Sprintf("Batch complete: %d/%d statement(s) OK (%s) │ Tabs: Click / [ / ] / Alt+←/→",
+				okCount, len(records), totalDuration.Round(time.Millisecond)))
+		}
+
+		if onComplete != nil && defaultIdx >= 0 && defaultIdx < len(tabs) {
+			onComplete(tabs[defaultIdx].Result)
+		}
+	})
+}
+
+func clearBatchResultTabs() {
+	batchTabMutex.Lock()
+	activeBatchTabs = nil
+	activeBatchTabIx = 0
+	batchTabBounds = nil
+	batchTabMutex.Unlock()
+
+	if resultTabBar != nil {
+		resultTabBar.SetText("")
+	}
+	if resultsContainer != nil && resultTabBar != nil {
+		resultsContainer.ResizeItem(resultTabBar, 0, 0)
+	}
+}
+
+func themeColorHex(c tcell.Color) string {
+	r, g, b := c.RGB()
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+}
+
+func renderBatchTabBar() {
+	if resultTabBar == nil {
+		return
+	}
+	batchTabMutex.RLock()
+	tabs := append([]BatchResultTab(nil), activeBatchTabs...)
+	activeIdx := activeBatchTabIx
+	batchTabMutex.RUnlock()
+
+	if len(tabs) == 0 {
+		resultTabBar.SetText("")
+		return
+	}
+
+	resultTabBar.SetBackgroundColor(CurrentTheme.SurfaceBg)
+	activeFg := themeColorHex(CurrentTheme.SelectedFg)
+	activeBg := themeColorHex(CurrentTheme.SelectedBg)
+	inactiveFg := themeColorHex(CurrentTheme.TextSecondary)
+	inactiveBg := themeColorHex(CurrentTheme.HeaderBg)
+
+	var sb strings.Builder
+	sb.WriteByte(' ')
+	curX := 1
+	bounds := make([]batchTabHitbox, 0, len(tabs))
+
+	for i, tab := range tabs {
+		plain := " " + tab.Title + " "
+		runeW := len([]rune(plain))
+		bounds = append(bounds, batchTabHitbox{
+			StartX: curX,
+			EndX:   curX + runeW - 1,
+			Index:  i,
+		})
+		if i == activeIdx {
+			sb.WriteString(fmt.Sprintf("[%s:%s:b]%s[-:-:-]", activeFg, activeBg, tview.Escape(plain)))
+		} else {
+			sb.WriteString(fmt.Sprintf("[%s:%s]%s[-:-:-]", inactiveFg, inactiveBg, tview.Escape(plain)))
+		}
+		curX += runeW
+		if i+1 < len(tabs) {
+			sb.WriteByte(' ')
+			curX++
+		}
+	}
+
+	sb.WriteString(FormatThemeMarkup("  [gray]Tabs: [/]Click / [aqua][[-]/[aqua]][-] / [aqua]Alt+←/→[-]"))
+
+	batchTabMutex.Lock()
+	batchTabBounds = bounds
+	batchTabMutex.Unlock()
+
+	resultTabBar.SetText(sb.String())
+}
+
+func switchBatchResultTab(app *tview.Application, table *tview.Table, idx int) {
+	batchTabMutex.Lock()
+	if idx < 0 || idx >= len(activeBatchTabs) {
+		batchTabMutex.Unlock()
+		return
+	}
+	activeBatchTabIx = idx
+	tab := activeBatchTabs[idx]
+	totalTabs := len(activeBatchTabs)
+	batchTabMutex.Unlock()
+
+	renderBatchTabBar()
+
+	if table == nil || tab.Result == nil {
+		return
+	}
+
+	// Reset activeGridSort BaseQuery to empty so sorting in batch tabs performs safe in-memory sorting
+	// without overwriting the user's multi-statement SQL script.
+	activeGridSort.Reset("", false)
+	renderQueryResult(app, tab.Result, table)
+
+	if tab.Result.ErrorMessage == "" && !tab.Result.IsCanceled {
+		titleStr := fmt.Sprintf(" [ Batch Tab %d/%d: %s | %d rows | %s ] ",
+			idx+1, totalTabs, tab.Title, tab.Result.RowCount, tab.Result.Duration.Round(time.Microsecond))
+		table.SetTitle(titleStr).SetTitleAlign(tview.AlignLeft).SetBorder(true)
+	}
+
+	updateFooterText(fmt.Sprintf("Tab %d/%d (%s) │ Switch: Click / [ / ] / Alt+←/→ │ Sort: s",
+		idx+1, totalTabs, tab.Title))
+}
+
+func cycleBatchResultTab(app *tview.Application, table *tview.Table, delta int) bool {
+	batchTabMutex.RLock()
+	n := len(activeBatchTabs)
+	cur := activeBatchTabIx
+	batchTabMutex.RUnlock()
+
+	if n <= 1 {
+		return false
+	}
+	next := (cur + delta) % n
+	if next < 0 {
+		next += n
+	}
+	switchBatchResultTab(app, table, next)
+	return true
 }
 
 func renderQueryResult(app *tview.Application, res *QueryResult, table *tview.Table) {
@@ -3116,6 +3601,28 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 				if count, err := CommitActiveTx(app); err == nil && count > 0 {
 					updateFooterText(fmt.Sprintf("Committed %d mutation(s) to database.", count))
 				}
+				return nil
+			}
+		}
+
+		// Jump to Result Tabs in multi-statement batch mode ('[' / ']', Alt+Left / Alt+Right)
+		if event.Key() == tcell.KeyRune && event.Rune() == '[' {
+			if cycleBatchResultTab(app, table, -1) {
+				return nil
+			}
+		}
+		if event.Key() == tcell.KeyRune && event.Rune() == ']' {
+			if cycleBatchResultTab(app, table, 1) {
+				return nil
+			}
+		}
+		if event.Key() == tcell.KeyLeft && (event.Modifiers()&tcell.ModAlt != 0) {
+			if cycleBatchResultTab(app, table, -1) {
+				return nil
+			}
+		}
+		if event.Key() == tcell.KeyRight && (event.Modifiers()&tcell.ModAlt != 0) {
+			if cycleBatchResultTab(app, table, 1) {
 				return nil
 			}
 		}
@@ -4143,7 +4650,7 @@ func setupGlobalInputCapture(app *tview.Application, db *sql.DB, dbName string) 
 		// 9. Run SQL Query (F5 / Ctrl+R)
 		if event.Key() == tcell.KeyF5 || event.Key() == tcell.KeyCtrlR {
 			if activeSQLEditor != nil {
-				activeSQLEditor.OnExecute(activeSQLEditor.GetText())
+				activeSQLEditor.OnExecute(activeSQLEditor.GetExecutableText())
 				return nil
 			}
 		}
