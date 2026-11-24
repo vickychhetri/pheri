@@ -3068,6 +3068,19 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			return nil
 		}
 
+		// Quick Copy Row menu (Ctrl+Shift+C, 'c'/'C', or 'y'/'Y')
+		isCtrlShiftC := event.Key() == tcell.KeyCtrlC && (event.Modifiers()&tcell.ModShift != 0)
+		isCopyRowKey := event.Key() == tcell.KeyRune && (event.Rune() == 'c' || event.Rune() == 'C' || event.Rune() == 'y' || event.Rune() == 'Y')
+		if isCtrlShiftC || isCopyRowKey {
+			r, _ := table.GetSelection()
+			if r <= 0 || r >= table.GetRowCount() {
+				updateFooterText("Select a data row to copy.")
+				return nil
+			}
+			ShowCopyRowMenuModal(app, table, activeGridDBName, activeGridObject, r)
+			return nil
+		}
+
 		// Inspect cell with 'v' or 'V'
 		if event.Key() == tcell.KeyRune && (event.Rune() == 'v' || event.Rune() == 'V') {
 			r, c := table.GetSelection()
@@ -4052,8 +4065,11 @@ func setupGlobalInputCapture(app *tview.Application, db *sql.DB, dbName string) 
 			}
 		}
 
-		// 2. Ctrl+C when not running query
+		// 2. Ctrl+C when not running query (let Ctrl+Shift+C pass through for Quick Copy Row menu)
 		if event.Key() == tcell.KeyCtrlC {
+			if event.Modifiers()&tcell.ModShift != 0 {
+				return event
+			}
 			if activeSQLEditor != nil && activeSQLEditor.Editor != nil && activeSQLEditor.Editor.HasFocus() {
 				return event
 			}

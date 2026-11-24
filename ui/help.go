@@ -101,6 +101,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("   [lime::b]Enter (Data Cell)[-::-]   In-Place Cell Editor: Modify cell value and save to database\n")
 	b.WriteString("   [lime::b]e / E[-::-]               Jump from Results Grid straight to SQL Query Editor\n")
 	b.WriteString("   [lime::b]Ctrl+R[-::-]              Re-execute active SQL query\n")
+	b.WriteString("   [lime::b]Ctrl+Shift+C / c / y[-::-] Quick Copy Row: Copy highlighted row as JSON, TSV, or SQL INSERT\n")
 	b.WriteString("   [lime::b]v[-::-]                   Cell Content Inspector: View large text or pretty-printed JSON\n")
 	b.WriteString("     [gray]Inside Inspector: Press [lime]c[-] to copy content to system clipboard[-]\n")
 	b.WriteString("   [lime::b]Ctrl+N[-::-]              Next Page: Load the next 100 rows\n")
