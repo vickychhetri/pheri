@@ -96,6 +96,7 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("   [lime::b]s / Header Enter[-::-]    Sort Column: Cycle Unsorted -> ASC (▲) -> DESC (▼) -> Unsorted\n")
 	b.WriteString("   [lime::b]f / Ctrl+J[-::-]          Follow Foreign Key (↗): Jump directly to referenced parent row\n")
 	b.WriteString("   [lime::b]Backspace[-::-]           Return from Foreign Key jump back to previous table & cell\n")
+	b.WriteString("   [lime::b]+ / a[-::-]               Insert New Row: Dynamic column form with NULL/DEFAULT support\n")
 	b.WriteString("   [lime::b]Enter (Data Cell)[-::-]   In-Place Cell Editor: Modify cell value and save to database\n")
 	b.WriteString("   [lime::b]e / E[-::-]               Jump from Results Grid straight to SQL Query Editor\n")
 	b.WriteString("   [lime::b]Ctrl+R[-::-]              Re-execute active SQL query\n")
