@@ -3039,6 +3039,20 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			}
 		}
 
+		// Insert new row modal with '+' or 'a' / 'A'
+		if event.Key() == tcell.KeyRune && (event.Rune() == '+' || event.Rune() == 'a' || event.Rune() == 'A') {
+			if ActiveReadOnly {
+				showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode. Row insertion is disabled.")
+				return nil
+			}
+			if activeGridDB == nil || activeGridDBName == "" || activeGridObject == "" || activeGridObjectType != "TABLE" {
+				updateFooterText("Select a base TABLE in the sidebar before inserting a new row.")
+				return nil
+			}
+			ShowInsertRowModal(app, activeGridDB, activeGridDBName, activeGridObject, table)
+			return nil
+		}
+
 		// Inspect cell with 'v' or 'V'
 		if event.Key() == tcell.KeyRune && (event.Rune() == 'v' || event.Rune() == 'V') {
 			r, c := table.GetSelection()
