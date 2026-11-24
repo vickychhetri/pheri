@@ -3053,6 +3053,21 @@ func setupTableInputCapture(app *tview.Application, table *tview.Table) {
 			return nil
 		}
 
+		// Delete highlighted row with 'd', 'D', or Delete key
+		if event.Key() == tcell.KeyDelete || (event.Key() == tcell.KeyRune && (event.Rune() == 'd' || event.Rune() == 'D')) {
+			if ActiveReadOnly {
+				showErrorModal(app, mainFlex, "Action Blocked: Active Connection is in READ-ONLY Mode. Row deletion is disabled.")
+				return nil
+			}
+			if activeGridDB == nil || activeGridDBName == "" || activeGridObject == "" || activeGridObjectType != "TABLE" {
+				updateFooterText("Select a base TABLE in the sidebar before deleting a row.")
+				return nil
+			}
+			r, _ := table.GetSelection()
+			TriggerRowDeleteFlow(app, activeGridDB, activeGridDBName, activeGridObject, table, r)
+			return nil
+		}
+
 		// Inspect cell with 'v' or 'V'
 		if event.Key() == tcell.KeyRune && (event.Rune() == 'v' || event.Rune() == 'V') {
 			r, c := table.GetSelection()
@@ -3203,47 +3218,12 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				}
 
 				pkCols, _ := GetPrimaryKeyColumns(db, dbName, tableName)
-				var whereClauses []string
-				if len(pkCols) > 0 {
-					for _, pkCol := range pkCols {
-						trimmedPK := strings.TrimSpace(pkCol)
-						for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
-							colHeader := strings.TrimSpace(util.StripFormatting(table.GetCell(0, colIdx).Text))
-							if strings.EqualFold(colHeader, trimmedPK) {
-								pkGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), trimmedPK)
-								if pkGC.IsNull() {
-									whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(trimmedPK)))
-								} else {
-									whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(trimmedPK)))
-									queryArgs = append(queryArgs, pkGC.Value())
-								}
-								break
-							}
-						}
-					}
-				}
-
-				// If no primary keys matched or table has no PK, fall back to composite matching on all columns
-				if len(whereClauses) == 0 {
-					for colIdx := 0; colIdx < table.GetColumnCount(); colIdx++ {
-						colHeader := strings.TrimSpace(util.StripFormatting(table.GetCell(0, colIdx).Text))
-						if colHeader == "" {
-							continue
-						}
-						rowGC := GetGridCellFromTableCell(table.GetCell(row, colIdx), colHeader)
-						if rowGC.IsNull() {
-							whereClauses = append(whereClauses, fmt.Sprintf("%s IS NULL", util.QuoteIdentifier(colHeader)))
-						} else {
-							whereClauses = append(whereClauses, fmt.Sprintf("%s = ?", util.QuoteIdentifier(colHeader)))
-							queryArgs = append(queryArgs, rowGC.Value())
-						}
-					}
-				}
-
-				if len(whereClauses) == 0 {
-					showErrorModal(app, mainFlex, "Cannot update row: unable to identify row columns for WHERE condition.")
+				whereSQL, whereArgs, whereErr := BuildRowWhereClause(table, row, pkCols)
+				if whereErr != nil {
+					showErrorModal(app, mainFlex, "Cannot update row: "+whereErr.Error())
 					return nil
 				}
+				queryArgs = append(queryArgs, whereArgs...)
 
 				targetTable := util.QuoteIdentifier(tableName)
 				if dbName != "" {
@@ -3252,7 +3232,7 @@ func EnableCellEditing(app *tview.Application, table *tview.Table, db *sql.DB, d
 				updateQuery = fmt.Sprintf("UPDATE %s SET %s = ? WHERE %s LIMIT 1",
 					targetTable,
 					util.QuoteIdentifier(columnName),
-					strings.Join(whereClauses, " AND "))
+					whereSQL)
 
 				ctxExec, cancelExec := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancelExec()
