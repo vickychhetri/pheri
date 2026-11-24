@@ -1354,12 +1354,14 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 	if GetUncommittedTxCount() > 0 {
 		PromptUncommittedChangesModal(app, "switch databases",
 			func() {
-				_, _ = CommitActiveTx(app)
-				UseDatabase(app, db, dbName)
+				if _, err := CommitActiveTx(app); err == nil && activeTx == nil {
+					UseDatabase(app, db, dbName)
+				}
 			},
 			func() {
-				_, _ = RollbackActiveTx(app)
-				UseDatabase(app, db, dbName)
+				if _, err := RollbackActiveTx(app); err == nil && activeTx == nil {
+					UseDatabase(app, db, dbName)
+				}
 			},
 			func() {
 				updateFooterText("Database switch cancelled.")
@@ -2049,6 +2051,23 @@ func UseDatabase(app *tview.Application, db *sql.DB, dbName string) {
 				return nil
 			}
 			if event.Key() == tcell.KeyEscape {
+				if GetUncommittedTxCount() > 0 {
+					PromptUncommittedChangesModal(app, "return to database list",
+						func() {
+							_, _ = CommitActiveTx(app)
+							ShowDatabaseList(app, db)
+						},
+						func() {
+							_, _ = RollbackActiveTx(app)
+							ShowDatabaseList(app, db)
+						},
+						func() {
+							updateFooterText("Navigation to database list cancelled.")
+							app.SetFocus(searchInput)
+						},
+					)
+					return nil
+				}
 				ShowDatabaseList(app, db)
 				return nil
 			}

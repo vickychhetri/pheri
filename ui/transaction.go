@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -289,24 +290,59 @@ func ToggleAutoCommit(app *tview.Application, db *sql.DB) {
 	}
 }
 
+// resolveExitBarrierLabels determines appropriate Commit and Rollback button labels based on the action context.
+func resolveExitBarrierLabels(actionName string) (commitLabel, rollbackLabel string) {
+	lowerAction := strings.ToLower(actionName)
+	isExitAction := strings.Contains(lowerAction, "exit") ||
+		strings.Contains(lowerAction, "quit") ||
+		strings.Contains(lowerAction, "disconnect") ||
+		strings.Contains(lowerAction, "login")
+
+	if isExitAction {
+		return "Commit & Exit", "Rollback & Exit"
+	}
+	return "Commit & Proceed", "Rollback & Discard"
+}
+
 // PromptUncommittedChangesModal presents a confirmation dialog when exiting or switching context with uncommitted mutations.
 func PromptUncommittedChangesModal(app *tview.Application, actionName string, onCommit func(), onRollback func(), onCancel func()) *tview.Modal {
 	count := GetUncommittedTxCount()
+	commitLabel, rollbackLabel := resolveExitBarrierLabels(actionName)
 
-	modalText := fmt.Sprintf("[red::b]Pending Uncommitted Changes[::-]\n\nYou have [yellow::b]%d pending mutation(s)[::-] in your active transaction.\nBefore you %s, what would you like to do?", count, actionName)
+	modalText := FormatThemeMarkup(fmt.Sprintf("[red::b]Pending Uncommitted Changes[::-]\n\nYou have [yellow::b]%d pending mutation(s)[::-] in your active transaction.\nBefore you %s, what would you like to do?", count, actionName))
 
 	modal := tview.NewModal().
 		SetText(modalText).
-		AddButtons([]string{"Commit & Proceed", "Rollback & Discard", "Cancel"}).
+		AddButtons([]string{commitLabel, rollbackLabel, "Cancel"}).
 		SetBackgroundColor(tcell.ColorDarkBlue).
 		SetButtonBackgroundColor(tcell.ColorDarkCyan)
 
 	closeModal := func() {
-		if mainFlex != nil && app != nil {
-			orig := CreateLayoutWithFooter(app, mainFlex)
-			app.SetRoot(orig, true)
-			if dataTable != nil {
-				app.SetFocus(dataTable)
+		if app == nil {
+			return
+		}
+		switch ActiveScreen {
+		case "dblist":
+			if ActiveLoginDB != nil {
+				ShowDatabaseList(app, ActiveLoginDB)
+			} else {
+				ShowConnectionForm(app, "", "", "", "")
+			}
+		case "login":
+			ShowConnectionForm(app, "", "", "", "")
+		case "browser":
+			fallthrough
+		default:
+			if mainFlex != nil {
+				orig := CreateLayoutWithFooter(app, mainFlex)
+				app.SetRoot(orig, true)
+				if dataTable != nil {
+					app.SetFocus(dataTable)
+				}
+			} else if ActiveLoginDB != nil {
+				ShowDatabaseList(app, ActiveLoginDB)
+			} else {
+				ShowConnectionForm(app, "", "", "", "")
 			}
 		}
 	}

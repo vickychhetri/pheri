@@ -331,3 +331,76 @@ func TestFooterBar_MouseCaptureAndFocusDeflection(t *testing.T) {
 		t.Errorf("expected focus to deflect to dataTable")
 	}
 }
+
+func TestPromptUncommittedChangesModal_DynamicLabelsAndScreens(t *testing.T) {
+	defer ResetTransactionState()
+	origScreen := ActiveScreen
+	defer func() {
+		ActiveScreen = origScreen
+		ActiveLoginDB = nil
+	}()
+
+	// 1. Verify dynamic button label resolution
+	cExit, rExit := resolveExitBarrierLabels("exit Pheri")
+	if cExit != "Commit & Exit" || rExit != "Rollback & Exit" {
+		t.Errorf("unexpected exit labels: got (%q, %q)", cExit, rExit)
+	}
+	cDisc, rDisc := resolveExitBarrierLabels("disconnect from server")
+	if cDisc != "Commit & Exit" || rDisc != "Rollback & Exit" {
+		t.Errorf("unexpected disconnect labels: got (%q, %q)", cDisc, rDisc)
+	}
+	cSwitch, rSwitch := resolveExitBarrierLabels("switch databases")
+	if cSwitch != "Commit & Proceed" || rSwitch != "Rollback & Discard" {
+		t.Errorf("unexpected context-switch labels: got (%q, %q)", cSwitch, rSwitch)
+	}
+
+	ResetTransactionState()
+	SetAutoCommitMode(false)
+	RecordMutationInTx("DELETE FROM users WHERE id = 5", "SQL Editor")
+
+	app := tview.NewApplication()
+	mainFlex = tview.NewFlex()
+	ActiveScreen = "browser"
+
+	// 2. Render modal onto a SimulationScreen and verify visible button text
+	sim := tcell.NewSimulationScreen("UTF-8")
+	if err := sim.Init(); err != nil {
+		t.Fatalf("failed to init sim screen: %v", err)
+	}
+	sim.SetSize(120, 40)
+
+	exitModal := PromptUncommittedChangesModal(app, "exit Pheri", nil, nil, nil)
+	exitModal.Draw(sim)
+	var rendered strings.Builder
+	for y := 0; y < 40; y++ {
+		for x := 0; x < 120; x++ {
+			r, _, _, _ := sim.GetContent(x, y)
+			if r != 0 {
+				rendered.WriteRune(r)
+			}
+		}
+	}
+	screenStr := rendered.String()
+	if !strings.Contains(screenStr, "Commit & Exit") {
+		t.Errorf("expected rendered modal to contain 'Commit & Exit'")
+	}
+	if !strings.Contains(screenStr, "Rollback & Exit") {
+		t.Errorf("expected rendered modal to contain 'Rollback & Exit'")
+	}
+	if !strings.Contains(screenStr, "Cancel") {
+		t.Errorf("expected rendered modal to contain 'Cancel'")
+	}
+
+	// 3. Verify Cancel on dblist restores cleanly without panicking when ActiveLoginDB is nil
+	ActiveScreen = "dblist"
+	ActiveLoginDB = nil
+	var cancelled bool
+	dbModal := PromptUncommittedChangesModal(app, "exit to connection screen", nil, nil, func() {
+		cancelled = true
+	})
+	dbHandler := dbModal.InputHandler()
+	dbHandler(tcell.NewEventKey(tcell.KeyEscape, 0, 0), func(p tview.Primitive) {})
+	if !cancelled {
+		t.Errorf("expected cancel callback to fire on Escape in dblist mode")
+	}
+}
