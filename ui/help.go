@@ -93,7 +93,8 @@ func GetLaymanHelpGuide() string {
 
 	b.WriteString(" [aqua::b]5. VIEWING & EDITING DATA (RESULTS DATA GRID)[-::-]\n")
 	b.WriteString("   [lime::b]Arrow Keys[-::-]          Move cell cursor (Up, Down, Left, Right)\n")
-	b.WriteString("   [lime::b]Enter[-::-]               In-Place Cell Editor: Modify cell value and save to database\n")
+	b.WriteString("   [lime::b]s / Header Enter[-::-]    Sort Column: Cycle Unsorted -> ASC (▲) -> DESC (▼) -> Unsorted\n")
+	b.WriteString("   [lime::b]Enter (Data Cell)[-::-]   In-Place Cell Editor: Modify cell value and save to database\n")
 	b.WriteString("   [lime::b]e / E[-::-]               Jump from Results Grid straight to SQL Query Editor\n")
 	b.WriteString("   [lime::b]Ctrl+R[-::-]              Re-execute active SQL query\n")
 	b.WriteString("   [lime::b]v[-::-]                   Cell Content Inspector: View large text or pretty-printed JSON\n")
