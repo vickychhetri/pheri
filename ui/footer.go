@@ -500,7 +500,7 @@ func handleFooterClick(app *tview.Application, clickX int, plainText string) {
 	// 7. Ctrl+R Run
 	if inZone("Ctrl+R Run") {
 		if activeSQLEditor != nil {
-			activeSQLEditor.OnExecute(activeSQLEditor.GetText())
+			activeSQLEditor.OnExecute(activeSQLEditor.GetExecutableText())
 		}
 		return
 	}

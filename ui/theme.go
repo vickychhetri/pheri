@@ -363,9 +363,12 @@ func ApplyThemeGlobally(app *tview.Application, theme UITheme) {
 			SetPlaceholderTextColor(CurrentTheme.TextSecondary)
 	}
 
-	// 6. Refresh data table and cell styles
+	// 6. Refresh data table, result tabs, and cell styles
 	if dataTable != nil {
 		RefreshTableTheme(dataTable)
+	}
+	if resultTabBar != nil {
+		renderBatchTabBar()
 	}
 
 	// 7. Refresh footer and command input

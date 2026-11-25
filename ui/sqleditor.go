@@ -212,8 +212,13 @@ func NewSQLEditor(app *tview.Application) *SQLEditor {
 			container.ResizeItem(sqlEditor.Gutter, gutterWidth, 0)
 		}
 
-		title := fmt.Sprintf(" [ SQL Query Editor ]  Ln %d, Col %d | %d lines | %d chars ",
-			fromRow+1, fromCol+1, totalLines, textLen)
+		stmtBadge := ""
+		if stmtCount := len(SplitSQLStatements(text)); stmtCount > 1 {
+			stmtBadge = fmt.Sprintf(" | %d stmts", stmtCount)
+		}
+
+		title := fmt.Sprintf(" [ SQL Query Editor ]  Ln %d, Col %d | %d lines | %d chars%s ",
+			fromRow+1, fromCol+1, totalLines, textLen, stmtBadge)
 		container.SetTitle(title)
 		if focused {
 			container.SetBorderColor(CurrentTheme.BorderFocused)
@@ -282,10 +287,20 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		}
 	}
 
-	// 2. Query execution hotkeys: Ctrl+R, F5, Ctrl+Enter (received as KeyCtrlJ or ModCtrl+KeyEnter)
+	// 2. Query execution hotkeys:
+	//    - Ctrl+R / F5: execute selected SQL or full batch script
+	//    - Alt+Enter: execute only the SQL statement at cursor
+	//    - Ctrl+Enter / Ctrl+J: commit when empty & pending TX, else execute selection or full batch
 	if event.Key() == tcell.KeyCtrlR || event.Key() == tcell.KeyF5 {
 		if s.OnExecute != nil {
-			s.OnExecute(s.GetText())
+			s.OnExecute(s.GetExecutableText())
+		}
+		return nil
+	}
+
+	if event.Key() == tcell.KeyEnter && (event.Modifiers()&tcell.ModAlt != 0) {
+		if chunk, ok := s.GetStatementAtCursor(); ok && s.OnExecute != nil {
+			s.OnExecute(chunk.SQL)
 		}
 		return nil
 	}
@@ -298,7 +313,7 @@ func (s *SQLEditor) handleInput(event *tcell.EventKey) *tcell.EventKey {
 			return nil
 		}
 		if s.OnExecute != nil {
-			s.OnExecute(s.GetText())
+			s.OnExecute(s.GetExecutableText())
 		}
 		return nil
 	}
@@ -392,6 +407,47 @@ func (s *SQLEditor) GetText() string {
 		return ""
 	}
 	return s.TextArea.GetText()
+}
+
+// GetExecutableText returns the currently highlighted selection if non-empty,
+// otherwise returning the full editor script for single or batch execution.
+func (s *SQLEditor) GetExecutableText() string {
+	if s == nil || s.TextArea == nil {
+		return ""
+	}
+	if s.TextArea.HasSelection() {
+		if sel, _, _ := s.TextArea.GetSelection(); strings.TrimSpace(sel) != "" {
+			return sel
+		}
+	}
+	return s.TextArea.GetText()
+}
+
+// GetStatementAtCursor resolves the individual SQL statement under or nearest the current cursor line.
+func (s *SQLEditor) GetStatementAtCursor() (SQLStatementChunk, bool) {
+	if s == nil || s.TextArea == nil {
+		return SQLStatementChunk{}, false
+	}
+	chunks := SplitSQLStatements(s.TextArea.GetText())
+	if len(chunks) == 0 {
+		return SQLStatementChunk{}, false
+	}
+	row, _, _, _ := s.TextArea.GetCursor()
+	cursorLine := row + 1
+	for _, chunk := range chunks {
+		if cursorLine >= chunk.StartLine && cursorLine <= chunk.EndLine {
+			return chunk, true
+		}
+	}
+	best := chunks[0]
+	for _, chunk := range chunks {
+		if chunk.StartLine <= cursorLine {
+			best = chunk
+		} else {
+			break
+		}
+	}
+	return best, true
 }
 
 // SetText sets the SQL text in the editor and places cursor at the end.

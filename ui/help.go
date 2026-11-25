@@ -73,7 +73,8 @@ func GetLaymanHelpGuide() string {
 
 	b.WriteString(" [aqua::b]4. WRITING & RUNNING SQL QUERIES (SQL EDITOR)[-::-]\n")
 	b.WriteString("   [lime::b]Line Numbers Margin[-::-]   Synchronized gutter (1 │, 2 │, ...) tracks active line & Ln/Col telemetry\n")
-	b.WriteString("   [lime::b]Ctrl+R / Ctrl+Enter[-::-] Execute current SQL query\n")
+	b.WriteString("   [lime::b]Ctrl+R / Ctrl+Enter[-::-] Execute selected SQL, single query, or multi-statement ';' batch\n")
+	b.WriteString("   [lime::b]Alt+Enter[-::-]           Execute only the single SQL statement under cursor\n")
 	b.WriteString("   [lime::b]Ctrl+C / Esc[-::-]        Cancel Query: Safely abort running query if stuck or slow\n")
 	b.WriteString("   [lime::b]Ctrl+T[-::-]              Table Autocomplete: Search and insert table names at cursor\n")
 	b.WriteString("   [lime::b]Ctrl+S[-::-]              SQL Snippets: Insert common SQL clauses (JOIN, WHERE, etc.)\n")
@@ -107,7 +108,8 @@ func GetLaymanHelpGuide() string {
 	b.WriteString("     [gray]Inside Inspector: Press [lime]c[-] to copy content to system clipboard[-]\n")
 	b.WriteString("   [lime::b]Ctrl+N[-::-]              Next Page: Load the next 100 rows\n")
 	b.WriteString("   [lime::b]Ctrl+P[-::-]              Previous Page: Load the previous 100 rows\n")
-	b.WriteString("   [lime::b]Ctrl+E[-::-]              Export Wizard: Save table or query results to CSV, JSON, or SQL\n\n")
+	b.WriteString("   [lime::b]Ctrl+E[-::-]              Export Wizard: Save table or query results to CSV, JSON, or SQL\n")
+	b.WriteString("   [lime::b][ / ] / Alt+←/→[-::-]     Switch between tabbed result grids & Summary in batch execution\n\n")
 
 	b.WriteString(" [aqua::b]6. DEVOPS & DATABASE HEALTH DIAGNOSTICS (IN PLAIN ENGLISH)[-::-]\n")
 	b.WriteString("   [lime::b]F4 / :process / :top[-::-] Live Process Manager & Query Killer\n")

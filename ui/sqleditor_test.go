@@ -248,3 +248,46 @@ func TestSQLEditor_ApplyThemeUpdatesGutter(t *testing.T) {
 		t.Errorf("expected Container background color to sync with Light theme SurfaceBg")
 	}
 }
+
+func TestSQLEditor_ExecutableTextAndStatementAtCursor(t *testing.T) {
+	app := tview.NewApplication()
+	editor := NewSQLEditor(app)
+
+	script := "SELECT 1;\nUPDATE users SET active = 1 WHERE id = 5;\nSELECT COUNT(*) FROM users;"
+	editor.TextArea.SetText(script, false)
+
+	// 1. Border telemetry displays statement count for multi-statement scripts
+	if !strings.Contains(editor.Container.GetTitle(), "3 stmts") {
+		t.Errorf("expected editor border title to display '3 stmts', got %q", editor.Container.GetTitle())
+	}
+
+	// 2. GetExecutableText returns full script when no selection is active
+	if got := editor.GetExecutableText(); got != script {
+		t.Errorf("expected GetExecutableText() to return full script when unselected, got %q", got)
+	}
+
+	// 3. Move cursor down onto line 2 and test Alt+Enter (statement at cursor)
+	handler := editor.TextArea.InputHandler()
+	handler(tcell.NewEventKey(tcell.KeyDown, 0, tcell.ModNone), func(p tview.Primitive) {})
+
+	chunk, ok := editor.GetStatementAtCursor()
+	if !ok {
+		t.Fatalf("expected GetStatementAtCursor() to find statement on line 2")
+	}
+	if chunk.Index != 2 || !strings.Contains(chunk.SQL, "UPDATE users") {
+		t.Errorf("expected statement #2 (UPDATE users), got %+v", chunk)
+	}
+
+	var executedSQL string
+	editor.OnExecute = func(q string) {
+		executedSQL = q
+	}
+	res := editor.handleInput(tcell.NewEventKey(tcell.KeyEnter, 0, tcell.ModAlt))
+	if res != nil {
+		t.Errorf("expected Alt+Enter to be handled (nil return)")
+	}
+	if !strings.Contains(executedSQL, "UPDATE users") {
+		t.Errorf("expected Alt+Enter to execute cursor statement, got %q", executedSQL)
+	}
+}
+
